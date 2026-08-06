@@ -1,0 +1,21 @@
+{
+  "name": "@mx-player-max/core",
+  "version": "0.1.0",
+  "type": "module",
+  "publishConfig": { "access": "public" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "dependencies": {
+    "@mx-player-max/audio": "workspace:*",
+    "@mx-player-max/capabilities": "workspace:*",
+    "@mx-player-max/decoder-wasm": "workspace:*",
+    "@mx-player-max/decoder-webcodecs": "workspace:*",
+    "@mx-player-max/demux": "workspace:*",
+    "@mx-player-max/renderers": "workspace:*",
+    "@mx-player-max/strategy": "workspace:*",
+    "@mx-player-max/subtitles": "workspace:*",
+    "@mx-player-max/types": "workspace:*"
+  },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run --passWithNoTests" }
+}

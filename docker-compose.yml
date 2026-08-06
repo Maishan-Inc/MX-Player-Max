@@ -1,0 +1,9 @@
+services:
+  demo:
+    build:
+      context: .
+      dockerfile: apps/demo/Dockerfile
+    ports:
+      - "4173:80"
+    restart: unless-stopped
+

@@ -1,0 +1,105 @@
+# Chrome、Firefox、Safari 浏览器最优策略
+
+## 1. 基本原则
+
+浏览器不是解码器选择器，媒体格式和播放目标才是第一输入。浏览器与设备能力决定候选是否可用，以及候选之间的性能评分。
+
+```text
+媒体格式/Codec + 播放意图
+          ↓
+候选后端
+          ↓
+当前浏览器与设备能力
+          ↓
+平台专属增强
+          ↓
+最终评分
+```
+
+禁止使用 `Chrome = WebCodecs`、`Safari = HTMLVideo`、`Firefox = WASM` 这种硬编码映射。
+
+## 2. 标准检测层
+
+### 原生播放
+
+使用 `HTMLMediaElement.canPlayType()` 进行快速粗筛，再使用 `navigator.mediaCapabilities.decodingInfo()` 获取 `supported`、`smooth` 和 `powerEfficient`。Codec 字符串必须包含真实 profile、level、bit depth、width、height、framerate 和 bitrate。
+
+### WebCodecs
+
+使用 `VideoDecoder.isConfigSupported()` 与 `AudioDecoder.isConfigSupported()` 验证具体配置。不能只判断 `VideoDecoder` 构造函数存在，因为浏览器可能支持 API 但不支持具体 Codec 配置。
+
+### 渲染器
+
+按以下顺序探测：WebGPU、WebGL2、Canvas2D。WebGPU 不能用时不应该让自定义解码整体失败，而是降低滤镜和色彩管线能力。
+
+### WASM
+
+只在选择 WASM 后检测 `WebAssembly.validate`、SIMD、Threads、`crossOriginIsolated`、`SharedArrayBuffer`、Worker 和内存上限。多线程构建不能在未隔离页面中强行启动。
+
+## 3. Chromium 专属增强
+
+Chromium 的优势是 WebCodecs、WebGPU 和部分 Worker MediaSource 能力组合较完整。当前文件型媒体路径中，优先利用：
+
+- WebCodecs 视频/音频逐帧解码。
+- WebGPU 外部纹理或高效纹理上传。
+- WASM SIMD/Threads（页面允许时）。
+- 未来流媒体场景的 Dedicated Worker MediaSource/MediaSourceHandle。
+
+Worker MediaSource 不属于首阶段文件播放器的必需能力。没有它时，Demux Worker 仍然可以通过自定义 Range 管线工作。
+
+## 4. WebKit/Safari 专属增强
+
+WebKit 适合优先利用系统原生媒体能力：
+
+- 原生 HLS 和系统级网络/功耗策略。
+- 系统 HEVC、HDR、AirPlay、FairPlay 和原生 PiP 能力。
+- `ManagedMediaSource` 可作为未来 HLS/DASH 的省电流媒体后端。
+- `fastSeek()` 可用于原生路径的快速近似定位。
+
+对 MP4/H.264/H.265/AAC 等普通文件，如果 `decodingInfo` 显示平滑且低功耗，Safari 的 HTMLVideo 候选应获得更高分。对 MKV 或冷门 Codec，必须回到 WebCodecs/WASM，不能因为 Safari 有原生 HLS 就强行使用原生路径。
+
+## 5. Gecko/Firefox 专属增强
+
+Firefox 的核心路径仍然是标准 API和能力检测：
+
+- WebCodecs 具体 Codec 配置检测。
+- WebGPU 可用时启用自定义 GPU 渲染。
+- `fastSeek()` 用于原生快速定位。
+- `getVideoPlaybackQuality()` 作为通用播放质量指标。
+- `mozDecodedFrames`、`mozPresentedFrames`、`mozPaintedFrames`、`mozFrameDelay` 仅作为诊断和回归数据，不参与硬编码后端选择。
+
+Firefox 当前不应被假设支持 Worker MediaSource。流媒体插件需要单独检测 `MediaSource.canConstructInDedicatedWorker` 与 `MediaSource.handle`。
+
+## 6. 评分模型
+
+建议分数由以下因素组成：
+
+```text
+support                 不支持则淘汰
+hardware/power          +40
+smooth                  +30
+zero-copy               +20
+startup                 +10
+advanced-frame-access   +20（按需求）
+memory-risk             -20
+known-platform-risk     -100
+```
+
+普通播放的额外权重是功耗和硬件解码；滤镜/编辑器的额外权重是逐帧访问和 WebGPU；HDR 场景优先保留原生色彩路径，除非自定义渲染器已经完成色彩管理。
+
+## 7. 快照和缓存
+
+能力快照按浏览器品牌、版本、操作系统、GPU 标识、Codec 配置和 SDK 版本缓存。缓存只用于减少探测，不得绕过初始化失败回退。平台 Bug 黑名单必须带版本范围、Issue 链接、失效日期和测试样本。
+
+## 8. 选型伪代码
+
+```ts
+const candidates = registry.createCandidates(media, intent)
+const viable = await capabilityProbe.filter(candidates, media)
+const enhanced = platformPolicy.adjust(viable, media, intent)
+const selected = score(enhanced).best()
+return backendLoader.start(selected)
+```
+
+“毫秒级”只承诺本地能力判断和策略评分。远程文件的容器/Codec 探测时间取决于 Range 请求和网络 RTT，必须通过并行探测、最小 Range、缓存和预读降低等待。
+

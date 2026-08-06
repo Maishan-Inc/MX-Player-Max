@@ -1,0 +1,19 @@
+{
+  "name": "mx-player-max",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "dev": "pnpm --filter @mx-player-max/demo dev",
+    "build": "pnpm -r --if-present build",
+    "build:demo": "pnpm --filter @mx-player-max/demo build",
+    "typecheck": "pnpm -r --if-present build && pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "lint": "pnpm -r --if-present lint",
+    "clean": "pnpm -r --if-present clean"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  }
+}
