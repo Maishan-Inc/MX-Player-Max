@@ -29,6 +29,7 @@
 
 | 文件 | 内容 |
 |---|---|
+| [technology-landscape.md](technology-landscape.md) | **技术选型与平台矩阵**；为何不能照搬 DLSS/FSR；WebGPU/WebNN 现状 |
 | [overview.md](overview.md) | 拉取式帧源架构、管线顺序、与双路径关系 |
 | [interpolation.md](interpolation.md) | RIFE 插帧；前瞻、epoch、seek、EOS |
 | [super-resolution.md](super-resolution.md) | RT4KSR + Anime4K；档位与网络规模 |

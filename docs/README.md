@@ -16,6 +16,7 @@
 ## AI 后处理
 
 - `ai/README.md`：AI 功能索引与前置声明。
+- `ai/technology-landscape.md`：为什么不能照搬 DLSS/FSR、RIFE/RT4KSR/Anime4K 选型、RTX VSR 关系、WebGPU 与 WebNN 平台矩阵。
 - `ai/overview.md`：拉取式帧源架构、管线顺序、与双路径和解码后端的关系。
 - `ai/interpolation.md`：RIFE 架构、前瞻、epoch、seek、EOS、性能预算。
 - `ai/super-resolution.md`：RT4KSR + Anime4K-WebGPU、档位映射、零拷贝管线。

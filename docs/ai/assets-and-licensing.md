@@ -93,8 +93,9 @@ const url = `${base}/${manifest.model}/v${manifest.version}/${manifest.variants[
 | 模型规模 | 约 10M 参数 |
 | 权重文件 | 约 40 MB（f32） / 20 MB（f16） |
 | 训练数据 | Vimeo90K |
-| 许可证 | **⚠ 高风险**——部分发布版本 MIT，部分研究/非商用。需逐版本确认 |
-| 专利风险 | 光流 + 双向 warp 可能有竞品专利覆盖（FlowNet/Super-Slomo 相关） |
+| 许可证 | **MIT**（© Megvii Inc.）。上游 ECCV2022-RIFE 与 Practical-RIFE 的权重均为 MIT |
+| 许可证陷阱 | 风险来自**下游封装**而非 RIFE 本身。例如 `ComfyUI-Rife-Tensorrt` 为 CC BY-NC-SA（禁商用）。只能从 hzwer 上游取权重，绝不从第三方整合包取 |
+| 专利风险 | 低-中。光流 + 双向 warp 为学术通用方法，但建议对具体实现做一次检索 |
 | 输入 | 两帧 RGB，1080p |
 | 输出 | 一帧 RGB，按 phase 合成 |
 
@@ -118,17 +119,20 @@ AGENTS.md §5 的强制要求（**不得跳过，不得推迟到实现阶段后*
 
 | 审查项 | RT4KSR | RIFE | Anime4K |
 |---|---|---|---|
-| 上游仓库 / commit | ⬜ 待确认 | ⬜ 待确认 | ⬜ 待确认 |
-| 许可证条款 | ⬜ 待评估 | ⬜ 待评估 | ⬜ MIT 已确认 |
-| 商业分发允许 | ⬜ 待评估 | ⬜ **看版本** | ✅ MIT |
-| 再分发权重文件允许 | ⬜ 待评估 | ⬜ **看版本** | N/A（着色器） |
+| 上游仓库 / commit | ⬜ 待确认 | ✅ hzwer/Practical-RIFE（须锁 commit） | ⬜ 待确认 |
+| 许可证条款 | ⬜ 待评估 | ✅ MIT（© Megvii Inc.） | ⬜ MIT 已确认 |
+| 商业分发允许 | ⬜ 待评估 | ✅ MIT 允许 | ✅ MIT |
+| 再分发权重文件允许 | ⬜ 待评估 | ✅ 允许，须保留版权声明 | N/A（着色器） |
+| **来源纯净性** | N/A | ⚠️ **只能取上游**。下游整合包（如 ComfyUI-Rife-Tensorrt = CC BY-NC-SA）会污染许可证 | N/A |
 | 训练数据许可证 | ⬜ DIV2K 需确认 | ⬜ Vimeo90K 需确认 | N/A（传统方法） |
-| 专利覆盖（基础方法） | ⬜ CNN 超分无风险 | ⚠️ 建议检索 | ✅ 低风险 |
-| 专利覆盖（具体实现） | ⬜ 待评估 | ⚠️ 建议检索 | ✅ 低风险 |
+| 专利覆盖（基础方法） | ⬜ CNN 超分无风险 | ⬜ 建议检索 | ✅ 低风险 |
+| 专利覆盖（具体实现） | ⬜ 待评估 | ⬜ 建议检索 | ✅ 低风险 |
 | 编译/转换参数记录 | 不适用（权重） | 不适用（权重） | ✅ 着色器源码 |
 | 第三方依赖 | PyTorch 导出 | PyTorch 导出 | 无 |
 | 产物大小 | 1–4 MB | 20–40 MB | ~50 KB |
 | CDN 就绪 | ⬜ | ⬜ | ✅ |
+
+> **RIFE 许可证结论已更新（2026-08）**：早期评估将 RIFE 标为「高风险，可能阻断发布」，该结论**过重**。上游 ECCV2022-RIFE 与 Practical-RIFE 的权重均为 MIT，允许商用与再分发。真正的风险是**供应链**：多个流行的第三方封装采用 CC BY-NC-SA 等禁商用条款。因此审查重点从「能不能用 RIFE」转为「确保只从 hzwer 上游仓库按锁定 commit 取权重」，并在 manifest 的 `upstream` 字段记录该 commit。仍须在 vendor 前核对该 commit 的 `LICENSE` 文件本身，不能只依据 README 措辞。
 
 ### 审查结论必须在 Phase A 完成
 

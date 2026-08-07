@@ -70,10 +70,14 @@
 
 | 风险 | 严重度 | 可能性 | 对策 |
 |---|---|---|---|
-| **RIFE 许可证非商用** | 🔴 极高 | 中 | **立即审查，Phase A 解决。** 不通过则回退到纯超分方案 |
-| **权转换数值误差** | 🟡 中 | 高 | 建立数值等价性验证工装 |
+| **RIFE 权重来源被下游封装污染** | 🟡 中 | 中 | RIFE 上游为 MIT，允许商用。风险在供应链：只从 `hzwer/Practical-RIFE` 按锁定 commit 取权重，绝不用第三方整合包（多为 CC BY-NC-SA） |
+| **权重转换数值误差** | 🟡 中 | 高 | 建立数值等价性验证工装 |
 | 相乘成本使旗舰演示无法达成 | 🟡 中 | 高 | **现在就设预期**：4K60 仅旗舰显卡，默认不开两者 |
-| `GridSample` WGSL 性能不达标 | 🟡 中 | 低 | 提前原型验证，不达原则砍插帧 |
+| RT4KSR 无现成 WebGPU 移植 | 🟡 中 | 已确认 | 必须自行移植为 compute shader；工作量已计入 Phase C |
+| `GridSample` WGSL 性能不达标 | 🟡 中 | 低 | 提前原型验证，不达标则砍插帧 |
+| 用户已开 RTX VSR 造成重复处理 | 🟢 低 | 中 | 驱动级处理对网页透明，**无法程序化检测**；只能在 UI 提示 |
 | Firefox stable `importExternalTexture` 永远不支持 | 🟢 低 | 中 | 已有 `copyExternalImageToTexture` 降级路径 |
 | 集显用户期待 AI 但无法使用 | 🟢 低 | 高 | 降级到 Anime4K low 档或 passthrough |
 | ONNX Runtime 想升级导致依赖膨胀 | 🟢 低 | – | 已决定手写 WGSL，不引入 ORT |
+
+> **2026-08 更新**：早期评估把「RIFE 许可证非商用」列为 🔴 极高风险且可能阻断整个特性。经核实该结论过重——上游 ECCV2022-RIFE 与 Practical-RIFE 的权重均为 MIT（© Megvii Inc.）。风险等级下调为 🟡 中，性质从「法务阻断」变为「供应链纪律」。详见 [assets-and-licensing.md](assets-and-licensing.md)。

@@ -411,6 +411,31 @@ Chrome 的 `powerEfficient` 值在多版本间不稳定，`scoring-model` 应该
 | Dolby Atmos (TrueHD 载体) | 探测 + 自定义降为 7.1 床 |
 | DTS:X | 探测 + 自定义降为核心床 |
 
+### 7.7 按设备与浏览器的实际落点
+
+> 本表是**预期结果**，不是实现依据。[AGENTS.md §4](../../AGENTS.md) 禁止把浏览器品牌映射到后端；实现必须走 §3 的探测流程。本表用于测试预期和用户支持答疑。数据基准 2026-08。
+>
+> API 版本门槛见 `codec-strategy.md` §4.3。
+
+| 平台 | 浏览器 | 普通 MP4/WebM | MKV / 逐帧 | AI 超分插帧 |
+|---|---|---|---|---|
+| **Windows** | Chrome / Edge 113+ | HTMLVideo | WebCodecs | ✅ **最佳平台**，WebGPU 走 D3D12 |
+| Windows | Firefox 141+ | HTMLVideo | WebCodecs（防 H.264 陷阱） | ✅ |
+| **macOS** | Safari 26+ | HTMLVideo（HEVC/HDR/Atmos 最佳） | WebCodecs | ✅ WebGPU 直映射 Metal |
+| macOS | Safari 16.4–18.7 | HTMLVideo | ⚠️ 无 `AudioDecoder`，须走后端 #2 | ❌ |
+| macOS | Chrome 113+ | HTMLVideo | WebCodecs | ✅ |
+| macOS | Firefox 145+ | HTMLVideo | WebCodecs | ⚠️ 仅 Apple Silicon + macOS Tahoe 26 |
+| **Linux** | Chrome | HTMLVideo | WebCodecs | ⚠️ WebGPU 仍在 `#enable-unsafe-webgpu` 后 |
+| Linux | Firefox | HTMLVideo | WebCodecs | ❌ 开发中 |
+| **Android** | Chrome 121+ | HTMLVideo | WebCodecs | ⚠️ 热节流使 AI 不可持续 |
+| Android | Firefox | HTMLVideo | ❌ WebCodecs 未实现 | ❌ |
+| **iOS / iPadOS 26+** | 全部浏览器 | HTMLVideo | WebCodecs | ⚠️ 未验证 |
+| iOS 25 及更早 | 全部浏览器 | HTMLVideo | ⚠️ 无 `AudioDecoder` | ❌ 无 WebGPU |
+
+**iOS 的特殊性**：Chrome、Edge、Firefox 在 iOS 上全部是 WebKit 内核，不存在「换浏览器解决问题」的选项。判断依据只有 iOS 版本。
+
+**移动端不在首阶段范围**（AGENTS.md 第 14 行桌面优先）。即使 WebGPU 可用，手机跑几分钟神经网络就会降频，画面反而比不开 AI 更差。
+
 ## 8. 伪代码
 
 ```ts

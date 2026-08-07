@@ -154,20 +154,58 @@ Range Loader → Demux Worker → EncodedVideoChunk
                       WebGPU / WebGL2 / Canvas2D 渲染
 ```
 
-### 4.3 浏览器 WebCodecs 视频解码支持
+### 4.3 WebCodecs API 可用性门槛
+
+**在讨论 codec 之前，先确认 API 本身存在。** 数据基准 2026-08，实现时必须用运行时探测复核。
+
+| 浏览器 | `VideoDecoder` | `AudioDecoder` | 备注 |
+|---|---|---|---|
+| Chrome / Edge | 94+ | 94+ | 最完整 |
+| Opera | 80+ | 80+ | Chromium 同源 |
+| Firefox 桌面 | 130+ | 130+ | 见 4.3.2 的 H.264 陷阱 |
+| **Firefox Android** | ❌ 未实现 | ❌ | `VideoDecoder` 为 `undefined`。硬件其实支持，只是没暴露 API |
+| **Safari 16.4 – 18.7** | ✅ | ❌ **不存在** | **仅视频**，音频类完全缺失 |
+| Safari 26.0+ | ✅ | ✅ | macOS / iOS / iPadOS 全线 |
+| Samsung Internet | 17+ | 17+ | |
+
+#### 4.3.1 Safari 16.4–18.7 的半残支持
+
+这段版本区间里 `VideoDecoder` 存在但 `AudioDecoder` 是 `undefined`。
+
+对本项目的直接影响：`packages/strategy` 要求 `webCodecsVideo && webCodecsAudio` 同时为真才生成 WebCodecs 候选，在 Safari 18 上该条件不成立，会**整体退回** HTMLVideo 或 FFmpeg 兜底。
+
+这是**正确的保守行为**，但代价是这批用户拿不到 MKV 自定义播放和 AI 功能。若要覆盖，唯一出路是「WebCodecs 解视频 + FFmpeg 解音频」的混合管线——即决策流程中的后端 #2，已在 `playback-decision-flow.md` 定义。这条路径在 Safari 18 上尤其重要，不是边缘情况。
+
+#### 4.3.2 Firefox H.264 陷阱（必须防御）
+
+Firefox 存在长期未修复的缺陷（[Bugzilla #1918769](https://bugzilla.mozilla.org/show_bug.cgi?id=1918769)，2026-03 于 Firefox 145 复现，仍未分配）：
+
+> `VideoDecoder.isConfigSupported()` 对 H.264 **返回 supported，但随后 `configure()` 失败**。
+
+这直接违反了下文「必须调用 `isConfigSupported()`」所依赖的前提——**在 Firefox 上这个探测会说谎**。
+
+**强制要求**：`configure()` 必须包在 try/catch 中，且失败必须触发原子回退到下一候选。探测结果是必要条件，不是充分条件。这不是可选的防御性编程，是 Firefox 上的必需品。Firefox 上 VP9 比 H.264 更可靠，平台策略（阶段 11）应据此调整评分。
+
+### 4.3.3 浏览器 WebCodecs 视频解码支持
 
 | Codec | 配置字符串示例 | Chrome | Firefox | Safari |
 |---|---|---|---|---|
-| H.264 / AVC | `avc1.640028` | 支持，硬件优先 | 支持 | 支持 |
-| H.265 / HEVC | `hvc1.1.6.L93.B0` | 系统有硬件解码时支持 | 不支持 | 支持 |
+| H.264 / AVC | `avc1.640028` | 支持，硬件优先 | ⚠️ 见 4.3.2 陷阱 | 支持 |
+| H.265 / HEVC | `hvc1.1.6.L93.B0` | 系统有硬件解码时支持 | **不支持** | 支持 |
 | VP8 | `vp8` | 支持 | 支持 | 有限 |
 | VP9 | `vp09.00.10.08` | 支持 | 支持 | 有限 |
-| AV1 | `av01.0.04M.08` | 支持 | 逐步支持 | 硬件机型支持 |
+| AV1 | `av01.0.04M.08` | 支持 | 支持 | 仅硬件机型（见下） |
 | MPEG-2 | — | 不支持 | 不支持 | 不支持 |
 | VC-1 / WMV | — | 不支持 | 不支持 | 不支持 |
 | MPEG-4 Part 2 | — | 不支持 | 不支持 | 不支持 |
 
-**强制规则：** 绝不能只判断 `typeof VideoDecoder !== 'undefined'`。必须对**具体配置**调用 `VideoDecoder.isConfigSupported()`，因为同一浏览器对 H.264 Baseline 和 H.264 High 10 Profile 的支持可能不同。当前 `packages/capabilities/src/index.ts` 只检测了构造函数存在（`webCodecsVideo` 字段），配置级验证必须在 Phase 1 补齐。
+**Firefox 的 HEVC 缺口是策略性的，不是技术性的。** Firefox 133+ 能*播放* H.265，但不能通过 WebCodecs 解码。Mozilla 拒绝提供硬件透传，理由是多数硬件厂商并未为「完整 codec」付费授权。这个缺口短期内不会消失。
+
+**Chrome 的 HEVC 只有硬件路径。** Chrome/Edge 不内置 HEVC 软解，`isConfigSupported('hvc1...')` 的结果直接反映用户的 GPU 与操作系统——同一个 Chrome 版本在两台机器上结论可以完全相反。W3C 的 [HEVC WebCodecs Registration](https://www.w3.org/TR/webcodecs-hevc-codec-registration/) 明确把 HEVC 列为**可选**，所以这个平台依赖行为是合规的。HEVC 因此是最需要 libde265 兜底的编码，错误信息必须说清是硬件原因，否则用户无法理解「为什么同一个文件在别人电脑上能播」。
+
+**AV1 硬解看芯片代际。** Apple M1/M2 **无** AV1 硬解，且 Apple 至今未提供系统级软解——这两代芯片上 AV1 只能靠 dav1d 走 CPU，1080p 尚可，4K 会明显发热掉电。M3/M4/M5 与 A17 Pro（iPhone 15 Pro）起才有硬解。Intel 11 代、AMD RDNA2、NVIDIA RTX 30 系起支持。Safari 的 AV1 支持从 17 起，但 Apple 把它绑定到硬件解码器上。
+
+**强制规则：** 绝不能只判断 `typeof VideoDecoder !== 'undefined'`。必须对**具体配置**调用 `VideoDecoder.isConfigSupported()`，因为同一浏览器对 H.264 Baseline 和 H.264 High 10 Profile 的支持可能不同。当前 `packages/capabilities/src/index.ts` 只检测了构造函数存在（`webCodecsVideo` 字段），配置级验证必须在 Phase 1 补齐。**并且**按 4.3.2，验证通过后仍须 try/catch 包裹 `configure()`。
 
 ### 4.4 码流格式转换
 
