@@ -20,6 +20,13 @@
 
 ## 2. 标准检测层
 
+Phase 1 将能力数据分为两层：
+
+1. `CapabilitySnapshot` 只记录浏览器/系统/API/渲染器/WASM 运行环境，不回答某个 Codec 是否可播放。
+2. `MediaCapabilityReport` 针对一个规范化媒体配置记录 HTMLVideo、MediaCapabilities、WebCodecs 视频和音频的独立结果。
+
+所有具体结果使用 `supported | unsupported | unknown`。配置字段不足或 API 抛错必须返回 `unknown`，不得通过浏览器名称、文件后缀或常见支持矩阵提升为 `supported`。
+
 ### 原生播放
 
 使用 `HTMLMediaElement.canPlayType()` 进行快速粗筛，再使用 `navigator.mediaCapabilities.decodingInfo()` 获取 `supported`、`smooth` 和 `powerEfficient`。Codec 字符串必须包含真实 profile、level、bit depth、width、height、framerate 和 bitrate。
@@ -91,6 +98,10 @@ known-platform-risk     -100
 
 能力快照按浏览器品牌、版本、操作系统、GPU 标识、Codec 配置和 SDK 版本缓存。缓存只用于减少探测，不得绕过初始化失败回退。平台 Bug 黑名单必须带版本范围、Issue 链接、失效日期和测试样本。
 
+实现上，环境快照和媒体报告使用不同缓存键。键包含 capability schema、SDK 版本、规范化浏览器/系统、跨源隔离状态；媒体报告键额外包含 WebGPU 快照与规范化 Codec 查询。默认缓存为内存加可用时的 `sessionStorage`，`forceRefresh` 可绕过缓存。缓存内容损坏或存储不可用时必须退回实时探测。
+
+缓存记录的写入时间不进入公共快照。原因数组统一排序，策略排序不依赖异步 API 完成顺序。
+
 ## 8. 选型伪代码
 
 ```ts
@@ -102,4 +113,3 @@ return backendLoader.start(selected)
 ```
 
 “毫秒级”只承诺本地能力判断和策略评分。远程文件的容器/Codec 探测时间取决于 Range 请求和网络 RTT，必须通过并行探测、最小 Range、缓存和预读降低等待。
-

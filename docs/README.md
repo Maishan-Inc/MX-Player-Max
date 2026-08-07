@@ -28,6 +28,7 @@
 - `development/roadmap.md`：从脚手架到生产发布的阶段计划。
 - `development/execution-plan.md`：每个阶段的任务、测试、退出条件和 Git 工作方式。
 - `development/testing.md`：单元、浏览器、媒体样本和性能测试方案。
+- `development/phase-1-acceptance.md`：Phase 1 自动化结果、浏览器矩阵和剩余验收项。
 
 ## 决策记录
 

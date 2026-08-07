@@ -20,7 +20,7 @@
 
 ```text
 Phase 0  规范与脚手架              已完成
-Phase 1  公共类型与能力探测        下一阶段
+Phase 1  公共类型与能力探测        实现完成，三浏览器验收待执行
 Phase 2  Range Loader 与容器抽象
 Phase 3  NativeMediaPipeline
 Phase 4  WebCodecs CustomMediaPipeline
@@ -363,4 +363,3 @@ feat/phase-3-native-pipeline
 ```
 
 PR 必须只覆盖一个阶段，合并前完成类型检查、单元测试、文档和阶段验收记录。禁止为了通过阶段验收顺手修改无关 UI 或 Codec。
-

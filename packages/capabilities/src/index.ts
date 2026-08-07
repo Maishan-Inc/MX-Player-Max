@@ -1,84 +1,103 @@
-import type { CapabilitySnapshot, WebGpuFeatureSnapshot } from '@mx-player-max/types'
+import type { CapabilityContext, CapabilitySnapshot, MediaCapabilityReport, MediaDescriptor } from '@mx-player-max/types'
+import {
+  defaultCapabilityCache,
+  isCapabilitySnapshot,
+  isMediaCapabilityReport,
+  isString,
+  makeCacheKey,
+  readCache,
+  writeCache,
+} from './cache'
+import {
+  DEFAULT_SDK_VERSION,
+  type CapabilityProbeOptions,
+  type MediaCapabilityProbeOptions,
+} from './contracts'
+import { createDefaultProbeAdapter } from './default-adapter'
+import { probeEnvironmentSnapshot, readEnvironmentIdentity } from './environment'
+import { createMediaCapabilityQuery, probeMediaReport } from './media-report'
 
-export interface CapabilityProbeOptions {
-  forceRefresh?: boolean
-}
+export {
+  CAPABILITY_SCHEMA_VERSION,
+  DEFAULT_SDK_VERSION,
+  type CapabilityCache,
+  type CapabilityProbeAdapter,
+  type CapabilityProbeOptions,
+  type MediaCapabilityProbeOptions,
+  type MediaDecodingQuery,
+} from './contracts'
+export { createDefaultProbeAdapter } from './default-adapter'
 
-export async function detectCapabilities(_options: CapabilityProbeOptions = {}): Promise<CapabilitySnapshot> {
-  const userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent
-  const browser = /Firefox\//i.test(userAgent)
-    ? 'gecko'
-    : /Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent)
-      ? 'webkit'
-      : /Chrome\//i.test(userAgent) || /Chromium\//i.test(userAgent)
-        ? 'chromium'
-        : 'unknown'
-  const crossOriginIsolated = typeof globalThis.crossOriginIsolated === 'boolean' && globalThis.crossOriginIsolated
-  const hasSharedArrayBuffer = typeof globalThis.SharedArrayBuffer !== 'undefined'
-  const hasVideoDecoder = typeof globalThis.VideoDecoder !== 'undefined'
-  const hasAudioDecoder = typeof globalThis.AudioDecoder !== 'undefined'
-  /* Fix: `'gpu' in navigator` does not guarantee a usable GPU device.
-     Adapter request can still fail or return a fallback (software) adapter. */
-  const hasGpuAPI = typeof navigator !== 'undefined' && 'gpu' in navigator
-  const hasWebGl2 = typeof document !== 'undefined' && Boolean(document.createElement('canvas').getContext('webgl2'))
-  const hasCanvas2d = typeof document !== 'undefined' && Boolean(document.createElement('canvas').getContext('2d'))
-  const wasmSimd = typeof WebAssembly !== 'undefined'
-    && typeof WebAssembly.validate === 'function'
-    && WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 32, 0, 253, 15, 253, 98, 11]))
-  const webGpuFeatures = await probeWebGpu(hasGpuAPI)
-  return {
-    browser,
-    browserVersion: null,
-    platform: typeof navigator === 'undefined' ? 'unknown' : navigator.platform,
-    crossOriginIsolated,
-    sharedArrayBuffer: hasSharedArrayBuffer,
-    wasmSimd,
-    wasmThreads: crossOriginIsolated && hasSharedArrayBuffer,
-    webCodecsVideo: hasVideoDecoder,
-    webCodecsAudio: hasAudioDecoder,
-    webGpu: webGpuFeatures.available,
-    webGl2: hasWebGl2,
-    canvas2d: hasCanvas2d,
-    workerMediaSource: false,
-    webGpuFeatures,
-    quirks: [],
+const pendingSnapshots = new Map<string, Promise<CapabilitySnapshot>>()
+const pendingReports = new Map<string, Promise<MediaCapabilityReport>>()
+
+export async function detectCapabilities(options: CapabilityProbeOptions = {}): Promise<CapabilitySnapshot> {
+  const adapter = options.adapter ?? createDefaultProbeAdapter()
+  const sdkVersion = options.sdkVersion ?? DEFAULT_SDK_VERSION
+  const cache = options.cache ?? defaultCapabilityCache
+  const identity = readEnvironmentIdentity(adapter)
+  const environmentKey = makeCacheKey('snapshot-index', sdkVersion, identity)
+
+  if (!options.forceRefresh) {
+    const snapshotKey = readCache(cache, environmentKey, isString)
+    const cached = snapshotKey ? readCache(cache, snapshotKey, isCapabilitySnapshot) : undefined
+    if (cached !== undefined) return cached
+    const pending = pendingSnapshots.get(environmentKey)
+    if (pending) return pending
   }
-}
 
-const FALLBACK_GPU_FEATURES: WebGpuFeatureSnapshot = {
-  available: false,
-  float32Filterable: false,
-  shaderF16: false,
-  maxComputeWorkgroupStorageSize: 0,
-  maxTextureDimension2d: 0,
-  maxBufferSize: 0,
-  importExternalTexture: false,
-  adapterVendor: null,
-  adapterArchitecture: null,
-  isFallbackAdapter: false,
-}
-
-async function probeWebGpu(hasGpuAPI: boolean): Promise<WebGpuFeatureSnapshot> {
-  if (!hasGpuAPI) return FALLBACK_GPU_FEATURES
+  const task = probeEnvironmentSnapshot(adapter, sdkVersion)
+  pendingSnapshots.set(environmentKey, task)
   try {
-    const adapter = await navigator.gpu.requestAdapter()
-    if (!adapter) return FALLBACK_GPU_FEATURES
-    const info = adapter.info
-    const features = [...adapter.features]
-    const limits = adapter.limits
-    return {
-      available: true,
-      float32Filterable: features.includes('float32-filterable' as GPUFeatureName),
-      shaderF16: features.includes('shader-f16' as GPUFeatureName),
-      maxComputeWorkgroupStorageSize: limits.maxComputeWorkgroupStorageSize,
-      maxTextureDimension2d: limits.maxTextureDimension2D,
-      maxBufferSize: limits.maxBufferSize,
-      importExternalTexture: features.includes('import-external-texture' as GPUFeatureName),
-      adapterVendor: info.vendor,
-      adapterArchitecture: info.architecture,
-      isFallbackAdapter: info.isFallbackAdapter,
-    }
-  } catch {
-    return FALLBACK_GPU_FEATURES
+    const snapshot = await task
+    const snapshotKey = makeCacheKey('snapshot', sdkVersion, {
+      browser: snapshot.browser,
+      browserVersion: snapshot.browserVersion,
+      platform: snapshot.platform,
+      crossOriginIsolated: snapshot.crossOriginIsolated,
+      sharedArrayBuffer: snapshot.sharedArrayBuffer,
+      webGpuFeatures: snapshot.webGpuFeatures,
+    })
+    writeCache(cache, snapshotKey, snapshot)
+    writeCache(cache, environmentKey, snapshotKey)
+    return snapshot
+  } finally {
+    pendingSnapshots.delete(environmentKey)
   }
+}
+
+export async function probeMediaCapabilities(
+  media: MediaDescriptor,
+  options: MediaCapabilityProbeOptions = {},
+): Promise<MediaCapabilityReport> {
+  const adapter = options.adapter ?? createDefaultProbeAdapter()
+  const sdkVersion = options.sdkVersion ?? DEFAULT_SDK_VERSION
+  const snapshot = options.snapshot ?? await detectCapabilities({ ...options, adapter, sdkVersion })
+  const query = createMediaCapabilityQuery(media)
+  const key = makeCacheKey('media', sdkVersion, snapshot, query)
+  const cache = options.cache ?? defaultCapabilityCache
+
+  if (!options.forceRefresh) {
+    const cached = readCache(cache, key, isMediaCapabilityReport)
+    if (cached !== undefined) return cached
+    const pending = pendingReports.get(key)
+    if (pending) return pending
+  }
+
+  const task = probeMediaReport(adapter, snapshot, query)
+  pendingReports.set(key, task)
+  try {
+    const report = await task
+    writeCache(cache, key, report)
+    return report
+  } finally {
+    pendingReports.delete(key)
+  }
+}
+
+export function createCapabilityContext(
+  snapshot: CapabilitySnapshot,
+  media: MediaCapabilityReport,
+): CapabilityContext {
+  return { snapshot, media }
 }

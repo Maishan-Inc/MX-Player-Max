@@ -4,6 +4,12 @@ export type SourceDescriptor =
 
 export type TrackKind = 'video' | 'audio' | 'subtitle'
 
+/** Normalized browser platform family used for diagnostics and scoring hints. */
+export type OperatingSystem = 'windows' | 'macos' | 'linux' | 'android' | 'ios' | 'unknown'
+
+/** Result of validating one concrete media capability. */
+export type CapabilitySupport = 'supported' | 'unsupported' | 'unknown'
+
 /** Microsecond timestamps as integers. See docs/architecture/overview.md §5. */
 export type Micros = number
 
@@ -97,6 +103,9 @@ export interface TrackInfo {
   width?: number
   height?: number
   frameRate?: number
+  bitrate?: number
+  profile?: string
+  level?: string
   /** @deprecated 使用 `color.bitDepth`。保留以兼容既有读取方。 */
   bitDepth?: number
   /** @deprecated 使用 `color.primaries` / `color.transfer` / `color.matrix`。 */
@@ -114,9 +123,82 @@ export interface TrackInfo {
 export interface MediaDescriptor {
   container: string
   tracks: TrackInfo[]
-  duration: number | null
+  duration: Micros | null
   size: number | null
   mimeType: string | null
+}
+
+/** Browser-independent video configuration used to build WebCodecs requests. */
+export interface VideoCodecConfig {
+  codec: string
+  codedWidth?: number
+  codedHeight?: number
+  displayWidth?: number
+  displayHeight?: number
+  bitrate?: number
+  framerate?: number
+  description?: ArrayBuffer
+}
+
+/** Browser-independent audio configuration used to build WebCodecs requests. */
+export interface AudioCodecConfig {
+  codec: string
+  sampleRate?: number
+  numberOfChannels?: number
+  bitrate?: number
+  description?: ArrayBuffer
+}
+
+export interface MediaCapabilityQuery {
+  container: string
+  mimeType: string | null
+  video: VideoCodecConfig | null
+  audio: AudioCodecConfig | null
+}
+
+export interface CapabilityResult {
+  status: CapabilitySupport
+  reasons: readonly string[]
+}
+
+export interface DecodingCapabilityInfo {
+  supported: boolean
+  smooth: boolean
+  powerEfficient: boolean
+}
+
+export interface NativeTrackCapability extends CapabilityResult {
+  contentType: string | null
+  canPlayType: '' | 'maybe' | 'probably'
+  decodingInfo?: DecodingCapabilityInfo
+}
+
+export interface WebCodecsCapability extends CapabilityResult {
+  configPresent: boolean
+}
+
+export interface MediaCapabilityReport {
+  schemaVersion: number
+  query: MediaCapabilityQuery
+  native: {
+    video: NativeTrackCapability
+    audio: NativeTrackCapability
+    playable: CapabilitySupport
+    reasons: readonly string[]
+  }
+  webCodecs: {
+    video: WebCodecsCapability
+    audio: WebCodecsCapability
+    playable: CapabilitySupport
+    reasons: readonly string[]
+  }
+}
+
+export interface WasmDecoderDeclaration {
+  codec: string
+  supportsVideo: boolean
+  supportsAudio: boolean
+  variants?: readonly ('single' | 'simd' | 'threaded')[]
 }
 
 export interface WebGpuFeatureSnapshot {
@@ -133,13 +215,17 @@ export interface WebGpuFeatureSnapshot {
 }
 
 export interface CapabilitySnapshot {
+  schemaVersion: number
+  sdkVersion: string
   browser: 'chromium' | 'webkit' | 'gecko' | 'unknown'
   browserVersion: string | null
-  platform: string
+  platform: OperatingSystem
   crossOriginIsolated: boolean
   sharedArrayBuffer: boolean
   wasmSimd: boolean
   wasmThreads: boolean
+  htmlVideo: boolean
+  mediaCapabilities: boolean
   webCodecsVideo: boolean
   webCodecsAudio: boolean
   webGpu: boolean
@@ -150,7 +236,13 @@ export interface CapabilitySnapshot {
   quirks: string[]
 }
 
-export type BackendKind = 'html-video' | 'webcodecs' | 'wasm'
+export interface CapabilityContext {
+  snapshot: CapabilitySnapshot
+  media: MediaCapabilityReport
+  wasmDecoders?: readonly WasmDecoderDeclaration[]
+}
+
+export type BackendKind = 'html-video' | 'webcodecs' | 'wasm' | 'mse'
 export type RendererKind = 'native' | 'webgpu' | 'webgl2' | 'canvas2d'
 
 export interface BackendCandidate {
@@ -175,12 +267,19 @@ export interface PlaybackSelection {
   backend: BackendCandidate
   intent: PlaybackIntent
   capabilities: CapabilitySnapshot
+  mediaCapabilities: MediaCapabilityReport
   aiPlan?: AiPlan
 }
 
+export interface PlatformScoreAdjustment {
+  candidateId: string
+  scoreDelta: number
+  reasons: readonly string[]
+}
+
 export interface SubtitleCue {
-  start: number
-  end: number
+  start: Micros
+  end: Micros
   text: string
   style?: SubtitleCueStyle
 }
@@ -202,12 +301,41 @@ export interface EngineError {
   recoverable: boolean
 }
 
+export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'seeking' | 'ended' | 'error' | 'closed'
+
+/** Stable event payloads shared by core, SDK, and optional UI adapters. */
+export interface EngineEventMap {
+  ready: { selection: PlaybackSelection }
+  statechange: { previous: PlaybackState; current: PlaybackState }
+  timeupdate: { currentTime: Micros; duration: Micros | null }
+  buffering: { bufferedAhead: Micros }
+  backendchange: { previous: BackendCandidate | null; current: BackendCandidate; reason: string }
+  capabilities: { context: CapabilityContext }
+  qualitychange: { previous: AiQualityTier; current: AiQualityTier; reasons: readonly string[] }
+  error: { error: EngineError }
+}
+
+export type EngineEventName = keyof EngineEventMap
+export type EngineEventListener<K extends EngineEventName> = (payload: EngineEventMap[K]) => void
+
+export interface EngineEventSource {
+  on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void
+  off<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): void
+  once<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void
+}
+
 /**
  * Known error codes. Projects extending the RENDERER_* namespace should keep
  * all AI-related failures under RENDERER_AI_* to avoid modifying the
  * cross-module error-code domain list in AGENTS.md §7.
  */
 export const ErrorCodes = {
+  CAPABILITY_API_UNAVAILABLE: 'CAPABILITY_API_UNAVAILABLE',
+  CAPABILITY_INVALID_CONFIG: 'CAPABILITY_INVALID_CONFIG',
+  CAPABILITY_PROBE_FAILED: 'CAPABILITY_PROBE_FAILED',
+  CAPABILITY_CACHE_FAILED: 'CAPABILITY_CACHE_FAILED',
+  STRATEGY_NO_VIABLE_BACKEND: 'STRATEGY_NO_VIABLE_BACKEND',
+  STRATEGY_INVALID_PLATFORM_ADJUSTMENT: 'STRATEGY_INVALID_PLATFORM_ADJUSTMENT',
   RENDERER_AI_UNSUPPORTED: 'RENDERER_AI_UNSUPPORTED',
   RENDERER_AI_MODEL_LOAD_FAILED: 'RENDERER_AI_MODEL_LOAD_FAILED',
   RENDERER_AI_MODEL_HASH_MISMATCH: 'RENDERER_AI_MODEL_HASH_MISMATCH',
