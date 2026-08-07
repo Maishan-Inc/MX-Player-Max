@@ -16,9 +16,13 @@
 - `RangeReadResult`：精确范围数据及源总长度、`Content-Range`、ETag；未知总长度使用 `null`。
 - `RetryPolicy` / `RangeCache` / `RangeLoaderOptions`：Range 读取的重试、缓存与取消契约。
 - `DemuxPacket`：未解码的压缩 packet，时间单位统一为整数微秒；未知 duration 使用 `null`。
+- `NativeMediaOptions` / `NativeMediaFeatures` / `NativePlaybackStats`：HTMLVideo 原生路径的配置、特性检测和 `requestVideoFrameCallback` 统计契约。统计只包含计数与微秒时间，不输出 `VideoFrame`。
+- `MediaEngine`：core 与 SDK 共用的播放生命周期、控制方法、稳定事件监听和 `EngineError` 边界。
 
 `CapabilitySupport` 有三种状态：`supported` 表示 API 明确支持，`unsupported` 表示 API 明确拒绝或不存在，`unknown` 表示配置不足或探测失败。调用方不得把 `unknown` 当成支持。
 
 `BackendKind` 已预留 `mse`，但 Phase 1 不生成 MSE 候选。
 
 Phase 2 错误码使用 `RANGE_*` 与 `CONTAINER_*` 命名空间。公共类型不实现 fetch、File 读取、容器解析、解码或平台分支；这些行为由 `@mx-player-max/demux` 提供。
+
+Phase 3 增加 `ENGINE_*` 与 `NATIVE_*` 稳定错误码。`Micros` 始终为整数微秒；未知 duration、当前媒体时间和统计时间使用 `null`，不会用 `NaN`、`Infinity` 或负数伪造数据。

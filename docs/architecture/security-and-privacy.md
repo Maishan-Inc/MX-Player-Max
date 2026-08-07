@@ -14,6 +14,10 @@ Phase 2 的 HTTP Loader 固定使用由 SDK 生成的 `Range`，默认 `credenti
 
 Fetch API 不向脚本可靠暴露跨源 CORS 拒绝与所有跨源网络故障的差异。实现将明确离线或同源失败报告为 `RANGE_NETWORK_FAILED`，跨源 opaque/fetch 拒绝报告为 `RANGE_CORS_FAILED`，并保留这一平台限制说明，不伪造更具体的诊断。
 
+NativeMediaPipeline 不代理远程媒体，也不把响应正文、完整 URL、查询参数、CodecPrivate 或自定义 header 值写入日志。远程 URL 只接受 HTTP(S)，直接设置到 HTMLVideo；默认 `crossOrigin="anonymous"` 且必须在 `src` 之前设置。HTMLVideo 无法发送 `SourceDescriptor.headers`，因此返回 `NATIVE_CUSTOM_HEADERS_UNSUPPORTED`，不静默忽略。File 源仅创建和撤销浏览器 Object URL，不复制完整文件到 ArrayBuffer。
+
+`loadedmetadata` 超时、网络、CORS、解码、Abort、autoplay、全屏和 PiP 失败均映射为稳定 `NATIVE_*`/`ENGINE_*` 错误；对外消息只描述安全的来源类别/协议上下文，不暴露原始 DOMException 名称。
+
 ## 容器输入边界
 
 MP4 box、EBML element、offset、size、varint、时间刻度和 sample table 全部按不可信输入处理。默认限制单次 Range、元数据缓冲、声明 span、嵌套深度、轨道数、packet、关键帧索引、前向扫描和 Worker 消息大小。所有 offset 加法必须保持安全整数并位于父元素及已知源边界内。

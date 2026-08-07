@@ -78,6 +78,9 @@ importers:
       '@mx-player-max/demux':
         specifier: workspace:*
         version: link:../demux
+      '@mx-player-max/platform':
+        specifier: workspace:*
+        version: link:../platform
       '@mx-player-max/renderers':
         specifier: workspace:*
         version: link:../renderers

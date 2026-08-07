@@ -21,8 +21,8 @@
 ```text
 Phase 0  规范与脚手架              已完成
 Phase 1  公共类型与能力探测        实现完成，三浏览器验收待执行
-Phase 2  Range Loader 与容器抽象
-Phase 3  NativeMediaPipeline
+Phase 2  Range Loader 与容器抽象       实现完成，三浏览器验收待执行
+Phase 3  NativeMediaPipeline          实现完成，三浏览器验收待执行
 Phase 4  WebCodecs CustomMediaPipeline
 Phase 5  音频时钟与 AudioWorklet
 Phase 6  WebGPU/WebGL2/Canvas2D 渲染器

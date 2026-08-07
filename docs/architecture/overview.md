@@ -18,6 +18,10 @@ Source → HTMLVideo → Native Video Renderer
                     └─ Subtitle Overlay
 ```
 
+Phase 3 的 NativeMediaPipeline 只负责 HTMLVideoElement、原生音频和播放生命周期。它先使用 Phase 2 的 RangeLoader/ContainerAdapter 完成有限 Probe，再消费 CapabilitySnapshot、MediaCapabilityReport 和 StrategyEngine 的最终 `native-html-video` 选择。File 源只通过 `URL.createObjectURL()` 设置；远程 HTTP(S) 源直接设置给 video，默认 `crossOrigin=anonymous`、`preload=metadata`、`playsInline=true`。自定义 headers 会明确失败。MIME/Codec 来自 Probe 和能力报告，不从扩展名推导。
+
+Pipeline 的事件统一映射为微秒时间、nullable duration 与有限 bufferedAhead。`requestVideoFrameCallback` 只更新统计，不产生或转交 `VideoFrame`。关闭或替换源会提升 epoch、移除监听、取消待处理帧回调、撤销 Object URL；字幕覆盖层和控制层不属于该模块。
+
 ### CustomMediaPipeline
 
 适用于 MKV 自定义轨道、逐帧处理、滤镜、AI、编辑器和 WebGPU。Demuxer 在 Worker 中运行，视频进入 WebCodecs 或 WASM，音频进入 AudioWorklet，时钟由 AudioContext 管理。
@@ -100,4 +104,3 @@ CapabilitySnapshot
 - 帧队列和音频 ring buffer 使用有界内存。
 - 渲染器优先使用 GPU 纹理、转换和合成，避免主线程像素拷贝。
 - 定时器只用于监控和补泵，播放时钟不依赖 React 状态刷新。
-
