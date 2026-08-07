@@ -4,6 +4,11 @@
 
 ### Added
 
+- Phase 2 byte-range, retry, cache, compressed packet, container adapter, and demux worker contracts.
+- Abortable File range reads and strict HTTP 206 loading with Content-Range, length, ETag, retry, concurrency, and LRU validation.
+- Bounded Matroska/WebM EBML parsing with tracks, Codec private data, blocks, lacing, Cues, and controlled no-Cues seek fallback.
+- MP4/ISO BMFF probing and sample demux for faststart/tail-moov files, 32/64-bit boxes, sample tables, sync samples, and basic fMP4 recognition.
+- Session/epoch-aware demux Worker lifecycle with transferable packet buffers and stale-message suppression.
 - Versioned static `CapabilitySnapshot` and media-specific `MediaCapabilityReport` contracts.
 - Concrete HTMLVideo, MediaCapabilities, WebCodecs, WebGPU, WebGL2, Canvas2D, WASM SIMD, and WASM Threads probes.
 - SDK/schema-isolated capability caching with force refresh and injectable adapters.
@@ -12,5 +17,6 @@
 
 ### Changed
 
+- Container probing now uses source bytes and bounded Range reads rather than extensions; unknown Codec IDs remain explicit instead of being guessed.
 - Strategy selection now requires a capability context and only creates verified or explicitly declared candidates.
 - WASM runtime support no longer implies that a WASM Codec decoder exists.

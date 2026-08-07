@@ -8,6 +8,20 @@
 
 Range Loader 只允许 `http`/`https` 和明确的 `File` 输入。响应状态、Content-Range、长度和 Range 边界必须校验。请求失败不得把响应正文插入 DOM。
 
+Phase 2 的 HTTP Loader 固定使用由 SDK 生成的 `Range`，默认 `credentials: 'omit'` 和 `redirect: 'manual'`。调用方不能覆盖 `Range`、`If-Range`、`Content-Length`、`Host` 等受控 header。只有范围完全匹配的 `206 Partial Content` 才成功；`200`、重定向、错误 `Content-Range`、错误长度和源 ETag/总长度变化均返回独立稳定错误。
+
+远程诊断上下文只包含 origin 与路径 basename，不包含查询参数、响应正文或自定义 header 值。缓存内部按 URL、header 集合、运行时源身份、精确 Range 和必要 ETag 隔离；缓存数据读写均复制，不能跨源或跨文件对象复用。
+
+Fetch API 不向脚本可靠暴露跨源 CORS 拒绝与所有跨源网络故障的差异。实现将明确离线或同源失败报告为 `RANGE_NETWORK_FAILED`，跨源 opaque/fetch 拒绝报告为 `RANGE_CORS_FAILED`，并保留这一平台限制说明，不伪造更具体的诊断。
+
+## 容器输入边界
+
+MP4 box、EBML element、offset、size、varint、时间刻度和 sample table 全部按不可信输入处理。默认限制单次 Range、元数据缓冲、声明 span、嵌套深度、轨道数、packet、关键帧索引、前向扫描和 Worker 消息大小。所有 offset 加法必须保持安全整数并位于父元素及已知源边界内。
+
+Matroska 附件、字体、外部引用、标签文本和章节内容不在 Phase 2 解析范围。容器内字符串只作为 UTF-8 元数据返回，不执行为 URL、XML、HTML、SVG、CSS 或脚本。MP4 `mdat`、Matroska Segment/Cluster 只跳过或分段读取，不整体分配。
+
+Worker 的 start/read/seek/close 消息使用 session 与 epoch 隔离。close 会取消 Range 请求、重试 timer 和排队任务，关闭 Demuxer，并阻止迟到 probe/packet 发布。
+
 ## 字幕安全
 
 SRT/ASS 文本按纯文本输出。只对白名单解析 ASS 样式和换行，禁止把 `Dialogue`、字体名或外挂字幕内容拼接成 HTML、CSS URL 或脚本。
@@ -23,4 +37,3 @@ Docker 演示站配置 COOP/COEP 以开启跨源隔离。生产站还应配置 C
 ## DRM 边界
 
 首阶段不实现 DRM。未来 FairPlay、Widevine 和 PlayReady 必须作为独立 EME 适配器，不得把密钥、许可证 Token 或私有媒体响应写入日志。
-

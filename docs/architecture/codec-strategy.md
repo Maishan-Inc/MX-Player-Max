@@ -55,6 +55,18 @@ canPlayType + decodingInfo + isConfigSupported 逐个验证
 
 首阶段容器实现优先级：MP4、WebM、Matroska/MKV。MPEG-TS、AVI、FLV、MOV 特殊变体作为独立容器插件接入。
 
+### 2.1 Phase 2 容器输入契约
+
+Phase 2 已建立统一的 `RangeLoader → ContainerAdapter → MediaDescriptor + DemuxPacket` 边界：
+
+- 容器只由 magic bytes、`ftyp` 或 EBML Header/DocType 确认；扩展名与 MIME 仅作诊断提示。
+- MP4 adapter 从 sample table 生成 sample offset、PTS、duration 与 sync sample；尾部 `moov` 通过顶层 box header 跳转定位，不下载 `mdat` 正文。
+- Matroska/WebM 共用受限 EBML 原语，但 WebM 必须声明 `DocType=webm`。Cues 存在时建立关键帧索引，不存在时只在配置的字节预算内扫描 Cluster。
+- `DemuxPacket.data` 始终是压缩码流。容器层不会调用 WebCodecs、WASM 或任何 renderer。
+- 未知 CodecID/FourCC 保持原值且规范化 `codec` 留空；容器名永远不会进入 Codec 字段。
+
+fMP4 在本阶段只识别 `mvex/moof` 并解析可用初始化元数据，不创建 MediaSource，也不承诺 fragment packet 播放。MSE 仍属于后续流媒体扩展边界。
+
 ## 3. HTMLVideo 直接播放路径
 
 ### 3.1 成立条件

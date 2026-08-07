@@ -2,6 +2,52 @@ export type SourceDescriptor =
   | { kind: 'file'; file: File }
   | { kind: 'url'; url: string; headers?: Record<string, string> }
 
+/** A half-open byte range `[start, endExclusive)` from the source start. */
+export interface ByteRange {
+  /** Inclusive byte offset. */
+  start: number
+  /** Exclusive byte offset. */
+  endExclusive: number
+}
+
+/** Bytes and source validators returned by one exact range read. */
+export interface RangeReadResult {
+  data: Uint8Array
+  /** Total source length in bytes, or null when the remote total is unknown. */
+  sourceLength: number | null
+  contentRange: string | null
+  etag: string | null
+}
+
+/** Retry counts and delays. `maxRetries` excludes the initial attempt. */
+export interface RetryPolicy {
+  maxRetries: number
+  /** Initial retry delay in milliseconds. */
+  baseDelayMs: number
+  /** Maximum retry delay in milliseconds. */
+  maxDelayMs: number
+}
+
+/** Exact cache identity for a source generation and half-open byte range. */
+export interface RangeCacheKey {
+  sourceKey: string
+  range: ByteRange
+  etag: string | null
+}
+
+export interface RangeCache {
+  get(key: RangeCacheKey): RangeReadResult | null
+  set(key: RangeCacheKey, value: RangeReadResult): void
+  deleteSource(sourceKey: string): void
+  clear(): void
+}
+
+export interface RangeLoaderOptions {
+  signal?: AbortSignal
+  retry?: RetryPolicy
+  cache?: RangeCache
+}
+
 export type TrackKind = 'video' | 'audio' | 'subtitle'
 
 /** Normalized browser platform family used for diagnostics and scoring hints. */
@@ -126,6 +172,18 @@ export interface MediaDescriptor {
   duration: Micros | null
   size: number | null
   mimeType: string | null
+}
+
+/** One compressed container packet. No decoding has been performed. */
+export interface DemuxPacket {
+  trackId: number
+  kind: TrackKind
+  /** Presentation timestamp in integer microseconds. */
+  timestamp: Micros
+  /** Packet duration in integer microseconds, or null when absent. */
+  duration: Micros | null
+  keyframe: boolean
+  data: Uint8Array
 }
 
 /** Browser-independent video configuration used to build WebCodecs requests. */
@@ -336,6 +394,23 @@ export const ErrorCodes = {
   CAPABILITY_CACHE_FAILED: 'CAPABILITY_CACHE_FAILED',
   STRATEGY_NO_VIABLE_BACKEND: 'STRATEGY_NO_VIABLE_BACKEND',
   STRATEGY_INVALID_PLATFORM_ADJUSTMENT: 'STRATEGY_INVALID_PLATFORM_ADJUSTMENT',
+  RANGE_INVALID: 'RANGE_INVALID',
+  RANGE_UNSUPPORTED: 'RANGE_UNSUPPORTED',
+  RANGE_CONTENT_RANGE_INVALID: 'RANGE_CONTENT_RANGE_INVALID',
+  RANGE_RESPONSE_LENGTH_MISMATCH: 'RANGE_RESPONSE_LENGTH_MISMATCH',
+  RANGE_CORS_FAILED: 'RANGE_CORS_FAILED',
+  RANGE_NETWORK_FAILED: 'RANGE_NETWORK_FAILED',
+  RANGE_ABORTED: 'RANGE_ABORTED',
+  RANGE_RETRY_EXHAUSTED: 'RANGE_RETRY_EXHAUSTED',
+  RANGE_CLOSED: 'RANGE_CLOSED',
+  RANGE_REDIRECTED: 'RANGE_REDIRECTED',
+  RANGE_HEADER_INVALID: 'RANGE_HEADER_INVALID',
+  RANGE_HTTP_STATUS: 'RANGE_HTTP_STATUS',
+  RANGE_SOURCE_CHANGED: 'RANGE_SOURCE_CHANGED',
+  CONTAINER_UNSUPPORTED: 'CONTAINER_UNSUPPORTED',
+  CONTAINER_TRUNCATED: 'CONTAINER_TRUNCATED',
+  CONTAINER_INVALID: 'CONTAINER_INVALID',
+  CONTAINER_LIMIT_EXCEEDED: 'CONTAINER_LIMIT_EXCEEDED',
   RENDERER_AI_UNSUPPORTED: 'RENDERER_AI_UNSUPPORTED',
   RENDERER_AI_MODEL_LOAD_FAILED: 'RENDERER_AI_MODEL_LOAD_FAILED',
   RENDERER_AI_MODEL_HASH_MISMATCH: 'RENDERER_AI_MODEL_HASH_MISMATCH',
