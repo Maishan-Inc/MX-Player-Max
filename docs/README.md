@@ -10,6 +10,7 @@
 - `architecture/distribution-and-embedding.md`：三种接入方式、CORS 三条链路、HTTPS 与安全上下文限制、COEP 连锁反应、分发渠道与落地优先级。
 - `architecture/audio-pipeline.md`：音频解码、AudioWorklet 和音画同步。
 - `architecture/subtitle-pipeline.md`：SRT/ASS 字幕、轨道、样式和外挂字幕。
+- `architecture/ui-package.md`：可选 UI 包的组件结构、CSS 契约、主题变量、双路径适配与无障碍要求。
 - `architecture/wasm-and-distribution.md`：WASM 变体、懒加载、缓存、npm/CDN 和 Docker。
 
 ## AI 后处理
@@ -32,8 +33,5 @@
 
 - `decisions/ADR-0001-dual-render-path.md`
 - `decisions/ADR-0002-single-sdk-wasm-variants.md`
-<<<<<<< HEAD
 - `decisions/ADR-0003-ai-post-processing.md`
-
-=======
->>>>>>> 17821f034782a402b0354fd55dcf71809634232e
+- `decisions/ADR-0004-engine-and-optional-ui.md`：引擎与可选 UI 包分离，及其对 UMD 产物的约束。

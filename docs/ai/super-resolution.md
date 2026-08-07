@@ -109,7 +109,7 @@ fn conv3x3(gid: vec3<u32>) {
 
 ### 权重转换工具
 
-离线工具（不在仓库中，阶段 5.5 时建立）：
+离线工具（不在仓库中，阶段 7 时建立）：
 
 ```bash
 python convert_weights.py \
@@ -127,7 +127,7 @@ python convert_weights.py \
 
 ## 色彩空间
 
-模型基于 **RGB** 训练。阶段 5 的 WebGPU 渲染器负责 YUV → RGB 转换，超分阶段接收的是 linear RGB（或 sRGB，视渲染器输出）。
+模型基于 **RGB** 训练。阶段 6 的 WebGPU 渲染器负责 YUV → RGB 转换，超分阶段接收的是 linear RGB（或 sRGB，视渲染器输出）。
 
 喂 YUV 平面会产生色边——这是常见错误。
 

@@ -33,13 +33,13 @@ interface FrameSource {
 ```text
 Decoder → VideoFrame (YUV 1920x1080)
   ↓
-[1] 色彩转换 YUV → linear RGB    (阶段5 渲染器负责)
+[1] 色彩转换 YUV → linear RGB    (阶段6 渲染器负责)
   ↓
 [2] 插帧   2进1出 @ phase p       (postprocess, 时域)
   ↓
 [3] 超分   1080p → 4K             (postprocess, 空域)
   ↓
-[4] 滤镜                          (阶段5 滤镜接口)
+[4] 滤镜                          (阶段6 滤镜接口)
   ↓
 [5] 渲染器 present → canvas
   ↓
@@ -58,7 +58,7 @@ Decoder → VideoFrame (YUV 1920x1080)
 
 **色彩转换在 AI 之前**：
 - 模型基于 RGB 训练。喂 YUV 平面会产生色边。
-- 这已是阶段 5 WebGPU 渲染器的职责，AI 阶段接收的是 RGB。
+- 这已是阶段 6 WebGPU 渲染器的职责，AI 阶段接收的是 RGB。
 
 ## 与双路径的关系
 

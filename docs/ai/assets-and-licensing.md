@@ -147,10 +147,10 @@ AGENTS.md §5 的强制要求（**不得跳过，不得推迟到实现阶段后*
 
 ## 排期冲突
 
-**WASM manifest 在路线图阶段 8，但 AI 模型在阶段 5.5 就需要。**
+**WASM manifest 在阶段 10，但 AI 模型在阶段 7 就需要。**
 
 解决方案：
-- **提前**：manifest 的 *schema + 加载器 + 哈希校验* 在阶段 5.5 实现（这是纯 JS、不依赖 WASM）
-- **保留**：npm/jsDelivr 发布、Docker 响应头和 CDN 基础设施留在阶段 8
+- **提前**：manifest 的 *schema + 加载器 + 哈希校验* 在阶段 7 实现（这是纯 JS、不依赖 WASM）
+- **保留**：npm/jsDelivr 发布、Docker 响应头和 CDN 基础设施留在阶段 12
 
 加载器代码放在 `packages/postprocess/src/assets/` 下，使用与 WASM manifest 加载器相同的设计模式（fetch → verify → cache）。

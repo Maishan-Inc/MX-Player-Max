@@ -14,21 +14,25 @@
 
 阶段之间采用硬门禁：上一阶段没有达到退出条件，不开始下一阶段的实现。允许提前设计后续阶段接口，但不提前实现后续阶段内部逻辑。
 
+本文件是阶段编号的唯一权威。`roadmap.md` 是同一套编号的概览视图，`docs/ai/` 与各 ADR 引用的阶段号均以本文件为准。
+
 ## 2. 阶段总览
 
 ```text
-Phase 0 规范与脚手架              已完成
-Phase 1 公共类型与能力探测        下一阶段
-Phase 2 Range Loader 与容器抽象
-Phase 3 NativeMediaPipeline
-Phase 4 WebCodecs CustomMediaPipeline
-Phase 5 音频时钟与 AudioWorklet
-Phase 6 WebGPU/WebGL2/Canvas2D
-Phase 7 SRT/ASS 字幕
-Phase 8 WASM Decoder Manager
-Phase 9 浏览器平台优化
-Phase 10 SDK、演示站与发布
-Phase 11 质量、安全和性能固化
+Phase 0  规范与脚手架              已完成
+Phase 1  公共类型与能力探测        下一阶段
+Phase 2  Range Loader 与容器抽象
+Phase 3  NativeMediaPipeline
+Phase 4  WebCodecs CustomMediaPipeline
+Phase 5  音频时钟与 AudioWorklet
+Phase 6  WebGPU/WebGL2/Canvas2D 渲染器
+Phase 7  AI 后处理（插帧与超分）
+Phase 8  SRT/ASS 字幕内核
+Phase 9  UI 包（控制条、字幕菜单、主题）
+Phase 10 WASM Decoder Manager
+Phase 11 浏览器平台优化
+Phase 12 SDK、演示站与发布
+Phase 13 质量、安全和性能固化
 ```
 
 ## 3. Phase 0：规范与脚手架
@@ -39,7 +43,7 @@ Phase 11 质量、安全和性能固化
 
 - `AGENTS.md` 工程规范。
 - 架构、Codec、音频、字幕、WASM、浏览器和安全文档。
-- pnpm Monorepo 与 14 个包。
+- pnpm Monorepo 与 15 个包。
 - SDK、React、Vue 和平台策略入口。
 - GSAP 演示站、Docker/Nginx 和 GitHub Actions。
 
@@ -183,16 +187,48 @@ Phase 11 质量、安全和性能固化
 - 滤镜开启时自动切换自定义路径，关闭后可回到 NativeMediaPipeline。
 - Renderer close 后释放 GPU 资源和 VideoFrame。
 
-## 10. Phase 7：SRT/ASS 字幕
+## 10. Phase 7：AI 后处理（插帧与超分）
 
-目标：完成 MX-Player-Pro 字幕能力的可复用核心，但不复制其演示站视觉。
+目标：在已解码的 `VideoFrame` 之上提供帧变换层，失败必须降级为正常播放。
+
+与解码后端正交——AI 消费解码产物，不属于任何解码分支。依赖 Phase 4（帧队列）、Phase 5（音频时钟）、Phase 6（WebGPU 渲染器）全部完成。
+
+契约层已在 Phase 0/1 落地：`packages/postprocess` 存在 passthrough 骨架，类型与能力探测已就绪。本阶段实现真实算子。
+
+### 任务
+
+1. 实现超分 WGSL：RT4KSR 通用档 + Anime4K-WebGPU 动画档。
+2. 实现运行时 governor：按帧预算动态升降档位。
+3. 实现插帧 WGSL：RIFE，含前瞻、epoch、seek 与 EOS 处理。
+4. 实现拉取式帧源——呈现循环按音频时钟从后处理链拉取帧，不用推送式滤镜。
+5. 把 Phase 10 的 manifest schema、加载器和哈希校验提前到本阶段（发布渠道仍留在 Phase 10）。
+6. 完成模型许可证与专利审查，不得推迟到发布阶段。
+
+### 测试
+
+- WebGPU 不可用、fallback adapter、设备丢失三种情况均干净回退 passthrough。
+- 档位变化作为 SDK 事件上报，不静默降级。
+- 连续 seek 不出现旧 epoch 的插帧结果。
+
+### 退出条件
+
+- 管线顺序为 色彩转换 → 插帧 → 超分 → 滤镜 → 渲染 → 字幕覆盖。
+- AI 失败降级为正常播放而非中断。
+- 每个模型权重有许可证、来源和哈希记录。
+- HTMLVideo 原生路径明确不支持 AI，且在候选阶段就排除，不在运行时才失败。
+
+详见 `docs/ai/` 与 `ADR-0003`。
+
+## 11. Phase 8：SRT/ASS 字幕内核
+
+目标：交付可复用的字幕解析与渲染内核。菜单与样式编辑器属 Phase 9 的 UI 包，本阶段只做内核。
 
 ### 任务
 
 1. 实现 SRT、ASS/SSA 解析器。
 2. 接入内嵌字幕包和外挂字幕 URL/File。
-3. 实现轨道切换、语言/名称显示和字幕关闭。
-4. 实现字体、字号、位置、颜色、描边和样式持久化。
+3. 实现轨道枚举、切换和关闭的引擎 API。
+4. 定义字幕样式数据模型与持久化接口，按播放域名分作用域。
 5. 让字幕覆盖层同时适配 NativeVideo、WebGPU、WebGL2 和 Canvas2D。
 6. 对未实现的 ASS 动画、绘图和卡拉 OK 明确降级。
 
@@ -201,8 +237,38 @@ Phase 11 质量、安全和性能固化
 - 字幕由媒体时钟驱动，seek 后立即显示正确 cue。
 - SRT/ASS 输入不会执行 HTML 或脚本。
 - 多条重叠 cue 按稳定顺序渲染。
+- 内核不含任何 DOM 控件——菜单、字体选择器、拖拽句柄都不在本阶段。
 
-## 11. Phase 8：WASM Decoder Manager
+## 12. Phase 9：UI 包
+
+目标：让开发者装上即用，不必自己写控制条。
+
+引擎渲染到 `<canvas>` 时浏览器的 `controls` 属性无效，不提供 UI 包等于开发者必须从零写控件。决策依据见 `ADR-0004`。
+
+### 任务
+
+1. 建立 `packages/ui`，用框架无关的原生 DOM 实现，不依赖 React。
+2. 实现控制条：左组播放/下一集/音量，右组字幕/画中画/剧场/设置/全屏。
+3. 实现进度条与悬停预览。
+4. 实现字幕菜单（轨道页 + 字体页）与样式编辑器，含拖拽调节位置和大小。
+5. 实现设置、统计、关于三个浮层面板。
+6. 实现主题：全部可调值走 CSS 自定义属性，类名统一 `mxp-` 前缀。
+7. 独立分发 `style.css`，不注入 `<style>`，不用 CSS-in-JS。
+8. 让 `@mx-player-max/react` 与 `@mx-player-max/vue` 封装 SDK + UI。
+
+### 测试
+
+- 同一套 UI 在 NativeMediaPipeline（`<video>`）与 CustomMediaPipeline（`<canvas>`）下行为一致。
+- 键盘可完整操作，焦点顺序稳定，控件有 `aria-label`。
+- 不引入 UI 包时 SDK 产物体积不变。
+
+### 退出条件
+
+- 引擎不反向依赖 UI，依赖方向单向。
+- 外观参考 MX-Player-Pro 的交互模式，不复制其源文件与演示站视觉。
+- 字幕样式按域名分作用域持久化，存储不可用时静默回退默认值。
+
+## 13. Phase 10：WASM Decoder Manager
 
 目标：在 WebCodecs 不支持或不适合时提供模块化软件解码。
 
@@ -222,7 +288,7 @@ Phase 11 质量、安全和性能固化
 - 未选中的 Codec 不下载对应 WASM。
 - 所有发布二进制完成许可证审查。
 
-## 12. Phase 9：浏览器平台优化
+## 14. Phase 11：浏览器平台优化
 
 目标：在通用策略正确后加入平台增强，而不是反过来依赖 User-Agent。
 
@@ -246,26 +312,29 @@ Phase 11 质量、安全和性能固化
 - 浏览器策略测试覆盖平台特性缺失和版本变化。
 - 删除或禁用平台特性不会破坏通用路径。
 
-## 13. Phase 10：SDK、演示站与发布
+## 15. Phase 12：SDK、演示站与发布
 
-目标：让第三方可以通过 npm 或 jsDelivr 接入，并让 Docker 演示展示真实引擎能力。
+目标：让第三方可以通过 npm、jsDelivr 或一行 `<script>` 接入，并让 Docker 演示展示真实引擎能力。
 
 ### 任务
 
 1. 完成原生 SDK API、React 适配器和 Vue 适配器。
-2. 演示站加入真实 Probe、Backend Decision、Decoder、Renderer 和 Subtitle 面板。
-3. GSAP 动画只服务于产品叙事，不能阻塞播放器初始化。
-4. Docker 演示站启用 COOP/COEP。
-5. GitHub Actions 构建、测试、打包、生成 manifest 和发布 npm。
-6. 发布固定版本 jsDelivr ESM 接入示例。
+2. 增加 UMD/IIFE 构建产物。`tsc` 只出 ESM，必须引入 Rollup 或 esbuild 才能产出 `<script src>` 可用的单文件，全局名 `MXPlayerMax`。
+3. 补齐发布元数据：`exports` 条件导出、`unpkg`、`jsdelivr`、`sideEffects: false`，UI 包额外导出 `./style.css`。
+4. 演示站消费 `@mx-player-max/ui`，并加入真实 Probe、Backend Decision、Decoder、Renderer 和 Subtitle 面板。
+5. GSAP 动画只服务于产品叙事，不能阻塞播放器初始化。
+6. Docker 演示站启用 COOP/COEP。
+7. GitHub Actions 构建、测试、打包、生成 manifest 并用 `pnpm publish -r` 发布。`workspace:*` 依赖必须由 pnpm 改写为真实版本号，直接 `npm publish` 会产出装不上的包。
+8. 发布固定版本的 jsDelivr ESM 与 UMD 两套接入示例，并提供 SRI 哈希。
 
 ### 退出条件
 
-- npm、jsDelivr、自托管 WASM 三种接入方式均有文档。
+- npm、jsDelivr、UMD `<script>`、自托管 WASM 四种接入方式均有文档。
+- 无构建工具的页面能用一行 `<script>` 得到可播放且带控件的播放器。
 - Demo 可以展示为什么选择某个后端。
-- Demo 不依赖 MX-Player-Pro 的实现文件或视觉布局。
+- Demo 不依赖 MX-Player-Pro 的实现文件或演示站视觉布局。
 
-## 14. Phase 11：质量、安全和性能固化
+## 16. Phase 13：质量、安全和性能固化
 
 ### 任务
 
@@ -283,7 +352,7 @@ Phase 11 质量、安全和性能固化
 - 所有 WASM 产物有来源、哈希和许可证资料。
 - Docker 镜像可构建，非隔离环境可以单线程运行。
 
-## 15. 每阶段的 Git 工作方式
+## 17. 每阶段的 Git 工作方式
 
 每个阶段使用独立分支和小 PR：
 
