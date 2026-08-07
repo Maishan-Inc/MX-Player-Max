@@ -87,6 +87,45 @@ export interface NativePlaybackStats {
   lastCallbackTime: Micros | null
 }
 
+/** Bounded video-only decoding controls for the Phase 4 custom pipeline. */
+export interface CustomVideoOptions {
+  /** Maximum decoded frames owned by the pipeline, including decoder reservations. Defaults to 8. */
+  maxDecodedFrames?: number
+  /** Maximum number of chunks submitted to VideoDecoder. Defaults to 8. */
+  maxDecodeQueueSize?: number
+  /** Queue depth at or below which a paused decode pump may resume. Defaults to 3. */
+  lowWaterMark?: number
+  /** Maximum queued and reserved frame duration in integer microseconds. Defaults to 1,000,000. */
+  maxBufferedDuration?: Micros
+  /** Worker/configure/flush/seek operation timeout in milliseconds. Defaults to 10,000. */
+  operationTimeoutMs?: number
+  hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software'
+  optimizeForLatency?: boolean
+}
+
+/**
+ * A decoded frame whose ownership has transferred to the caller.
+ * The caller must invoke `frame.close()` exactly once.
+ */
+export interface DecodedVideoFrame {
+  frame: VideoFrame
+  timestamp: Micros
+  duration: Micros | null
+  epoch: number
+}
+
+export interface CustomVideoStats {
+  decodedFrames: number
+  deliveredFrames: number
+  droppedFrames: number
+  droppedStaleFrames: number
+  droppedPreSeekFrames: number
+  queuedFrames: number
+  decodeQueueSize: number
+  bufferedDuration: Micros
+  endOfStream: boolean
+}
+
 /** 色彩原色。决定色域范围。 */
 export type ColorPrimaries = 'bt709' | 'bt2020' | 'p3' | 'bt601' | 'unknown'
 
@@ -396,6 +435,8 @@ export interface EngineEventMap {
   backendchange: { previous: BackendCandidate | null; current: BackendCandidate; reason: string }
   capabilities: { context: CapabilityContext }
   qualitychange: { previous: AiQualityTier; current: AiQualityTier; reasons: readonly string[] }
+  /** Notification only. VideoFrame ownership is transferred exclusively by readVideoFrame(). */
+  frameavailable: { queuedFrames: number; bufferedDuration: Micros }
   error: { error: EngineError }
 }
 
@@ -434,6 +475,23 @@ export const ErrorCodes = {
   NATIVE_PIP_UNSUPPORTED: 'NATIVE_PIP_UNSUPPORTED',
   NATIVE_PIP_BLOCKED: 'NATIVE_PIP_BLOCKED',
   NATIVE_OPERATION_FAILED: 'NATIVE_OPERATION_FAILED',
+  CUSTOM_BACKEND_UNAVAILABLE: 'CUSTOM_BACKEND_UNAVAILABLE',
+  CUSTOM_VIDEO_TRACK_REQUIRED: 'CUSTOM_VIDEO_TRACK_REQUIRED',
+  CUSTOM_FRAME_ACCESS_UNAVAILABLE: 'CUSTOM_FRAME_ACCESS_UNAVAILABLE',
+  CUSTOM_INVALID_QUEUE_CONFIG: 'CUSTOM_INVALID_QUEUE_CONFIG',
+  CUSTOM_SEEK_FAILED: 'CUSTOM_SEEK_FAILED',
+  CUSTOM_OPERATION_FAILED: 'CUSTOM_OPERATION_FAILED',
+  WEBCODECS_API_UNAVAILABLE: 'WEBCODECS_API_UNAVAILABLE',
+  WEBCODECS_CONFIG_INVALID: 'WEBCODECS_CONFIG_INVALID',
+  WEBCODECS_NOT_SUPPORTED: 'WEBCODECS_NOT_SUPPORTED',
+  WEBCODECS_CONFIGURE_FAILED: 'WEBCODECS_CONFIGURE_FAILED',
+  WEBCODECS_DECODE_FAILED: 'WEBCODECS_DECODE_FAILED',
+  WEBCODECS_FLUSH_FAILED: 'WEBCODECS_FLUSH_FAILED',
+  WEBCODECS_RESET_FAILED: 'WEBCODECS_RESET_FAILED',
+  WEBCODECS_ABORTED: 'WEBCODECS_ABORTED',
+  WEBCODECS_QUEUE_OVERFLOW: 'WEBCODECS_QUEUE_OVERFLOW',
+  WEBCODECS_FRAME_INVALID: 'WEBCODECS_FRAME_INVALID',
+  WEBCODECS_WORKER_FAILED: 'WEBCODECS_WORKER_FAILED',
   CAPABILITY_API_UNAVAILABLE: 'CAPABILITY_API_UNAVAILABLE',
   CAPABILITY_INVALID_CONFIG: 'CAPABILITY_INVALID_CONFIG',
   CAPABILITY_PROBE_FAILED: 'CAPABILITY_PROBE_FAILED',
@@ -484,6 +542,7 @@ export interface MXPlayerOptions {
   aiPostProcess?: AiPostProcessConfig
   autoplay?: boolean
   native?: NativeMediaOptions
+  customVideo?: CustomVideoOptions
 }
 
 export interface MediaEngine extends EngineEventSource {
@@ -492,6 +551,7 @@ export interface MediaEngine extends EngineEventSource {
   readonly selection: PlaybackSelection | null
   readonly nativeFeatures: NativeMediaFeatures | null
   readonly nativeStats: NativePlaybackStats | null
+  readonly customVideoStats: CustomVideoStats | null
 
   load(options: MXPlayerOptions): Promise<void>
   play(): Promise<void>
@@ -500,6 +560,7 @@ export interface MediaEngine extends EngineEventSource {
   setPlaybackRate(rate: number): void
   setVolume(volume: number): void
   setMuted(muted: boolean): void
+  readVideoFrame(): Promise<DecodedVideoFrame | null>
   requestFullscreen(): Promise<void>
   exitFullscreen(): Promise<void>
   requestPictureInPicture(): Promise<void>

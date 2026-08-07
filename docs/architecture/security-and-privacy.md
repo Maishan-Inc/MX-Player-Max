@@ -26,6 +26,14 @@ Matroska 附件、字体、外部引用、标签文本和章节内容不在 Phas
 
 Worker 的 start/read/seek/close 消息使用 session 与 epoch 隔离。close 会取消 Range 请求、重试 timer 和排队任务，关闭 Demuxer，并阻止迟到 probe/packet 发布。
 
+## Phase 4 WebCodecs 边界
+
+CustomMediaPipeline 只消费 Phase 2 Worker 返回的压缩 packet，不复制 Range Loader 或容器 parser，也不在主线程下载完整远程媒体。Decoder 配置只来自 Probe/能力报告；文件扩展名、响应正文、完整 URL、查询参数和 CodecPrivate 不进入日志或对外错误 message。
+
+Demux/Decoder Worker 请求必须同时匹配 sessionId、epoch 和 requestId。旧 epoch Frame 在丢弃前 close；close 会终止 Worker 或关闭 MessagePort、清理监听器和 timeout，并拒绝 pending request/reader/seek Promise。Worker API 不可用时返回稳定错误，不偷偷启用 HTMLVideo、WASM 或全文件读取。
+
+VideoFrame 是显式资源：queue 持有期间归 pipeline，`readVideoFrame()` 返回后归调用方。pipeline 只关闭未交付 Frame；事件不广播 Frame。队列、decoder submission、Worker pending request 和 pull reader 均有硬上限，正常 Frame 溢出不会静默丢弃。
+
 ## 字幕安全
 
 SRT/ASS 文本按纯文本输出。只对白名单解析 ASS 样式和换行，禁止把 `Dialogue`、字体名或外挂字幕内容拼接成 HTML、CSS URL 或脚本。

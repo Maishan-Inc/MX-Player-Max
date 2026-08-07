@@ -17,6 +17,8 @@
 - `RetryPolicy` / `RangeCache` / `RangeLoaderOptions`：Range 读取的重试、缓存与取消契约。
 - `DemuxPacket`：未解码的压缩 packet，时间单位统一为整数微秒；未知 duration 使用 `null`。
 - `NativeMediaOptions` / `NativeMediaFeatures` / `NativePlaybackStats`：HTMLVideo 原生路径的配置、特性检测和 `requestVideoFrameCallback` 统计契约。统计只包含计数与微秒时间，不输出 `VideoFrame`。
+- `CustomVideoOptions` / `CustomVideoStats`：Phase 4 视频解码队列、背压上限和分类丢帧统计。默认上限为 8 个 decoded/reserved frame、8 个 decoder queue item、1,000,000 微秒缓冲，低水位为 3。
+- `DecodedVideoFrame`：`readVideoFrame()` 的拉取结果，携带整数微秒 timestamp、nullable duration 和 epoch。
 - `MediaEngine`：core 与 SDK 共用的播放生命周期、控制方法、稳定事件监听和 `EngineError` 边界。
 
 `CapabilitySupport` 有三种状态：`supported` 表示 API 明确支持，`unsupported` 表示 API 明确拒绝或不存在，`unknown` 表示配置不足或探测失败。调用方不得把 `unknown` 当成支持。
@@ -26,3 +28,13 @@
 Phase 2 错误码使用 `RANGE_*` 与 `CONTAINER_*` 命名空间。公共类型不实现 fetch、File 读取、容器解析、解码或平台分支；这些行为由 `@mx-player-max/demux` 提供。
 
 Phase 3 增加 `ENGINE_*` 与 `NATIVE_*` 稳定错误码。`Micros` 始终为整数微秒；未知 duration、当前媒体时间和统计时间使用 `null`，不会用 `NaN`、`Infinity` 或负数伪造数据。
+
+Phase 4 增加 `CUSTOM_*` 与 `WEBCODECS_*` 稳定错误码、`customVideoStats`、`readVideoFrame()` 和不携带帧本体的 `frameavailable` 事件。NativeMediaPipeline 调用 `readVideoFrame()` 返回 `CUSTOM_FRAME_ACCESS_UNAVAILABLE`，不会从 HTMLVideo 合成帧。
+
+## VideoFrame 所有权
+
+- Frame 位于 custom queue 时归 `CustomMediaPipeline` 所有。
+- `readVideoFrame()` resolve 后所有权转移给调用方；调用方必须且只能调用一次 `frame.close()`。
+- seek、换源、错误或 close 会关闭所有尚未交付的 Frame。
+- 旧 epoch、preroll、非法或 close 后迟到的 Frame 会立即关闭并计入对应统计。
+- 普通事件只发布 queue 数量和 duration，不广播 `VideoFrame`，因此不会产生多个隐含所有者。

@@ -17,4 +17,20 @@ await player.play()
 
 `MXPlayer` 同步代理 core 的 `state`、`media`、`selection`、`nativeFeatures`、事件 `on/off/once`、seek/倍速/音量/静音、全屏和原生 Picture-in-Picture。NativeMediaPipeline 的错误使用稳定 `ENGINE_*`/`NATIVE_*` 码；autoplay 仍受用户手势策略限制。
 
-本阶段只覆盖普通本地 File 与支持 CORS/HTTP Range 的远程 MP4 H.264/AAC、WebM VP8/VP9/Opus。字幕和控制层保持独立，NativeMediaPipeline 不提供 UI。
+Phase 4 同时代理 `customVideoStats` 与 `readVideoFrame()`：
+
+```ts
+const player = new MXPlayer({
+  target: '#player',
+  source: { kind: 'url', url: 'https://media.example.com/video.webm' },
+  intent: 'frame-access',
+  customVideo: { maxDecodedFrames: 8, maxBufferedDuration: 1_000_000 },
+})
+
+await player.ready
+await player.play() // 启动解码泵，不代表画面已显示
+const decoded = await player.readVideoFrame()
+decoded?.frame.close()
+```
+
+`readVideoFrame()` 是唯一转移 Frame 所有权的 API；普通事件不会广播 Frame。NativeMediaPipeline 调用该 API 会得到 `CUSTOM_FRAME_ACCESS_UNAVAILABLE`。Phase 4 custom 路径只解码视频，不创建音频、时钟或 Renderer；音量/静音设置留待 Phase 5 生效，全屏/PiP 留待 Phase 6 Renderer。

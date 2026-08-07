@@ -218,6 +218,21 @@ Demuxer 输出必须转换成 WebCodecs 期望的格式：
 - **AV1**：需要传递 sequence header OBU 作为 `description`。
 - **VP9**：通常不需要额外 description，但 profile 2（10-bit）必须在配置字符串中正确声明。
 
+### 4.5 Phase 4 实际配置边界
+
+Phase 4 的 `@mx-player-max/decoder-webcodecs` 只接收 `MediaCapabilityReport.query.video` 已验证为 supported 的具体配置：
+
+- MP4/Matroska H.264 必须有兼容 avcC。MP4 Probe 已产生 `avc1.xxxxxx`；Matroska 若只给出通用 `avc1`，capability query 仅可从 avcC 的 profile/compatibility/level 字节规范化 RFC6381 字符串，不生成 SPS/PPS。packet 保持长度前缀格式并声明 AVC format。
+- Annex-B 只有容器明确提供该码流格式时才能使用；Phase 2 当前 MP4/Matroska 路径不在未知格式之间猜测转换。
+- VP8 使用 Probe 的 `vp8`/`vp08...`，不设置虚构 description。
+- VP9 必须提供完整 `vp09.profile.level.bitDepth...`。通用 `vp09` 因 profile/bit depth 不足而返回 `WEBCODECS_NOT_SUPPORTED`。
+- AV1 必须提供完整 `av01...`；description 仅接受兼容 av1C 或 sequence-header OBU。
+- HEVC、VVC、MPEG-2、MPEG-4 Part 2、VC-1、ProRes 即使浏览器可能接受，也不进入 Phase 4 allowlist。
+
+每个 DemuxPacket 的 `keyframe` 直接决定 `EncodedVideoChunk.type`；timestamp/duration 只接受非负安全整数微秒，duration 为 null 时不伪造。seek/reset 后的首个 decode packet 必须为 key，target 前的解码输出属于 preroll，必须 close 而不是交付。
+
+Demux packet 到主线程 VideoDecoder 的路径直接传递现有 `Uint8Array` view。可选 decoder Worker 因无法证明多个 packet 是否共享 backing buffer，使用结构化克隆保护 Phase 2 packet 所有权；返回的 VideoFrame 才使用 transferable。
+
 ## 5. WASM 专用解码器路径
 
 ### 5.1 定位

@@ -246,6 +246,22 @@ describe('detectCapabilities', () => {
 })
 
 describe('probeMediaCapabilities', () => {
+  it('derives a real H.264 RFC 6381 query from compatible avcC metadata', async () => {
+    const media = createMedia()
+    const video = media.tracks.find((track) => track.kind === 'video')
+    if (!video) throw new Error('missing fixture video')
+    video.codec = 'avc1'
+    video.codecId = 'V_MPEG4/ISO/AVC'
+    video.codecPrivate = Uint8Array.of(1, 0x64, 0, 0x28, 0xff, 0xe1, 0).buffer
+    const videoProbe = vi.fn(async () => true)
+    const adapter = createAdapter({ hasVideoDecoder: () => true, hasAudioDecoder: () => true, isVideoConfigSupported: videoProbe, isAudioConfigSupported: async () => true })
+    const cache = new MemoryCache()
+    const snapshot = await detectCapabilities({ adapter, cache, sdkVersion: 'test-avcc-query' })
+    const report = await probeMediaCapabilities(media, { adapter, cache, snapshot, sdkVersion: 'test-avcc-query' })
+    expect(report.query.video?.codec).toBe('avc1.640028')
+    expect(videoProbe).toHaveBeenCalledWith(expect.objectContaining({ codec: 'avc1.640028', description: video.codecPrivate }))
+  })
+
   it('reports concrete native and WebCodecs support', async () => {
     const decodingInfo = vi.fn(async () => ({ supported: true, smooth: true, powerEfficient: true }))
     const adapter = createAdapter({

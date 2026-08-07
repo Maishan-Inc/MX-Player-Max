@@ -35,6 +35,12 @@ Source → Range Loader → Demux Worker
 
 HTMLVideo 不强制进入 `VideoFrame → WebGPU`。只有启用高级帧处理时才通过可选 Frame Adapter 切换到自定义渲染路径。
 
+Phase 4 只落地该路径的视频前半段：`SourceDescriptor → Phase 2 Demux Worker → DemuxPacket → EncodedVideoChunk → VideoDecoder → bounded VideoFrame queue → readVideoFrame()`。它不创建 AudioDecoder、AudioContext、Renderer、canvas 或隐藏 HTMLVideo，因此 `play()` 只允许解码泵继续运行，不代表画面已显示或已具备完整播放。
+
+Demux Worker 直接复用 Phase 2 的 Range Loader、ContainerAdapter、Demuxer 和 start/read/seek/close 协议。MIME、RFC6381 Codec、codecPrivate 和 dimensions 全部来自有限 Probe，不从扩展名推导。每次响应必须同时匹配 sessionId、epoch 与 requestId；Worker 不可用时明确返回 `WEBCODECS_WORKER_FAILED`，不退回主线程完整下载。
+
+Frame queue 默认最多持有 8 个 queued/reserved Frame、1 秒 duration，并将 VideoDecoder `decodeQueueSize=8` 作为独立高水位；queue 降至 3 后恢复。`readVideoFrame()` 是拉取式所有权边界：queue 中 Frame 归 pipeline，返回后归调用方并必须由调用方 close。seek、换源、错误和 close 关闭全部未交付 Frame。
+
 ## 3. 核心生命周期
 
 ```text
@@ -91,6 +97,8 @@ CapabilitySnapshot
 - AudioWorklet 只负责实时 PCM 消费，不能等待网络或执行大块解析。
 - 主线程负责生命周期、用户输入、策略选择和 UI 状态。
 
+Phase 4 的 VideoDecoder runtime 既可直接运行，也提供 Dedicated Worker/MessagePort 协议。两种形式共享 configure/decode/flush/reset/close 语义；Worker 形式以 transferable 返回 `VideoFrame`，不转换为 ImageBitmap 或像素数组。Core 默认 adapter 仍通过明确的 runtime 能力创建，不使用 UA 分支。
+
 ## 7. 错误与回退
 
 错误分为 `SOURCE_*`、`CONTAINER_*`、`DECODER_*`、`RENDERER_*`、`AUDIO_*`、`SUBTITLE_*` 和 `SECURITY_*`。每个候选后端都有可回退等级；回退必须保留当前 source、轨道选择和用户可见错误上下文。
@@ -102,5 +110,6 @@ CapabilitySnapshot
 - 首次策略计算不加载大型 WASM。
 - 只加载最终 Codec 所需的解码器。
 - 帧队列和音频 ring buffer 使用有界内存。
+- Phase 4 在请求下一批压缩 packet 前同时检查 frame 数量、reserved duration 与 decoder queue；普通 Frame 溢出是 `WEBCODECS_QUEUE_OVERFLOW` 致命错误，不静默丢帧。
 - 渲染器优先使用 GPU 纹理、转换和合成，避免主线程像素拷贝。
 - 定时器只用于监控和补泵，播放时钟不依赖 React 状态刷新。

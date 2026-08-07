@@ -1,5 +1,7 @@
 import { createMediaEngine } from '@mx-player-max/core'
 import type {
+  CustomVideoStats,
+  DecodedVideoFrame,
   EngineEventListener,
   EngineEventName,
   MediaDescriptor,
@@ -26,6 +28,7 @@ export class MXPlayer {
   get selection(): PlaybackSelection | null { return this.engine.selection }
   get nativeFeatures(): NativeMediaFeatures | null { return this.engine.nativeFeatures }
   get nativeStats(): NativePlaybackStats | null { return this.engine.nativeStats }
+  get customVideoStats(): CustomVideoStats | null { return this.engine.customVideoStats }
 
   on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
     return this.engine.on(event, listener)
@@ -39,17 +42,18 @@ export class MXPlayer {
     return this.engine.once(event, listener)
   }
 
-  play() { return this.engine.play() }
-  pause() { this.engine.pause() }
-  seek(time: Micros) { return this.engine.seek(time) }
-  setPlaybackRate(rate: number) { this.engine.setPlaybackRate(rate) }
-  setVolume(volume: number) { this.engine.setVolume(volume) }
-  setMuted(muted: boolean) { this.engine.setMuted(muted) }
-  requestFullscreen() { return this.engine.requestFullscreen() }
-  exitFullscreen() { return this.engine.exitFullscreen() }
-  requestPictureInPicture() { return this.engine.requestPictureInPicture() }
-  exitPictureInPicture() { return this.engine.exitPictureInPicture() }
-  destroy() { this.engine.close() }
+  play(): Promise<void> { return this.engine.play() }
+  pause(): void { this.engine.pause() }
+  seek(time: Micros): Promise<void> { return this.engine.seek(time) }
+  setPlaybackRate(rate: number): void { this.engine.setPlaybackRate(rate) }
+  setVolume(volume: number): void { this.engine.setVolume(volume) }
+  setMuted(muted: boolean): void { this.engine.setMuted(muted) }
+  readVideoFrame(): Promise<DecodedVideoFrame | null> { return this.engine.readVideoFrame() }
+  requestFullscreen(): Promise<void> { return this.engine.requestFullscreen() }
+  exitFullscreen(): Promise<void> { return this.engine.exitFullscreen() }
+  requestPictureInPicture(): Promise<void> { return this.engine.requestPictureInPicture() }
+  exitPictureInPicture(): Promise<void> { return this.engine.exitPictureInPicture() }
+  destroy(): void { this.engine.close() }
 }
 
 export * from '@mx-player-max/types'

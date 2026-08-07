@@ -7,6 +7,7 @@ import type {
   MediaCapabilityReport,
   MediaDescriptor,
   NativeTrackCapability,
+  TrackInfo,
   VideoCodecConfig,
   WebCodecsCapability,
 } from '@mx-player-max/types'
@@ -19,7 +20,7 @@ export function createMediaCapabilityQuery(media: MediaDescriptor): MediaCapabil
     container: media.container,
     mimeType: media.mimeType,
     video: video ? {
-      codec: video.codec ?? video.codecId,
+      codec: normalizedTrackCodec(video),
       ...(video.width !== undefined ? { codedWidth: video.width } : {}),
       ...(video.height !== undefined ? { codedHeight: video.height } : {}),
       ...(video.bitrate !== undefined ? { bitrate: video.bitrate } : {}),
@@ -34,6 +35,17 @@ export function createMediaCapabilityQuery(media: MediaDescriptor): MediaCapabil
       ...(audio.codecPrivate ? { description: audio.codecPrivate } : {}),
     } : null,
   }
+}
+
+function normalizedTrackCodec(track: TrackInfo): string {
+  const codec = track.codec ?? track.codecId
+  if (!/^avc[13]$/i.test(codec) || track.codecPrivate === undefined || track.codecPrivate.byteLength < 7) return codec
+  const bytes = new Uint8Array(track.codecPrivate)
+  if (bytes[0] !== 1 || (bytes[4] ?? 0) >>> 2 !== 63) return codec
+  const suffix = [bytes[1], bytes[2], bytes[3]]
+    .map((value) => (value ?? 0).toString(16).padStart(2, '0'))
+    .join('')
+  return `${codec.toLowerCase()}.${suffix}`
 }
 
 export async function probeMediaReport(

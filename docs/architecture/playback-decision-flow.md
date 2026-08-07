@@ -203,6 +203,14 @@ WASM 后端被选中
 
 **WASM 变体选择在阶段 8，不在阶段 6。** 阶段 6 只看"这个 Codec 有没有 WASM 解码器候选"，具体用 threaded/simd/single 到初始化时才决定。
 
+### 阶段 8.1：Phase 4 WebCodecs 初始化门禁
+
+Phase 4 只在最终候选 `kind === 'webcodecs'` 且意图为 `frame-access`、`filters`、`editing`、`ai-enhance` 时初始化视频 custom pipeline。还必须再次确认具体 `mediaCapabilities.webCodecs.video.status === 'supported'`；`configure()` 仍需 try/catch，因为配置探测不是初始化成功的充分条件。
+
+`normal`/`low-power` 被迫选中 WebCodecs 时返回 `CUSTOM_BACKEND_UNAVAILABLE`，不把只有视频 Frame 的管线包装成完整播放器。Native 候选仍完全走 Phase 3 HTMLVideo。最终选择 custom 时，目标解析阶段创建的引擎自有 video 会被移除；调用方提供的节点不会被删除，也不会创建隐藏 video。
+
+Custom 初始化顺序固定为：复用 Phase 2 Probe 结果 → 启动 Demux Worker session → 选择视频轨 → 建立已验证 VideoDecoderConfig → configure → ready。autoplay 只调用 custom `play()` 允许解码泵运行。
+
 ### 阶段 9：运行时监控与动态调整
 
 ```text
@@ -216,6 +224,8 @@ WASM 后端被选中
  ├── 丢帧率持续 > 5% → 降低帧队列长度 / 考虑回退
  └── 内存超过阈值 → 清空缓存 / 降低缓冲
 ```
+
+Phase 4 不执行上述呈现侧动态丢帧。它只允许关闭旧 epoch、seek preroll、非法或 close 后迟到的 Frame；正常 Frame 若突破有界 queue，返回 `WEBCODECS_QUEUE_OVERFLOW`。音频时钟、画面显示、运行时 dropped-frame 策略在 Phase 5/6 实现。
 
 ## 4. 硬件解码 vs GPU 渲染：两件事
 

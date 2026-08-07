@@ -23,7 +23,7 @@ Phase 0  规范与脚手架              已完成
 Phase 1  公共类型与能力探测        实现完成，三浏览器验收待执行
 Phase 2  Range Loader 与容器抽象       实现完成，三浏览器验收待执行
 Phase 3  NativeMediaPipeline          实现完成，三浏览器验收待执行
-Phase 4  WebCodecs CustomMediaPipeline
+Phase 4  WebCodecs CustomMediaPipeline  实现完成，三浏览器验收待执行
 Phase 5  音频时钟与 AudioWorklet
 Phase 6  WebGPU/WebGL2/Canvas2D 渲染器
 Phase 7  AI 后处理（插帧与超分）
@@ -134,6 +134,8 @@ Phase 13 质量、安全和性能固化
 
 目标：建立逐帧、可 seek、可处理的自定义视频管线。
 
+状态：实现完成；本机 TypeScript/Vitest/构建验收已通过，真实 Chrome/Firefox/macOS Safari smoke matrix 待具备浏览器与设备的 CI 环境执行。
+
 ### 任务
 
 1. Demux Worker 输出带时间戳和关键帧标记的包。
@@ -148,6 +150,16 @@ Phase 13 质量、安全和性能固化
 - 能逐帧输出 `VideoFrame`。
 - 暂停、恢复、seek、连续 seek 不产生旧 epoch 画面。
 - 主线程不会因为解码队列增长而无界占用内存。
+
+### 已交付约束
+
+- 复用 Phase 2 Demux Worker 协议与压缩 packet，不复制 Range/容器实现。
+- H.264 avcC、VP8、完整 VP9/AV1 RFC6381 配置 allowlist；Phase 4 范围外 Codec 稳定拒绝。
+- 默认 8 Frame、8 decode queue、1 秒 buffered duration、低水位 3 的有界背压。
+- pull-based `readVideoFrame()` 与明确 VideoFrame close 所有权。
+- seek reset/reconfigure、关键帧起始、preroll drop、连续 epoch 原子失效。
+- Demux EOS 后 flush，flush output 继续入队，queue 耗尽后才 ended/null。
+- Phase 4 不创建音频、时钟、Renderer、WASM、MSE 或流媒体管线。
 
 ## 8. Phase 5：音频时钟与 AudioWorklet
 
