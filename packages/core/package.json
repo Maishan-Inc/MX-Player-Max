@@ -12,6 +12,7 @@
     "@mx-player-max/decoder-wasm": "workspace:*",
     "@mx-player-max/decoder-webcodecs": "workspace:*",
     "@mx-player-max/demux": "workspace:*",
+    "@mx-player-max/platform": "workspace:*",
     "@mx-player-max/renderers": "workspace:*",
     "@mx-player-max/strategy": "workspace:*",
     "@mx-player-max/subtitles": "workspace:*",

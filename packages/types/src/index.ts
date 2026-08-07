@@ -61,6 +61,32 @@ export type Micros = number
 
 export type PlaybackIntent = 'normal' | 'frame-access' | 'filters' | 'editing' | 'low-power' | 'ai-enhance'
 
+export type NativeCrossOrigin = 'anonymous' | 'use-credentials' | null
+
+export type NativePreload = 'none' | 'metadata' | 'auto'
+
+export interface NativeMediaOptions {
+  crossOrigin?: NativeCrossOrigin
+  preload?: NativePreload
+  playsInline?: boolean
+  /** Metadata wait timeout in milliseconds. Defaults to 15,000 ms. */
+  metadataTimeoutMs?: number
+}
+
+export interface NativeMediaFeatures {
+  fullscreen: boolean
+  pictureInPicture: boolean
+  requestVideoFrameCallback: boolean
+  fastSeek: boolean
+}
+
+export interface NativePlaybackStats {
+  presentedFrames: number
+  droppedFrames: number | null
+  mediaTime: Micros | null
+  lastCallbackTime: Micros | null
+}
+
 /** 色彩原色。决定色域范围。 */
 export type ColorPrimaries = 'bt709' | 'bt2020' | 'p3' | 'bt601' | 'unknown'
 
@@ -388,6 +414,26 @@ export interface EngineEventSource {
  * cross-module error-code domain list in AGENTS.md §7.
  */
 export const ErrorCodes = {
+  ENGINE_CLOSED: 'ENGINE_CLOSED',
+  ENGINE_INVALID_TARGET: 'ENGINE_INVALID_TARGET',
+  NATIVE_SOURCE_INVALID: 'NATIVE_SOURCE_INVALID',
+  NATIVE_CUSTOM_HEADERS_UNSUPPORTED: 'NATIVE_CUSTOM_HEADERS_UNSUPPORTED',
+  NATIVE_BACKEND_UNAVAILABLE: 'NATIVE_BACKEND_UNAVAILABLE',
+  NATIVE_NOT_SUPPORTED: 'NATIVE_NOT_SUPPORTED',
+  NATIVE_METADATA_TIMEOUT: 'NATIVE_METADATA_TIMEOUT',
+  NATIVE_NETWORK_FAILED: 'NATIVE_NETWORK_FAILED',
+  NATIVE_CORS_FAILED: 'NATIVE_CORS_FAILED',
+  NATIVE_DECODE_FAILED: 'NATIVE_DECODE_FAILED',
+  NATIVE_ABORTED: 'NATIVE_ABORTED',
+  NATIVE_AUTOPLAY_BLOCKED: 'NATIVE_AUTOPLAY_BLOCKED',
+  NATIVE_INVALID_TIME: 'NATIVE_INVALID_TIME',
+  NATIVE_INVALID_RATE: 'NATIVE_INVALID_RATE',
+  NATIVE_INVALID_VOLUME: 'NATIVE_INVALID_VOLUME',
+  NATIVE_FULLSCREEN_UNSUPPORTED: 'NATIVE_FULLSCREEN_UNSUPPORTED',
+  NATIVE_FULLSCREEN_BLOCKED: 'NATIVE_FULLSCREEN_BLOCKED',
+  NATIVE_PIP_UNSUPPORTED: 'NATIVE_PIP_UNSUPPORTED',
+  NATIVE_PIP_BLOCKED: 'NATIVE_PIP_BLOCKED',
+  NATIVE_OPERATION_FAILED: 'NATIVE_OPERATION_FAILED',
   CAPABILITY_API_UNAVAILABLE: 'CAPABILITY_API_UNAVAILABLE',
   CAPABILITY_INVALID_CONFIG: 'CAPABILITY_INVALID_CONFIG',
   CAPABILITY_PROBE_FAILED: 'CAPABILITY_PROBE_FAILED',
@@ -437,5 +483,27 @@ export interface MXPlayerOptions {
   aiModelBaseUrl?: string
   aiPostProcess?: AiPostProcessConfig
   autoplay?: boolean
+  native?: NativeMediaOptions
+}
+
+export interface MediaEngine extends EngineEventSource {
+  readonly state: PlaybackState
+  readonly media: MediaDescriptor | null
+  readonly selection: PlaybackSelection | null
+  readonly nativeFeatures: NativeMediaFeatures | null
+  readonly nativeStats: NativePlaybackStats | null
+
+  load(options: MXPlayerOptions): Promise<void>
+  play(): Promise<void>
+  pause(): void
+  seek(time: Micros): Promise<void>
+  setPlaybackRate(rate: number): void
+  setVolume(volume: number): void
+  setMuted(muted: boolean): void
+  requestFullscreen(): Promise<void>
+  exitFullscreen(): Promise<void>
+  requestPictureInPicture(): Promise<void>
+  exitPictureInPicture(): Promise<void>
+  close(): void
 }
 

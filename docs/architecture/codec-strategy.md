@@ -69,6 +69,8 @@ fMP4 在本阶段只识别 `mvex/moof` 并解析可用初始化元数据，不�
 
 ## 3. HTMLVideo 直接播放路径
 
+Phase 3 只初始化策略最终选中的 `native-html-video` 候选，且播放意图必须为 `normal` 或 `low-power`。NativeMediaPipeline 使用 `MediaCapabilityReport.native.video.contentType`/`audio.contentType` 中已经验证的 MIME/Codec 候选；`video/mp4`、`video/webm` 是容器 MIME，不是 Codec。未知 Codec、缺失 MIME 或 native capability 为 `unsupported/unknown` 时返回稳定 `NATIVE_NOT_SUPPORTED`，策略选择 WebCodecs/WASM/MSE 时返回 `NATIVE_BACKEND_UNAVAILABLE`，不会偷偷加载其他后端。
+
 ### 3.1 成立条件
 
 HTMLVideo 直接播放要求**同时**满足三个条件：
