@@ -1,6 +1,12 @@
 # @mx-player-max/decoder-webcodecs
 
-Phase 4 的视频 WebCodecs 边界。本包只负责具体 `VideoDecoderConfig`、`EncodedVideoChunk`、`VideoDecoder` 生命周期和统一 Frame 回调；它不依赖 core，不读取容器，不管理 seek/frame queue，也不包含音频、Renderer 或 WASM。
+Phase 4/5 的 WebCodecs 边界。本包只负责具体 `VideoDecoder`/`AudioDecoder` 配置、encoded chunk、flush/reset/close 和统一输出回调；它不依赖 core/audio，不读取容器，不管理 queue/时钟/Renderer，也不包含 WASM。
+
+## Phase 5 AudioDecoder
+
+Audio 配置只能来自 capability report 的 `query.audio`、对应 `TrackInfo`、`codecPrivate`、采样率和声道，禁止从扩展名或 MIME 猜测。AAC 需要完整 `mp4a.40.*` 与兼容 ASC；Opus 只接受探测得到的 `OpusHead` 或规范转换的 MP4 `dOps`；MP3 使用 `mp3` 且不设置 description。未知 codec、缺失 sampleRate/channels、未知声道布局和不兼容 private data 稳定拒绝。
+
+`AudioDecoderRuntime` 可注入测试 fake。`AudioDecoderAdapter` 保证 epoch/generation：reset 后旧 `AudioData` 立即 close/忽略，必须重新 configure；同步 configure/decode、error/dequeue、nullable duration、flush/reset/close 都映射稳定错误码。encoded chunk 直接使用 DemuxPacket 的 Uint8Array view，不持有已 detach backing buffer。
 
 ## 配置规则
 

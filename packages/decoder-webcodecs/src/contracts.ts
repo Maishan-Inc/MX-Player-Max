@@ -53,3 +53,48 @@ export interface AvcDecoderConfigExtension {
 }
 
 export type Phase4VideoDecoderConfig = VideoDecoderConfig & AvcDecoderConfigExtension
+
+export type AudioDecoderRuntimeState = 'unconfigured' | 'configured' | 'closed'
+
+export interface AudioDecoderRuntime {
+  readonly state: AudioDecoderRuntimeState
+  readonly decodeQueueSize: number
+  configure(config: AudioDecoderConfig): void
+  decode(chunk: EncodedAudioChunk): void
+  flush(): Promise<void>
+  reset(): void
+  close(): void
+}
+
+export interface AudioDecoderRuntimeCallbacks {
+  output(data: AudioData): void
+  error(cause: unknown): void
+  dequeue(): void
+}
+
+export type AudioDecoderRuntimeFactory = (callbacks: AudioDecoderRuntimeCallbacks) => AudioDecoderRuntime
+
+export interface EncodedAudioChunkFactory {
+  create(init: EncodedAudioChunkInit): EncodedAudioChunk
+}
+
+export interface AudioDecoderAdapterCallbacks {
+  onData(data: AudioData, epoch: number): void
+  onError(error: EngineError, epoch: number): void
+  onDequeue(epoch: number): void
+}
+
+export interface AudioDecoderAdapterLike {
+  readonly decodeQueueSize: number
+  configure(config: AudioDecoderConfig, supported: boolean, epoch: number): Promise<void>
+  decode(packet: DemuxPacket, epoch: number): void
+  flush(epoch: number): Promise<void>
+  reset(epoch: number): Promise<void>
+  close(): void
+}
+
+export interface AudioDecoderAdapterOptions {
+  callbacks: AudioDecoderAdapterCallbacks
+  runtimeFactory?: AudioDecoderRuntimeFactory
+  chunkFactory?: EncodedAudioChunkFactory
+}

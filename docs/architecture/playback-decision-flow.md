@@ -203,13 +203,13 @@ WASM 后端被选中
 
 **WASM 变体选择在阶段 8，不在阶段 6。** 阶段 6 只看"这个 Codec 有没有 WASM 解码器候选"，具体用 threaded/simd/single 到初始化时才决定。
 
-### 阶段 8.1：Phase 4 WebCodecs 初始化门禁
+### 阶段 8.1：Phase 4/5 WebCodecs 初始化门禁
 
 Phase 4 只在最终候选 `kind === 'webcodecs'` 且意图为 `frame-access`、`filters`、`editing`、`ai-enhance` 时初始化视频 custom pipeline。还必须再次确认具体 `mediaCapabilities.webCodecs.video.status === 'supported'`；`configure()` 仍需 try/catch，因为配置探测不是初始化成功的充分条件。
 
 `normal`/`low-power` 被迫选中 WebCodecs 时返回 `CUSTOM_BACKEND_UNAVAILABLE`，不把只有视频 Frame 的管线包装成完整播放器。Native 候选仍完全走 Phase 3 HTMLVideo。最终选择 custom 时，目标解析阶段创建的引擎自有 video 会被移除；调用方提供的节点不会被删除，也不会创建隐藏 video。
 
-Custom 初始化顺序固定为：复用 Phase 2 Probe 结果 → 启动 Demux Worker session → 选择视频轨 → 建立已验证 VideoDecoderConfig → configure → ready。autoplay 只调用 custom `play()` 允许解码泵运行。
+Custom 初始化顺序固定为：复用 Phase 2 Probe 结果 → 启动一个 Demux Worker session → 选择视频/音频轨 → 分别建立已验证 VideoDecoderConfig/AudioDecoderConfig → 初始化 Worklet/output graph → configure 两个 decoder → ready。autoplay 只调用 custom `play()`；AudioContext resume 被拒绝返回 `AUDIO_AUTOPLAY_BLOCKED`，不静默无声。Demux response 中的音视频 packet 都进入对应有界路径。
 
 ### 阶段 9：运行时监控与动态调整
 

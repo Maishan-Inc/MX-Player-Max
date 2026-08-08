@@ -126,6 +126,79 @@ export interface CustomVideoStats {
   endOfStream: boolean
 }
 
+export type AudioLatencyHint = 'interactive' | 'balanced' | 'playback' | number
+
+/** Bounded custom-audio controls. All duration fields use integer microseconds. */
+export interface CustomAudioOptions {
+  /** Maximum compressed chunks submitted to AudioDecoder. Defaults to 16. */
+  maxDecodeQueueSize?: number
+  /** Maximum decoded PCM duration retained by the output path. Defaults to 2,000,000 us. */
+  maxBufferedDuration?: Micros
+  /** Decode/feed resumes at or below this buffered duration. Defaults to 500,000 us. */
+  lowWaterMark?: Micros
+  /** Output starts after this duration is buffered, or at EOS. Defaults to 150,000 us. */
+  startBufferDuration?: Micros
+  /** Maximum transferable PCM blocks awaiting MessagePort acknowledgement. Defaults to 8. */
+  maxMessagePortPendingBlocks?: number
+  /** AudioDecoder/AudioWorklet operation timeout. Defaults to 10,000 ms. */
+  operationTimeoutMs?: number
+  /** Forwarded to AudioContext. Numeric values are seconds. Defaults to `interactive`. */
+  latencyHint?: AudioLatencyHint
+  /** Optional AudioContext output sample rate. Valid range is 8,000-192,000 Hz. */
+  outputSampleRate?: number
+}
+
+export type AudioOutputState =
+  | 'uninitialized'
+  | 'ready'
+  | 'buffering'
+  | 'running'
+  | 'paused'
+  | 'drained'
+  | 'closed'
+
+export type AudioTransportKind = 'shared-array-buffer' | 'message-port' | 'none'
+
+export interface CustomAudioStats {
+  decodedBlocks: number
+  decodedFrames: number
+  renderedFrames: number
+  droppedStaleBlocks: number
+  droppedPreSeekFrames: number
+  underruns: number
+  overflows: number
+  decodeQueueSize: number
+  bufferedFrames: number
+  bufferedDuration: Micros
+  inputSampleRate: number | null
+  outputSampleRate: number | null
+  channels: number | null
+  pendingMessageBlocks: number
+  transport: AudioTransportKind
+  outputState: AudioOutputState
+  endOfStream: boolean
+}
+
+export interface AudioClockSnapshot {
+  source: 'audio-context' | 'wall-clock'
+  mediaTime: Micros
+  contextTime: Micros | null
+  renderedFrames: number
+  sampleRate: number | null
+  playbackRate: number
+  running: boolean
+  underrun: boolean
+  epoch: number
+}
+
+export type VideoFrameScheduleAction = 'wait' | 'present' | 'drop'
+
+export interface VideoFrameScheduleDecision {
+  action: VideoFrameScheduleAction
+  drift: Micros
+  wait: Micros
+}
+
 /** 色彩原色。决定色域范围。 */
 export type ColorPrimaries = 'bt709' | 'bt2020' | 'p3' | 'bt601' | 'unknown'
 
@@ -437,6 +510,9 @@ export interface EngineEventMap {
   qualitychange: { previous: AiQualityTier; current: AiQualityTier; reasons: readonly string[] }
   /** Notification only. VideoFrame ownership is transferred exclusively by readVideoFrame(). */
   frameavailable: { queuedFrames: number; bufferedDuration: Micros }
+  audiostatechange: { state: AudioOutputState; stats: CustomAudioStats }
+  audiounderrun: { count: number; bufferedDuration: Micros }
+  clockupdate: { clock: AudioClockSnapshot }
   error: { error: EngineError }
 }
 
@@ -481,6 +557,27 @@ export const ErrorCodes = {
   CUSTOM_INVALID_QUEUE_CONFIG: 'CUSTOM_INVALID_QUEUE_CONFIG',
   CUSTOM_SEEK_FAILED: 'CUSTOM_SEEK_FAILED',
   CUSTOM_OPERATION_FAILED: 'CUSTOM_OPERATION_FAILED',
+  CUSTOM_AUDIO_BACKEND_UNAVAILABLE: 'CUSTOM_AUDIO_BACKEND_UNAVAILABLE',
+  CUSTOM_AUDIO_TRACK_INVALID: 'CUSTOM_AUDIO_TRACK_INVALID',
+  AUDIO_CONTEXT_UNAVAILABLE: 'AUDIO_CONTEXT_UNAVAILABLE',
+  AUDIO_AUTOPLAY_BLOCKED: 'AUDIO_AUTOPLAY_BLOCKED',
+  AUDIO_WORKLET_UNAVAILABLE: 'AUDIO_WORKLET_UNAVAILABLE',
+  AUDIO_WORKLET_LOAD_FAILED: 'AUDIO_WORKLET_LOAD_FAILED',
+  AUDIO_WORKLET_FAILED: 'AUDIO_WORKLET_FAILED',
+  AUDIO_INVALID_QUEUE_CONFIG: 'AUDIO_INVALID_QUEUE_CONFIG',
+  AUDIO_BUFFER_OVERFLOW: 'AUDIO_BUFFER_OVERFLOW',
+  AUDIO_CHANNEL_LAYOUT_UNSUPPORTED: 'AUDIO_CHANNEL_LAYOUT_UNSUPPORTED',
+  AUDIO_RESAMPLE_FAILED: 'AUDIO_RESAMPLE_FAILED',
+  AUDIO_OPERATION_FAILED: 'AUDIO_OPERATION_FAILED',
+  WEBCODECS_AUDIO_API_UNAVAILABLE: 'WEBCODECS_AUDIO_API_UNAVAILABLE',
+  WEBCODECS_AUDIO_CONFIG_INVALID: 'WEBCODECS_AUDIO_CONFIG_INVALID',
+  WEBCODECS_AUDIO_NOT_SUPPORTED: 'WEBCODECS_AUDIO_NOT_SUPPORTED',
+  WEBCODECS_AUDIO_CONFIGURE_FAILED: 'WEBCODECS_AUDIO_CONFIGURE_FAILED',
+  WEBCODECS_AUDIO_DECODE_FAILED: 'WEBCODECS_AUDIO_DECODE_FAILED',
+  WEBCODECS_AUDIO_FLUSH_FAILED: 'WEBCODECS_AUDIO_FLUSH_FAILED',
+  WEBCODECS_AUDIO_RESET_FAILED: 'WEBCODECS_AUDIO_RESET_FAILED',
+  WEBCODECS_AUDIO_ABORTED: 'WEBCODECS_AUDIO_ABORTED',
+  WEBCODECS_AUDIO_DATA_INVALID: 'WEBCODECS_AUDIO_DATA_INVALID',
   WEBCODECS_API_UNAVAILABLE: 'WEBCODECS_API_UNAVAILABLE',
   WEBCODECS_CONFIG_INVALID: 'WEBCODECS_CONFIG_INVALID',
   WEBCODECS_NOT_SUPPORTED: 'WEBCODECS_NOT_SUPPORTED',
@@ -543,6 +640,7 @@ export interface MXPlayerOptions {
   autoplay?: boolean
   native?: NativeMediaOptions
   customVideo?: CustomVideoOptions
+  customAudio?: CustomAudioOptions
 }
 
 export interface MediaEngine extends EngineEventSource {
@@ -552,6 +650,8 @@ export interface MediaEngine extends EngineEventSource {
   readonly nativeFeatures: NativeMediaFeatures | null
   readonly nativeStats: NativePlaybackStats | null
   readonly customVideoStats: CustomVideoStats | null
+  readonly customAudioStats: CustomAudioStats | null
+  readonly audioClock: AudioClockSnapshot | null
 
   load(options: MXPlayerOptions): Promise<void>
   play(): Promise<void>

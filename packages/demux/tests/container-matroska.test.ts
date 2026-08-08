@@ -99,6 +99,11 @@ describe('MatroskaContainerAdapter', () => {
     expect(video?.codec).toBeUndefined()
   })
 
+  it('maps the Matroska MPEG Layer III CodecID to the WebCodecs mp3 codec', async () => {
+    const selection = await probeContainer(loaderFor(createEbmlFixture({ audioCodecId: 'A_MPEG/L3' })))
+    expect(selection.metadata.tracks[1]).toMatchObject({ codecId: 'A_MPEG/L3', codec: 'mp3' })
+  })
+
   it('returns stable failures for truncation, bad varints, and track limits', async () => {
     const fixture = createEbmlFixture()
     await expectCode(probeContainer(loaderFor(fixture.slice(0, fixture.byteLength - 2))), ErrorCodes.CONTAINER_TRUNCATED)

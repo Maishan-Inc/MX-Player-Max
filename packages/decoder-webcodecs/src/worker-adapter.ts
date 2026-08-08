@@ -205,7 +205,7 @@ export function createBrowserDecoderWorkerTransport(): DecoderWorkerTransport {
 
 function createSessionId(): string {
   const cryptoValue = (globalThis as unknown as { crypto?: { randomUUID?: () => string } }).crypto
-  return cryptoValue?.randomUUID?.() ?? `decoder-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return cryptoValue?.randomUUID?.() ?? `decoder-${Math.round(performance.now())}-${Math.random().toString(16).slice(2)}`
 }
 
 function closeFrame(frame: VideoFrame): void {

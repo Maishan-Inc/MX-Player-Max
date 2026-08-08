@@ -199,5 +199,5 @@ function workerProtocolError() {
 
 function createSessionId(): string {
   const cryptoValue = (globalThis as unknown as { crypto?: { randomUUID?: () => string } }).crypto
-  return cryptoValue?.randomUUID?.() ?? `demux-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return cryptoValue?.randomUUID?.() ?? `demux-${Math.round(performance.now())}-${Math.random().toString(16).slice(2)}`
 }

@@ -28,6 +28,10 @@ Worker 的 start/read/seek/close 消息使用 session 与 epoch 隔离。close �
 
 ## Phase 4 WebCodecs 边界
 
+## Phase 5 AudioWorklet 边界
+
+AudioData/PCM/Worklet 消息只在内部边界流转，不通过公共事件交付；事件只包含统计、时钟、缓冲时长和稳定错误码。AudioData copy 完立即 close，stale/preroll/错误/close 后迟到对象也立即 close。SAB 仅在能力快照确认跨源隔离后启用；否则 MessagePort 使用 bounded transferable blocks、sequence/epoch/ack，不能将远程 packet 当脚本/HTML/SVG 执行。AudioWorklet `process()` 不访问网络、Promise、日志或无界队列。close 必须移除 Port listener、关闭 Context/Node/Gain/Worker 并拒绝 pending operation。
+
 CustomMediaPipeline 只消费 Phase 2 Worker 返回的压缩 packet，不复制 Range Loader 或容器 parser，也不在主线程下载完整远程媒体。Decoder 配置只来自 Probe/能力报告；文件扩展名、响应正文、完整 URL、查询参数和 CodecPrivate 不进入日志或对外错误 message。
 
 Demux/Decoder Worker 请求必须同时匹配 sessionId、epoch 和 requestId。旧 epoch Frame 在丢弃前 close；close 会终止 Worker 或关闭 MessagePort、清理监听器和 timeout，并拒绝 pending request/reader/seek Promise。Worker API 不可用时返回稳定错误，不偷偷启用 HTMLVideo、WASM 或全文件读取。

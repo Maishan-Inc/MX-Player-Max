@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
+  AudioClockSnapshot,
   CapabilitySnapshot,
+  CustomAudioStats,
   CustomVideoStats,
   DecodedVideoFrame,
   MediaCapabilityReport,
@@ -16,8 +18,9 @@ const mocks = vi.hoisted(() => {
   const closeReader = vi.fn()
   const closeDemuxer = vi.fn()
   const createRangeLoader = vi.fn(() => ({ close: closeReader, read: vi.fn() }))
+  let includeAudio = false
   const probeContainer = vi.fn(async () => {
-    const media = createMedia()
+    const media = createMedia(includeAudio)
     return { adapter: {}, metadata: { container: media.container, media, tracks: media.tracks, duration: media.duration, size: media.size, hasSeekIndex: true }, demuxer: { close: closeDemuxer } }
   })
   const detectCapabilities = vi.fn(async (): Promise<CapabilitySnapshot> => createSnapshot())
@@ -40,6 +43,7 @@ const mocks = vi.hoisted(() => {
     closeReader, closeDemuxer, createRangeLoader, probeContainer, detectCapabilities, probeMediaCapabilities,
     createStrategyEngine,
     setBackend(value: 'html-video' | 'webcodecs') { backendKind = value },
+    setAudio(value: boolean) { includeAudio = value },
   }
 })
 
@@ -59,8 +63,23 @@ const stats: CustomVideoStats = {
   droppedPreSeekFrames: 0, queuedFrames: 1, decodeQueueSize: 0, bufferedDuration: 33_333, endOfStream: false,
 }
 
+const audioStats: CustomAudioStats = {
+  decodedBlocks: 1, decodedFrames: 480, renderedFrames: 240, droppedStaleBlocks: 0,
+  droppedPreSeekFrames: 0, underruns: 0, overflows: 0, decodeQueueSize: 0,
+  bufferedFrames: 240, bufferedDuration: 5_000, inputSampleRate: 48_000,
+  outputSampleRate: 48_000, channels: 2, pendingMessageBlocks: 1,
+  transport: 'message-port', outputState: 'running', endOfStream: false,
+}
+
+const audioClock: AudioClockSnapshot = {
+  source: 'audio-context', mediaTime: 5_000, contextTime: 1_000_000, renderedFrames: 240,
+  sampleRate: 48_000, playbackRate: 1, running: true, underrun: false, epoch: 0,
+}
+
 class FakeCustomPipeline {
   readonly stats = stats
+  get audioStats(): CustomAudioStats | null { return this.options.media.tracks.some((track) => track.kind === 'audio') ? audioStats : null }
+  readonly audioClock = audioClock
   readonly close = vi.fn()
   readonly initialize = vi.fn(async () => { this.options.callbacks.onEvent({ type: 'ready' }) })
   readonly play = vi.fn(async () => { this.options.callbacks.onEvent({ type: 'playing' }) })
@@ -84,6 +103,7 @@ afterEach(() => {
   vi.clearAllMocks()
   vi.unstubAllGlobals()
   mocks.setBackend('webcodecs')
+  mocks.setAudio(false)
 })
 
 describe('MediaEngine custom video integration', () => {
@@ -126,6 +146,62 @@ describe('MediaEngine custom video integration', () => {
     frame?.frame.close()
     await expect(engine.requestFullscreen()).rejects.toMatchObject({ code: ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED })
     await expect(engine.requestPictureInPicture()).rejects.toMatchObject({ code: ErrorCodes.NATIVE_PIP_UNSUPPORTED })
+    engine.close()
+  })
+
+  it('exposes custom audio statistics, clock and safe event payloads', async () => {
+    mocks.setAudio(true)
+    let custom!: FakeCustomPipeline
+    const engine = createMediaEngine({ createCustomPipeline: (options) => {
+      custom = new FakeCustomPipeline(options)
+      return custom as unknown as CustomMediaPipeline
+    } })
+    const state = vi.fn()
+    const underrun = vi.fn()
+    const clock = vi.fn()
+    engine.on('audiostatechange', state)
+    engine.on('audiounderrun', underrun)
+    engine.on('clockupdate', clock)
+    await engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' })
+    expect(engine.customAudioStats).toEqual(audioStats)
+    expect(engine.audioClock).toEqual(audioClock)
+    custom.options.callbacks.onEvent({ type: 'audiostatechange', stats: audioStats })
+    custom.options.callbacks.onEvent({ type: 'audiounderrun', stats: { ...audioStats, underruns: 1 } })
+    custom.options.callbacks.onEvent({ type: 'clockupdate', clock: audioClock })
+    expect(state).toHaveBeenCalledWith({ state: 'running', stats: audioStats })
+    expect(underrun).toHaveBeenCalledWith({ count: 1, bufferedDuration: 5_000 })
+    expect(clock).toHaveBeenCalledWith({ clock: audioClock })
+    engine.close()
+  })
+
+  it('rejects a concrete audio track when its AudioDecoder capability is unavailable', async () => {
+    mocks.setAudio(true)
+    const snapshot = createSnapshot()
+    snapshot.webCodecsAudio = false
+    mocks.detectCapabilities.mockResolvedValueOnce(snapshot)
+    const createCustomPipeline = vi.fn()
+    const engine = createMediaEngine({ createCustomPipeline })
+    await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' }))
+      .rejects.toMatchObject({ code: ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE })
+    expect(createCustomPipeline).not.toHaveBeenCalled()
+    engine.close()
+  })
+
+  it('keeps the initialized custom pipeline ready when AudioContext resume is autoplay-blocked', async () => {
+    let custom!: FakeCustomPipeline
+    const blocked = { code: ErrorCodes.AUDIO_AUTOPLAY_BLOCKED, message: 'AudioContext resume was blocked', recoverable: true }
+    const engine = createMediaEngine({ createCustomPipeline: (options) => {
+      custom = new FakeCustomPipeline(options)
+      custom.play.mockRejectedValueOnce(blocked)
+      return custom as unknown as CustomMediaPipeline
+    } })
+    const error = vi.fn()
+    engine.on('error', error)
+    await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access', autoplay: true }))
+      .rejects.toMatchObject({ code: ErrorCodes.AUDIO_AUTOPLAY_BLOCKED })
+    expect(engine.state).toBe('ready')
+    expect(custom.close).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledWith({ error: blocked })
     engine.close()
   })
 

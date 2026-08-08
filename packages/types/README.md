@@ -18,6 +18,8 @@
 - `DemuxPacket`：未解码的压缩 packet，时间单位统一为整数微秒；未知 duration 使用 `null`。
 - `NativeMediaOptions` / `NativeMediaFeatures` / `NativePlaybackStats`：HTMLVideo 原生路径的配置、特性检测和 `requestVideoFrameCallback` 统计契约。统计只包含计数与微秒时间，不输出 `VideoFrame`。
 - `CustomVideoOptions` / `CustomVideoStats`：Phase 4 视频解码队列、背压上限和分类丢帧统计。默认上限为 8 个 decoded/reserved frame、8 个 decoder queue item、1,000,000 微秒缓冲，低水位为 3。
+- `CustomAudioOptions` / `CustomAudioStats`：Phase 5 音频解码、PCM 缓冲、Worklet transport、underrun 和 drain 统计。默认 `maxDecodeQueueSize=16`、`maxBufferedDuration=2_000_000`、`lowWaterMark=500_000`、`startBufferDuration=150_000`、`maxMessagePortPendingBlocks=8`、`operationTimeoutMs=10_000`、`latencyHint='interactive'`；所有配置都有硬上限，非法值返回 `AUDIO_INVALID_QUEUE_CONFIG`。
+- `AudioClockSnapshot`：音频存在时以实际消费的 PCM sample frame 锚定 AudioContext 主时钟；无音频时 `source='wall-clock'`，基于 `performance.now()`，支持 pause/resume/seek/rate。
 - `DecodedVideoFrame`：`readVideoFrame()` 的拉取结果，携带整数微秒 timestamp、nullable duration 和 epoch。
 - `MediaEngine`：core 与 SDK 共用的播放生命周期、控制方法、稳定事件监听和 `EngineError` 边界。
 
@@ -30,6 +32,8 @@ Phase 2 错误码使用 `RANGE_*` 与 `CONTAINER_*` 命名空间。公共类型�
 Phase 3 增加 `ENGINE_*` 与 `NATIVE_*` 稳定错误码。`Micros` 始终为整数微秒；未知 duration、当前媒体时间和统计时间使用 `null`，不会用 `NaN`、`Infinity` 或负数伪造数据。
 
 Phase 4 增加 `CUSTOM_*` 与 `WEBCODECS_*` 稳定错误码、`customVideoStats`、`readVideoFrame()` 和不携带帧本体的 `frameavailable` 事件。NativeMediaPipeline 调用 `readVideoFrame()` 返回 `CUSTOM_FRAME_ACCESS_UNAVAILABLE`，不会从 HTMLVideo 合成帧。
+
+Phase 5 增加 `customAudioStats`、`audioClock`、`audiostatechange`、`audiounderrun` 和 `clockupdate`。事件只发送统计、状态和整数微秒，不发送 `AudioData`、PCM、压缩 packet 或 URL。`AudioData` 在 `copyTo()` 后立即 close；PCM 仅由有界 ring/MessagePort/AudioWorklet 持有。
 
 ## VideoFrame 所有权
 

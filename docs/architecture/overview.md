@@ -35,7 +35,7 @@ Source → Range Loader → Demux Worker
 
 HTMLVideo 不强制进入 `VideoFrame → WebGPU`。只有启用高级帧处理时才通过可选 Frame Adapter 切换到自定义渲染路径。
 
-Phase 4 只落地该路径的视频前半段：`SourceDescriptor → Phase 2 Demux Worker → DemuxPacket → EncodedVideoChunk → VideoDecoder → bounded VideoFrame queue → readVideoFrame()`。它不创建 AudioDecoder、AudioContext、Renderer、canvas 或隐藏 HTMLVideo，因此 `play()` 只允许解码泵继续运行，不代表画面已显示或已具备完整播放。
+Phase 5 扩展为：`SourceDescriptor → Phase 2 Demux Worker → 同一 response 的 audio/video DemuxPacket 路由`；视频保持 `EncodedVideoChunk → VideoDecoder → bounded VideoFrame queue → readVideoFrame()`，音频为 `EncodedAudioChunk → AudioDecoder → AudioData → Float32 PCM → bounded ring → AudioWorklet → AudioContext`。有音频时实际消费 sample frame 是主时钟，无音频时使用可暂停墙钟。Phase 5 仍不创建 Renderer/Canvas/隐藏 HTMLVideo，因此 `readVideoFrame()` 的即时 pull 和所有权不变，Phase 6 才显示画面。
 
 Demux Worker 直接复用 Phase 2 的 Range Loader、ContainerAdapter、Demuxer 和 start/read/seek/close 协议。MIME、RFC6381 Codec、codecPrivate 和 dimensions 全部来自有限 Probe，不从扩展名推导。每次响应必须同时匹配 sessionId、epoch 与 requestId；Worker 不可用时明确返回 `WEBCODECS_WORKER_FAILED`，不退回主线程完整下载。
 
@@ -86,6 +86,7 @@ CapabilitySnapshot
 
 - 视频统一输出 `VideoFrame` 或内部等价的 GPU 纹理句柄。
 - 音频统一输出 `AudioData` 或标准化 PCM block。
+- Phase 5 音频只允许 mono/stereo 明确布局；`AudioData` copy 完即 close，旧 epoch/preroll/非法对象立即 close。
 - 字幕统一输出带 `start`、`end`、`text`、`style` 的 `SubtitleCue`。
 - 轨道统一使用 `TrackInfo`，包含语言、名称、Codec、分辨率、采样率和声道数。
 - 所有时间戳使用微秒整数或明确的秒浮点边界，禁止在模块之间混用单位。

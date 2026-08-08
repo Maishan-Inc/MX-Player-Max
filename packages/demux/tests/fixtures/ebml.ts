@@ -89,9 +89,14 @@ function trackEntry(options: {
       element(0xe0, concat(uintElement(0xb0, 320), uintElement(0xba, 180))),
     ))
   }
+  const codecPrivate = options.codecId === 'A_AAC'
+    ? Uint8Array.of(0x11, 0x90)
+    : options.codecId === 'A_OPUS'
+      ? concat(new TextEncoder().encode('OpusHead'), Uint8Array.of(1, 2, 0, 0, 0x80, 0xbb, 0, 0, 0, 0, 0))
+      : null
   return element(0xae, concat(
     ...common,
-    element(0x63a2, Uint8Array.of(0x4f, 0x70, 0x75, 0x73)),
+    ...(codecPrivate === null ? [] : [element(0x63a2, codecPrivate)]),
     element(0xe1, concat(element(0xb5, float64(48_000)), uintElement(0x9f, 2))),
   ))
 }

@@ -7,6 +7,8 @@ import { createRangeLoader, probeContainer, type RangeLoader } from '@mx-player-
 import { createPlatformPolicy } from '@mx-player-max/platform'
 import { createStrategyEngine } from '@mx-player-max/strategy'
 import type {
+  AudioClockSnapshot,
+  CustomAudioStats,
   CustomVideoStats,
   DecodedVideoFrame,
   EngineEventListener,
@@ -33,6 +35,7 @@ import { resolveVideoTarget, type ResolvedVideoTarget } from './native/target'
 export { EngineErrorException, isEngineError } from './native/errors'
 export { NativeMediaPipeline } from './native/pipeline'
 export { CustomMediaPipeline } from './custom/pipeline'
+export { CustomAudioController } from './custom/audio-controller'
 export { DemuxWorkerSession, createBrowserDemuxWorkerTransport } from './custom/demux-session'
 export { DEFAULT_CUSTOM_VIDEO_OPTIONS, resolveCustomVideoOptions, VideoFrameQueue } from './custom/frame-queue'
 export { createVideoElementAdapter } from './native/video-element-adapter'
@@ -149,6 +152,10 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       case 'seeking': setState('seeking'); break
       case 'seeked': setState(event.resume); break
       case 'frameavailable': emit('frameavailable', { queuedFrames: event.queuedFrames, bufferedDuration: event.bufferedDuration }); break
+      case 'audiostatechange': emit('audiostatechange', { state: event.stats.outputState, stats: event.stats }); break
+      case 'audiounderrun': emit('audiounderrun', { count: event.stats.underruns, bufferedDuration: event.stats.bufferedDuration }); break
+      case 'clockupdate': emit('clockupdate', { clock: event.clock }); break
+      case 'buffering': emit('buffering', { bufferedAhead: event.bufferedAhead }); break
       case 'ended': setState('ended'); break
       case 'error': emitError(event.error); break
     }
@@ -166,6 +173,12 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     },
     get customVideoStats(): CustomVideoStats | null {
       return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.stats : null
+    },
+    get customAudioStats(): CustomAudioStats | null {
+      return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioStats : null
+    },
+    get audioClock(): AudioClockSnapshot | null {
+      return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioClock : null
     },
 
     on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
@@ -276,6 +289,10 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         if (!capabilities.webCodecsVideo || report.webCodecs.video.status !== 'supported' || !report.query.video) {
           throw createEngineError(ErrorCodes.WEBCODECS_NOT_SUPPORTED, 'The selected video configuration is not supported by WebCodecs', false)
         }
+        const hasAudioTrack = media.tracks.some((track) => track.kind === 'audio')
+        if (hasAudioTrack && (!capabilities.webCodecsAudio || report.webCodecs.audio.status !== 'supported' || !report.query.audio)) {
+          throw createEngineError(ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE, 'The selected audio configuration is not supported by WebCodecs', false)
+        }
         releaseUnusedOwnedVideo()
         currentMedia = media
         currentSelection = playbackSelection
@@ -283,7 +300,9 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
           source: options.source,
           media,
           capabilityReport: report,
+          capabilities,
           ...(options.customVideo === undefined ? {} : { customVideo: options.customVideo }),
+          ...(options.customAudio === undefined ? {} : { customAudio: options.customAudio }),
           callbacks: {
             isActive: () => !closed && loadEpoch === epoch,
             onEvent: (event) => handleCustomEvent(event, loadEpoch),
@@ -298,7 +317,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       } catch (cause) {
         if (loadEpoch !== epoch || closed) throw loadAborted(intent, cause)
         const error = mapLoadError(cause, intent)
-        if (error.code === ErrorCodes.NATIVE_AUTOPLAY_BLOCKED) {
+        if (error.code === ErrorCodes.NATIVE_AUTOPLAY_BLOCKED || error.code === ErrorCodes.AUDIO_AUTOPLAY_BLOCKED) {
           if (currentState !== 'ready') setState('ready')
           emit('error', { error })
         } else {
@@ -409,7 +428,7 @@ function validateSource(source: SourceDescriptor): void {
 function mapLoadError(cause: unknown, intent: MXPlayerOptions['intent']): EngineErrorException {
   const customIntent = intent !== undefined && intent !== 'normal' && intent !== 'low-power'
   const code = typeof cause === 'object' && cause !== null && 'code' in cause ? String((cause as { code?: unknown }).code) : ''
-  if (isEngineError(cause) && (customIntent || code.startsWith('CUSTOM_') || code.startsWith('WEBCODECS_'))) return cause as EngineErrorException
+  if (isEngineError(cause) && (customIntent || code.startsWith('CUSTOM_') || code.startsWith('WEBCODECS_') || code.startsWith('AUDIO_'))) return cause as EngineErrorException
   if (code === ErrorCodes.RANGE_CORS_FAILED) return createEngineError(ErrorCodes.NATIVE_CORS_FAILED, 'The remote media failed CORS validation', true, cause)
   if (code === ErrorCodes.RANGE_NETWORK_FAILED) return createEngineError(ErrorCodes.NATIVE_NETWORK_FAILED, 'The remote media network request failed', true, cause)
   if (code === ErrorCodes.RANGE_ABORTED) return createEngineError(ErrorCodes.NATIVE_ABORTED, 'The media load was aborted', true, cause)

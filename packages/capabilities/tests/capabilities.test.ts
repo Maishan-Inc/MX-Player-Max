@@ -286,6 +286,26 @@ describe('probeMediaCapabilities', () => {
     expect(decodingInfo).toHaveBeenCalledOnce()
   })
 
+  it('forwards demuxed audio codec private data into the AudioDecoder capability query', async () => {
+    const media = createMedia()
+    const audio = media.tracks.find((track) => track.kind === 'audio')
+    if (!audio) throw new Error('missing fixture audio')
+    const asc = Uint8Array.of(0x11, 0x90).buffer
+    audio.codecPrivate = asc
+    const audioProbe = vi.fn(async () => true)
+    const adapter = createAdapter({
+      hasVideoDecoder: () => true,
+      hasAudioDecoder: () => true,
+      isVideoConfigSupported: async () => true,
+      isAudioConfigSupported: audioProbe,
+    })
+    const cache = new MemoryCache()
+    const snapshot = await detectCapabilities({ adapter, cache, sdkVersion: 'test-audio-description' })
+    const report = await probeMediaCapabilities(media, { adapter, cache, snapshot, sdkVersion: 'test-audio-description' })
+    expect(report.query.audio?.description).toBe(asc)
+    expect(audioProbe).toHaveBeenCalledWith(expect.objectContaining({ codec: 'mp4a.40.2', description: asc }))
+  })
+
   it('uses only the present track when probing video-only media', async () => {
     const media = createMedia()
     media.tracks = media.tracks.filter((track) => track.kind === 'video')

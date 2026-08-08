@@ -1,5 +1,7 @@
 import { createMediaEngine } from '@mx-player-max/core'
 import type {
+  AudioClockSnapshot,
+  CustomAudioStats,
   CustomVideoStats,
   DecodedVideoFrame,
   EngineEventListener,
@@ -29,6 +31,8 @@ export class MXPlayer {
   get nativeFeatures(): NativeMediaFeatures | null { return this.engine.nativeFeatures }
   get nativeStats(): NativePlaybackStats | null { return this.engine.nativeStats }
   get customVideoStats(): CustomVideoStats | null { return this.engine.customVideoStats }
+  get customAudioStats(): CustomAudioStats | null { return this.engine.customAudioStats }
+  get audioClock(): AudioClockSnapshot | null { return this.engine.audioClock }
 
   on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
     return this.engine.on(event, listener)

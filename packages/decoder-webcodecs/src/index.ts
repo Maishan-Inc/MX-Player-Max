@@ -15,8 +15,16 @@ export interface WebCodecsDecoder {
 }
 
 export type {
+  AudioDecoderAdapterCallbacks,
+  AudioDecoderAdapterLike,
+  AudioDecoderAdapterOptions,
+  AudioDecoderRuntime,
+  AudioDecoderRuntimeCallbacks,
+  AudioDecoderRuntimeFactory,
+  AudioDecoderRuntimeState,
   AvcDecoderConfigExtension,
   EncodedVideoChunkFactory,
+  EncodedAudioChunkFactory,
   Phase4VideoDecoderConfig,
   VideoDecoderAdapterCallbacks,
   VideoDecoderAdapterLike,
@@ -26,9 +34,13 @@ export type {
   VideoDecoderRuntimeFactory,
   VideoDecoderRuntimeState,
 } from './contracts'
+export { createAudioDecoderConfig } from './audio-config'
+export { AudioDecoderAdapter } from './audio-decoder-adapter'
+export { createEncodedAudioChunk } from './encoded-audio-chunk'
 export { createEncodedVideoChunk } from './encoded-chunk'
 export { createWebCodecsError, WebCodecsError } from './errors'
 export { browserEncodedVideoChunkFactory, createBrowserVideoDecoderRuntime } from './runtime-adapter'
+export { browserEncodedAudioChunkFactory, createBrowserAudioDecoderRuntime } from './runtime-adapter'
 export { createVideoDecoderConfig } from './video-config'
 export { VideoDecoderAdapter } from './video-decoder-adapter'
 export type {

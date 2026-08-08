@@ -1,5 +1,9 @@
 import { ErrorCodes } from '@mx-player-max/types'
 import type {
+  AudioDecoderRuntime,
+  AudioDecoderRuntimeCallbacks,
+  AudioDecoderRuntimeFactory,
+  EncodedAudioChunkFactory,
   EncodedVideoChunkFactory,
   VideoDecoderRuntime,
   VideoDecoderRuntimeCallbacks,
@@ -13,6 +17,14 @@ interface VideoDecoderConstructorLike {
 
 interface EncodedVideoChunkConstructorLike {
   new(init: EncodedVideoChunkInit): EncodedVideoChunk
+}
+
+interface AudioDecoderConstructorLike {
+  new(init: AudioDecoderInit): AudioDecoder
+}
+
+interface EncodedAudioChunkConstructorLike {
+  new(init: EncodedAudioChunkInit): EncodedAudioChunk
 }
 
 class BrowserVideoDecoderRuntime implements VideoDecoderRuntime {
@@ -51,6 +63,41 @@ export const browserEncodedVideoChunkFactory: EncodedVideoChunkFactory = {
     if (!constructor) {
       throw createWebCodecsError(ErrorCodes.WEBCODECS_API_UNAVAILABLE, 'EncodedVideoChunk is unavailable', false)
     }
+    return new constructor(init)
+  },
+}
+
+class BrowserAudioDecoderRuntime implements AudioDecoderRuntime {
+  readonly #decoder: AudioDecoder
+
+  constructor(decoder: AudioDecoder, callbacks: AudioDecoderRuntimeCallbacks) {
+    this.#decoder = decoder
+    this.#decoder.addEventListener('dequeue', callbacks.dequeue)
+  }
+
+  get state(): AudioDecoderRuntime['state'] { return this.#decoder.state }
+  get decodeQueueSize(): number { return this.#decoder.decodeQueueSize }
+  configure(config: AudioDecoderConfig): void { this.#decoder.configure(config) }
+  decode(chunk: EncodedAudioChunk): void { this.#decoder.decode(chunk) }
+  flush(): Promise<void> { return this.#decoder.flush() }
+  reset(): void { this.#decoder.reset() }
+  close(): void { this.#decoder.close() }
+}
+
+export const createBrowserAudioDecoderRuntime: AudioDecoderRuntimeFactory = (callbacks) => {
+  const constructor = (globalThis as unknown as { AudioDecoder?: AudioDecoderConstructorLike }).AudioDecoder
+  if (!constructor) throw createWebCodecsError(ErrorCodes.WEBCODECS_AUDIO_API_UNAVAILABLE, 'AudioDecoder is unavailable', false)
+  try {
+    return new BrowserAudioDecoderRuntime(new constructor({ output: callbacks.output, error: callbacks.error }), callbacks)
+  } catch (cause) {
+    throw createWebCodecsError(ErrorCodes.WEBCODECS_AUDIO_API_UNAVAILABLE, 'AudioDecoder could not be created', false, cause)
+  }
+}
+
+export const browserEncodedAudioChunkFactory: EncodedAudioChunkFactory = {
+  create(init: EncodedAudioChunkInit): EncodedAudioChunk {
+    const constructor = (globalThis as unknown as { EncodedAudioChunk?: EncodedAudioChunkConstructorLike }).EncodedAudioChunk
+    if (!constructor) throw createWebCodecsError(ErrorCodes.WEBCODECS_AUDIO_API_UNAVAILABLE, 'EncodedAudioChunk is unavailable', false)
     return new constructor(init)
   },
 }

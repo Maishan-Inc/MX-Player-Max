@@ -5,6 +5,10 @@ import {
   type VideoDecoderAdapterLike,
 } from '@mx-player-max/decoder-webcodecs'
 import type {
+  AudioClockSnapshot,
+  CapabilitySnapshot,
+  CustomAudioOptions,
+  CustomAudioStats,
   CustomVideoOptions,
   CustomVideoStats,
   DecodedVideoFrame,
@@ -19,6 +23,7 @@ import type {
 import { ErrorCodes } from '@mx-player-max/types'
 import { createEngineError, isEngineError, type EngineErrorException } from '../native/errors'
 import { DemuxWorkerSession, type DemuxSessionLike } from './demux-session'
+import { CustomAudioController, type CustomAudioControllerDependencies } from './audio-controller'
 import type { CustomPipelineEvent } from './events'
 import {
   resolveCustomVideoOptions,
@@ -35,13 +40,16 @@ export interface CustomPipelineCallbacks {
 export interface CustomPipelineDependencies {
   createDemuxSession?(options: ResolvedCustomVideoOptions): DemuxSessionLike
   createDecoder?(callbacks: VideoDecoderAdapterCallbacks): VideoDecoderAdapterLike
+  audio?: CustomAudioControllerDependencies
 }
 
 export interface CustomMediaPipelineOptions {
   source: SourceDescriptor
   media: MediaDescriptor
   capabilityReport: MediaCapabilityReport
+  capabilities?: CapabilitySnapshot
   customVideo?: CustomVideoOptions
+  customAudio?: CustomAudioOptions
   callbacks: CustomPipelineCallbacks
   dependencies?: CustomPipelineDependencies
 }
@@ -84,6 +92,7 @@ export class CustomMediaPipeline {
   readonly #demux: DemuxSessionLike
   readonly #decoder: VideoDecoderAdapterLike
   readonly #queue: VideoFrameQueue
+  readonly #audio: CustomAudioController
   readonly #pendingReaders: PendingReader[] = []
   readonly #reservations = new Map<number, number[]>()
   readonly #seenFrames = new WeakSet<VideoFrame>()
@@ -139,9 +148,33 @@ export class CustomMediaPipeline {
         if (epoch === this.#epoch) this.#signalCapacity()
       },
     })
+    this.#audio = new CustomAudioController({
+      media: options.media,
+      report: options.capabilityReport,
+      ...(options.capabilities === undefined ? {} : { capabilities: options.capabilities }),
+      ...(options.customAudio === undefined ? {} : { customAudio: options.customAudio }),
+      callbacks: {
+        onCapacity: () => this.#signalCapacity(),
+        onStarted: () => {
+          if (this.#playing && !this.#closed && !this.#failed) this.#callbacks.onEvent({ type: 'playing' })
+        },
+        onDrained: () => this.#finishEndedIfDrained(),
+        onState: (stats) => this.#callbacks.onEvent({ type: 'audiostatechange', stats }),
+        onUnderrun: (stats) => {
+          this.#callbacks.onEvent({ type: 'audiounderrun', stats })
+          this.#callbacks.onEvent({ type: 'buffering', bufferedAhead: stats.bufferedDuration })
+        },
+        onClock: (clock) => this.#callbacks.onEvent({ type: 'clockupdate', clock }),
+        onError: (error, epoch) => this.#handleDecoderError(error, epoch),
+      },
+      ...(options.dependencies?.audio === undefined ? {} : { dependencies: options.dependencies.audio }),
+    })
   }
 
   get videoTrack(): TrackInfo { return this.#videoTrack }
+  get audioTrack(): TrackInfo | null { return this.#audio.track }
+  get audioStats(): CustomAudioStats | null { return this.#audio.stats }
+  get audioClock(): AudioClockSnapshot { return this.#audio.clock }
   get stats(): CustomVideoStats {
     return {
       decodedFrames: this.#decodedFrames,
@@ -169,6 +202,7 @@ export class CustomMediaPipeline {
       ErrorCodes.WEBCODECS_CONFIGURE_FAILED,
       'VideoDecoder configuration timed out',
     )
+    await this.#audio.initialize(metadata.tracks, this.#epoch)
     this.#ensureEpoch(0)
     this.#initialized = true
     this.#callbacks.onEvent({ type: 'ready' })
@@ -183,7 +217,12 @@ export class CustomMediaPipeline {
     }
     if (this.#playing || this.#decoderEndOfStream) return
     this.#playing = true
-    this.#callbacks.onEvent({ type: 'playing' })
+    try {
+      await this.#audio.requestPlay()
+    } catch (cause) {
+      this.#playing = false
+      throw cause
+    }
     this.#signalCapacity()
     this.#schedulePump()
   }
@@ -196,6 +235,7 @@ export class CustomMediaPipeline {
     }
     if (!this.#playing) return
     this.#playing = false
+    this.#audio.pause()
     this.#callbacks.onEvent({ type: 'paused' })
   }
 
@@ -229,6 +269,7 @@ export class CustomMediaPipeline {
     const seekEpoch = this.#epoch + 1
     this.#epoch = seekEpoch
     this.#playing = false
+    this.#audio.pause()
     this.#seeking = true
     this.#resumeAfterSeek = resumePlaying
     this.#requireKeyframe = true
@@ -262,6 +303,7 @@ export class CustomMediaPipeline {
         ErrorCodes.WEBCODECS_CONFIGURE_FAILED,
         'VideoDecoder reconfiguration timed out',
       )
+      await this.#audio.reset(seekEpoch, time)
       this.#ensureEpoch(seekEpoch)
       await this.#demux.seek(seekEpoch, time)
       this.#ensureEpoch(seekEpoch)
@@ -272,8 +314,11 @@ export class CustomMediaPipeline {
       this.#seeking = false
       this.#seekTarget = null
       this.#playing = this.#resumeAfterSeek
-      this.#callbacks.onEvent({ type: 'seeked', resume: this.#resumeAfterSeek ? 'playing' : 'ready' })
-      if (this.#resumeAfterSeek) this.#schedulePump()
+      this.#callbacks.onEvent({ type: 'seeked', resume: 'ready' })
+      if (this.#resumeAfterSeek) {
+        await this.#audio.requestPlay()
+        this.#schedulePump()
+      }
     } catch (cause) {
       if (seekEpoch !== this.#epoch) throw abortedError('The seek operation was superseded', cause)
       this.#seeking = false
@@ -291,17 +336,20 @@ export class CustomMediaPipeline {
     this.#ensureUsable()
     if (!Number.isFinite(rate) || rate <= 0) throw createEngineError(ErrorCodes.NATIVE_INVALID_RATE, 'Playback rate must be a finite positive value', false)
     this.#playbackRate = rate
+    this.#audio.setPlaybackRate(rate)
   }
 
   setVolume(volume: number): void {
     this.#ensureUsable()
     if (!Number.isFinite(volume) || volume < 0 || volume > 1) throw createEngineError(ErrorCodes.NATIVE_INVALID_VOLUME, 'Volume must be between 0 and 1', false)
     this.#volume = volume
+    this.#audio.setVolume(volume)
   }
 
   setMuted(muted: boolean): void {
     this.#ensureUsable()
     this.#muted = muted
+    this.#audio.setMuted(muted)
   }
 
   close(): void {
@@ -321,6 +369,7 @@ export class CustomMediaPipeline {
     this.#queue.clear()
     this.#demux.close(this.#epoch)
     this.#decoder.close()
+    this.#audio.close()
   }
 
   #schedulePump(): void {
@@ -342,6 +391,16 @@ export class CustomMediaPipeline {
     while (this.#isPumpActive(epoch)) {
       const packet = this.#pendingPackets.shift()
       if (packet) {
+        if (packet.kind === 'audio' && packet.trackId === this.#audio.track?.id) {
+          while (!this.#audio.canDecode()) {
+            this.#backpressured = true
+            const waiter = this.#createCapacityWaiter(epoch)
+            await waiter.promise
+            this.#ensureEpoch(epoch)
+          }
+          this.#audio.decode(packet, epoch)
+          continue
+        }
         if (packet.kind !== 'video' || packet.trackId !== this.#videoTrack.id) continue
         if (this.#requireKeyframe) {
           if (!packet.keyframe) continue
@@ -366,7 +425,8 @@ export class CustomMediaPipeline {
       if (!this.#isPumpActive(epoch)) return
       const response = await this.#demux.read(epoch)
       this.#ensureEpoch(epoch)
-      this.#pendingPackets = response.packets.filter((value) => value.kind === 'video' && value.trackId === this.#videoTrack.id)
+      this.#pendingPackets = response.packets.filter((value) => (value.kind === 'video' && value.trackId === this.#videoTrack.id)
+        || (value.kind === 'audio' && value.trackId === this.#audio.track?.id))
       if (response.endOfStream) this.#demuxEndOfStream = true
       if (!this.#isPumpActive(epoch)) return
     }
@@ -398,6 +458,7 @@ export class CustomMediaPipeline {
 
   #atHighWater(): boolean {
     if (this.#decoder.decodeQueueSize >= this.#options.maxDecodeQueueSize) return true
+    if (this.#audio.atHighWater()) return true
     if (this.#queue.length + this.#reservedFrames >= this.#options.maxDecodedFrames) return true
     if (this.#queue.bufferedDuration + this.#reservedDuration >= this.#options.maxBufferedDuration) return true
     return this.#backpressured && this.#queue.length > this.#options.lowWaterMark
@@ -501,13 +562,12 @@ export class CustomMediaPipeline {
   async #flushEndOfStream(epoch: number): Promise<void> {
     if (this.#decoderEndOfStream) return
     try {
-      await this.#awaitDecoderOperation(
-        this.#decoder.flush(epoch),
-        epoch,
-        ErrorCodes.WEBCODECS_FLUSH_FAILED,
-        'VideoDecoder flush timed out',
-      )
+      await Promise.all([
+        this.#awaitDecoderOperation(this.#decoder.flush(epoch), epoch, ErrorCodes.WEBCODECS_FLUSH_FAILED, 'VideoDecoder flush timed out'),
+        this.#audio.flush(epoch),
+      ])
     } catch (cause) {
+      if (isEngineError(cause)) throw cause
       throw createEngineError(ErrorCodes.WEBCODECS_FLUSH_FAILED, 'VideoDecoder flush failed at end of stream', true, cause)
     }
     this.#ensureEpoch(epoch)
@@ -521,7 +581,7 @@ export class CustomMediaPipeline {
   }
 
   #finishEndedIfDrained(): void {
-    if (!this.#decoderEndOfStream || this.#queue.length > 0) return
+    if (!this.#decoderEndOfStream || this.#queue.length > 0 || !this.#audio.drained) return
     for (const reader of this.#pendingReaders.splice(0)) reader.resolve(null)
     if (!this.#endedEmitted) {
       this.#endedEmitted = true
@@ -672,6 +732,7 @@ export class CustomMediaPipeline {
     this.#queue.clear()
     this.#demux.close(this.#epoch)
     this.#decoder.close()
+    this.#audio.close()
     if (this.#callbacks.isActive()) this.#callbacks.onEvent({ type: 'error', error })
   }
 }

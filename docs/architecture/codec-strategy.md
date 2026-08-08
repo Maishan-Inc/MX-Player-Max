@@ -220,6 +220,10 @@ Demuxer 输出必须转换成 WebCodecs 期望的格式：
 
 ### 4.5 Phase 4 实际配置边界
 
+### 4.6 Phase 5 AudioDecoder 配置边界
+
+Phase 5 音频候选必须同时满足能力快照、`MediaCapabilityReport.query.audio` 和 `TrackInfo` 的具体 codec/sampleRate/channels/private data。AAC/Opus/MP3 是唯一启用的 AudioDecoder codec；`AudioDecoder.isConfigSupported()` 只验证候选，运行时 configure 失败仍必须原子报错/回退。文件名、扩展名和 MIME 不能生成 audio codec 或 description。
+
 Phase 4 的 `@mx-player-max/decoder-webcodecs` 只接收 `MediaCapabilityReport.query.video` 已验证为 supported 的具体配置：
 
 - MP4/Matroska H.264 必须有兼容 avcC。MP4 Probe 已产生 `avc1.xxxxxx`；Matroska 若只给出通用 `avc1`，capability query 仅可从 avcC 的 profile/compatibility/level 字节规范化 RFC6381 字符串，不生成 SPS/PPS。packet 保持长度前缀格式并声明 AVC format。

@@ -242,6 +242,7 @@ function codecString(type: string, privateData: Uint8Array | undefined): string 
     const objectType = (privateData[0] ?? 0) >> 3
     if (objectType > 0) return `mp4a.40.${objectType}`
   }
+  if (type === '.mp3' || type === 'mp3 ') return 'mp3'
   return type
 }
 

@@ -165,6 +165,8 @@ Phase 13 质量、安全和性能固化
 
 目标：让自定义视频管线具备可长时间稳定的音频输出。
 
+状态：实现完成；本机 TypeScript/Vitest/构建验收通过。真实 Chrome、Firefox、macOS Safari 最新两个稳定版本及 30 分钟 drift/CORS Range/autoplay smoke 需外部浏览器矩阵执行，当前标记 pending。
+
 ### 任务
 
 1. 实现 WebCodecs `AudioDecoder` Adapter。
@@ -179,6 +181,13 @@ Phase 13 质量、安全和性能固化
 - AAC/Opus/MP3 样本可以连续播放 30 分钟而不明显漂移。
 - 在非跨源隔离环境中使用 MessagePort 缓冲仍能播放。
 - 音频解码失败时错误边界明确，不能静默播放错误数据。
+
+### 已交付约束
+
+- AAC/Opus/MP3 AudioDecoder 配置来自 Probe 的 codec/codecPrivate/sampleRate/channels；不猜测扩展名、MIME 或未知布局。
+- AudioData → Float32 PCM → stateful resampler → bounded ring/MessagePort/SAB → AudioWorklet → GainNode；SAB 只在隔离能力确认后启用。
+- AudioContext sample clock 只按实际消费 sample frame 推进；无音频使用 monotonic wall clock；seek/连续 epoch/EOS drain/close 都覆盖统一生命周期。
+- Phase 5 建立 `VideoFrameScheduler` 的 wait/present/drop 契约，但不创建 Renderer，不改变 `readVideoFrame()` pull/ownership。
 
 ## 9. Phase 6：WebGPU/WebGL2/Canvas2D 渲染器
 

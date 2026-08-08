@@ -127,16 +127,23 @@ function mapTrackKind(value: number | null): TrackKind | null {
   return null
 }
 
-function mapCodec(codecId: string): string | undefined {
+function mapCodec(codecId: string, codecPrivate: ArrayBuffer | undefined): string | undefined {
   const codecs: Readonly<Record<string, string>> = {
     'V_MPEG4/ISO/AVC': 'avc1',
     'V_MPEGH/ISO/HEVC': 'hvc1',
     V_VP8: 'vp8',
     V_VP9: 'vp09',
     V_AV1: 'av01',
-    A_AAC: 'mp4a.40.2',
     A_OPUS: 'opus',
+    'A_MPEG/L3': 'mp3',
     A_VORBIS: 'vorbis',
+  }
+  if (codecId === 'A_AAC') {
+    if (codecPrivate !== undefined && codecPrivate.byteLength > 0) {
+      const objectType = (new Uint8Array(codecPrivate)[0] ?? 0) >> 3
+      if (objectType > 0) return `mp4a.40.${objectType}`
+    }
+    return 'mp4a.40.2'
   }
   return codecs[codecId]
 }
@@ -184,7 +191,7 @@ function buildTrack(raw: RawTrack): EbmlTrackState | null {
   if (raw.number === null || raw.number <= 0 || raw.codecId === null || raw.codecId.length === 0) {
     throw new DemuxError(ErrorCodes.CONTAINER_INVALID, 'Matroska media track is missing identity or CodecID')
   }
-  const codec = mapCodec(raw.codecId)
+  const codec = mapCodec(raw.codecId, raw.codecPrivate)
   let frameRate = raw.frameRate
   if (frameRate === undefined && raw.defaultDurationNs !== undefined && raw.defaultDurationNs > 0) {
     frameRate = 1_000_000_000 / raw.defaultDurationNs

@@ -268,6 +268,8 @@ matchMedia('(color-gamut: rec2020)').matches
 
 ## 8. 声道音频
 
+Phase 5 的自定义输出只把 mono/stereo 作为可靠布局。多声道若无明确矩阵不会猜测 downmix；这避免把 5.1/对象音频错误映射成双声道。PCM 被标准化为 interleaved Float32，实际消费采样数而非 decode/入队时间决定媒体时钟。
+
 **5.1** 表示 5 个全频声道加 1 个低频声道：
 
 ```text
