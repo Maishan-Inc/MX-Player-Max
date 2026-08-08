@@ -23,11 +23,16 @@ const audioClock: AudioClockSnapshot = {
 
 const fakeEngine: MediaEngine = {
   state: 'ready', media: null, selection: null, nativeFeatures: null, nativeStats: null,
+  rendererKind: 'canvas2d', rendererState: 'ready', rendererStats: {
+    kind: 'canvas2d', state: 'ready', presentedFrames: 1, droppedFrames: 0, waitFrames: 0, invalidFrames: 0,
+    fallbackCount: 0, width: 320, height: 180, devicePixelRatio: 1, colorMode: 'sdr-bt709', colorRange: 'full',
+    hdrPreserved: false, hdrReason: null, filter: 'none',
+  },
   customVideoStats: { decodedFrames: 1, deliveredFrames: 0, droppedFrames: 0, droppedStaleFrames: 0, droppedPreSeekFrames: 0, queuedFrames: 1, decodeQueueSize: 0, bufferedDuration: 20, endOfStream: false },
   customAudioStats: audioStats, audioClock,
   on: vi.fn(() => () => {}), off: vi.fn(), once: vi.fn(() => () => {}),
   load: vi.fn(async () => {}), play: vi.fn(async () => {}), pause: vi.fn(), seek: vi.fn(async () => {}),
-  setPlaybackRate: vi.fn(), setVolume: vi.fn(), setMuted: vi.fn(), readVideoFrame: vi.fn(async () => decoded),
+  setPlaybackRate: vi.fn(), setVolume: vi.fn(), setMuted: vi.fn(), setVideoFilter: vi.fn(async () => {}), setVideoTransform: vi.fn(), readVideoFrame: vi.fn(async () => decoded),
   requestFullscreen: vi.fn(async () => {}), exitFullscreen: vi.fn(async () => {}),
   requestPictureInPicture: vi.fn(async () => {}), exitPictureInPicture: vi.fn(async () => {}), close: vi.fn(),
 }
@@ -43,8 +48,15 @@ describe('MXPlayer custom video API', () => {
     expect(player.customVideoStats).toBe(fakeEngine.customVideoStats)
     expect(player.customAudioStats).toBe(audioStats)
     expect(player.audioClock).toBe(audioClock)
+    expect(player.rendererKind).toBe('canvas2d')
+    expect(player.rendererState).toBe('ready')
+    expect(player.rendererStats).toBe(fakeEngine.rendererStats)
+    await player.setVideoFilter({ kind: 'grayscale', amount: 1 })
+    player.setVideoTransform({ rotation: 90 })
     await expect(player.readVideoFrame()).resolves.toBe(decoded)
     expect(fakeEngine.readVideoFrame).toHaveBeenCalledOnce()
+    expect(fakeEngine.setVideoFilter).toHaveBeenCalledWith({ kind: 'grayscale', amount: 1 })
+    expect(fakeEngine.setVideoTransform).toHaveBeenCalledWith({ rotation: 90 })
     decoded.frame.close()
     expect(close).toHaveBeenCalledOnce()
     player.destroy()

@@ -35,4 +35,30 @@ const decoded = await player.readVideoFrame()
 decoded?.frame.close()
 ```
 
-`readVideoFrame()` 是唯一转移 Frame 所有权的 API；普通事件不会广播 Frame。NativeMediaPipeline 调用该 API 会得到 `CUSTOM_FRAME_ACCESS_UNAVAILABLE`。Phase 4 custom 路径只解码视频，不创建音频、时钟或 Renderer；音量/静音设置留待 Phase 5 生效，全屏/PiP 留待 Phase 6 Renderer。
+`readVideoFrame()` 是唯一转移 Frame 所有权的 API；普通事件不会广播 Frame。NativeMediaPipeline 调用该 API 会得到 `CUSTOM_FRAME_ACCESS_UNAVAILABLE`。Phase 5 custom 路径增加 AudioContext/AudioWorklet sample clock；Phase 6 在 Custom 路径创建 Renderer 和 canvas，并通过 rAF scheduler 呈现。
+
+## Phase 6 renderer API
+
+```ts
+const player = new MXPlayer({
+  target: '#surface',
+  source: { kind: 'file', file },
+  customVideo: {
+    renderer: 'auto',
+    render: { fit: 'contain', rotation: 0, devicePixelRatio: 2 },
+    filter: { kind: 'contrast', amount: 1.1 },
+    preserveHdr: true,
+  },
+})
+
+await player.ready
+console.log(player.rendererKind, player.rendererStats)
+await player.setVideoFilter({ kind: 'grayscale', amount: 1 })
+player.setVideoTransform({ rotation: 90 })
+```
+
+`rendererKind`、`rendererState`、`rendererStats` are read-only proxies. `rendererchange`, `rendererstatechange` and `rendererstats` contain only backend/state, dimensions, color range, HDR result, filter and bounded counters. No frame, texture, pixel array, PCM or raw browser error is sent in an SDK event.
+
+`auto` tries WebGPU, then WebGL2, then Canvas2D. An explicit renderer fails with a stable `RENDERER_*` code when unavailable. WebGPU device loss is rebuilt in place; failed rebuild and unrecoverable WebGL2 context loss fall back and emit `rendererchange`. Canvas2D remains watchable without WebGPU. Canvas output supports crop, 0/90/180/270 rotation, contain/cover/fill, DPR and the five bounded filters. A 16,384 backing-dimension limit and backend texture limits are enforced. Phase 6 Custom backends all report `hdrPreserved=false` because end-to-end display HDR cannot be confirmed; unknown color metadata remains unknown.
+
+`readVideoFrame()` ownership is unchanged: a resolved frame belongs to the caller and must be closed by the caller. The internal renderer loop consumes its own pull results and closes presented, dropped, stale and late frames exactly once. Runtime Native <-> Custom migration is load-time in Phase 6; `setVideoFilter()` on Native returns `RENDERER_BACKEND_UNAVAILABLE`, so reload with `customVideo.filter` to request a path change. `pause`, `resume`, playback rate, seek epoch and EOS continue to use the Phase 5 AudioContext/wall-clock contract; close removes rAF, canvas, renderer listeners, GPU/GL resources and pending work.

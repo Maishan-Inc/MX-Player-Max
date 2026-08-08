@@ -114,3 +114,20 @@ Phase 4 的 VideoDecoder runtime 既可直接运行，也提供 Dedicated Worker
 - Phase 4 在请求下一批压缩 packet 前同时检查 frame 数量、reserved duration 与 decoder queue；普通 Frame 溢出是 `WEBCODECS_QUEUE_OVERFLOW` 致命错误，不静默丢帧。
 - 渲染器优先使用 GPU 纹理、转换和合成，避免主线程像素拷贝。
 - 定时器只用于监控和补泵，播放时钟不依赖 React 状态刷新。
+
+## 9. Phase 6 Renderer boundary
+
+Custom video presentation is a separate bounded consumer:
+
+```text
+Demux Worker -> VideoDecoder -> bounded VideoFrame queue
+             -> VideoFrameScheduler -> Renderer -> caller canvas/owned canvas
+AudioWorklet -> AudioContext sample clock --------------------------^
+no audio     -> MediaWallClock -------------------------------------^
+```
+
+`@mx-player-max/renderers` knows only `VideoFrame`, validated render options and canvas/platform APIs. It does not know containers, packets, decoder queues or audio. `createRenderer('auto')` probes WebGPU, WebGL2 and Canvas2D in that order; explicit preferences fail with stable `RENDERER_*` codes instead of silently changing the requested backend. Runtime device/context loss is reported as a stable event and may trigger an atomic fallback.
+
+The renderer loop uses rAF, with at most one in-flight `readVideoFrame()` and one retained frame. Scheduler `wait` retains the frame, `present` transfers it to the renderer, and `drop` closes it. The AudioContext sample clock is the video master whenever audio exists; a monotonic wall clock is used for silent media. Pause stops new reads/renders, seek increments the shared epoch and invalidates old generations, and EOS is emitted only after the decoder/frame queue and audio output truly drain.
+
+Renderer color metadata is conservative: SDR BT.709/sRGB and full/limited/unknown range are recorded; unknown metadata is not guessed as HDR. Crop bounds, 0/90/180/270 rotation, safe dimensions, DPR and a 16,384 backing-size hard cap are validated. Phase 6 WebGPU/WebGL2/Canvas2D all report `hdrPreserved=false` because no standard end-to-end display-HDR confirmation is available. Phase 7 may insert AI post-processing between scheduler and renderer; Phase 8 subtitles remain a separate clock-driven overlay and are not implemented here.

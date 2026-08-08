@@ -135,6 +135,16 @@ describe('strategy engine', () => {
     expect(ranked).toHaveLength(1)
     expect(ranked[0]?.kind).toBe('webcodecs')
     expect(ranked[0]?.renderer).toBe('webgl2')
+    expect(ranked[0]?.reasons).toContain('renderer-fallback-chain:webgl2>canvas2d')
+  })
+
+  it('eliminates WebGPU when its reported texture limit is unusable', () => {
+    const base = createSnapshot()
+    const ranked = createStrategyEngine().rank(createMedia(), 'filters', createContext(createSnapshot({
+      webGpuFeatures: { ...base.webGpuFeatures, maxTextureDimension2d: 0 },
+    })))
+    expect(ranked[0]?.renderer).toBe('webgl2')
+    expect(ranked[0]?.reasons).toContain('renderer-fallback-chain:webgl2>canvas2d')
   })
 
   it('adds a native color-management preference for HDR normal playback', () => {

@@ -10,6 +10,7 @@ import type {
   PlaybackSelection,
 } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
+import type { ManagedVideoRenderer } from '@mx-player-max/renderers'
 import type { CustomMediaPipeline, CustomMediaPipelineOptions } from '../src/index'
 import { FakeDocument, FakeVideo } from './fake-video'
 import { createMedia, createReport, createSnapshot, fakeFrame } from './custom-fakes'
@@ -74,6 +75,24 @@ const audioStats: CustomAudioStats = {
 const audioClock: AudioClockSnapshot = {
   source: 'audio-context', mediaTime: 5_000, contextTime: 1_000_000, renderedFrames: 240,
   sampleRate: 48_000, playbackRate: 1, running: true, underrun: false, epoch: 0,
+}
+
+function createFakeRenderer(): ManagedVideoRenderer {
+  const renderer: ManagedVideoRenderer = {
+    kind: 'canvas2d', state: 'ready',
+    stats: {
+      kind: 'canvas2d', state: 'ready', presentedFrames: 0, droppedFrames: 0, waitFrames: 0,
+      invalidFrames: 0, fallbackCount: 0, width: 320, height: 180, devicePixelRatio: 1,
+      colorMode: 'unknown', colorRange: 'unknown', hdrPreserved: false, hdrReason: 'hdr-not-confirmed', filter: 'none',
+    },
+    capabilities: {
+      kind: 'canvas2d', available: true, filters: ['none', 'grayscale', 'brightness', 'contrast', 'saturate'],
+      maxTextureDimension2d: 16_384, externalTexture: false, hdr: false, lossRecovery: false,
+    },
+    attach: vi.fn(async () => {}), render: vi.fn(), resize: vi.fn(), setFilter: vi.fn(), setTransform: vi.fn(),
+    noteSchedule: vi.fn(), close: vi.fn(),
+  }
+  return renderer
 }
 
 class FakeCustomPipeline {
@@ -227,6 +246,86 @@ describe('MediaEngine custom video integration', () => {
     expect(children).toEqual([retained])
     expect(removeChild).toHaveBeenCalledOnce()
     engine.close()
+  })
+
+  it('reuses a caller canvas for the custom renderer', async () => {
+    const canvas = { tagName: 'CANVAS', width: 320, height: 180, clientWidth: 320, clientHeight: 180, style: {}, getContext: vi.fn() }
+    const renderer = createFakeRenderer()
+    const engine = createMediaEngine({
+      createCustomPipeline: (options) => new FakeCustomPipeline(options) as unknown as CustomMediaPipeline,
+      createRenderer: () => renderer,
+    })
+    await engine.load({ target: canvas as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' })
+    expect(renderer.attach).toHaveBeenCalledWith(canvas)
+    expect(engine.rendererKind).toBe('canvas2d')
+    engine.close()
+    expect(renderer.close).toHaveBeenCalledOnce()
+  })
+
+  it('adds and removes only its owned canvas in a container', async () => {
+    const retained = { marker: 'caller-child' }
+    const children: unknown[] = [retained]
+    const removeChild = vi.fn((node: unknown) => {
+      const index = children.indexOf(node)
+      if (index >= 0) children.splice(index, 1)
+    })
+    const document = {
+      createElement(tag: string): object {
+        return tag === 'canvas'
+          ? { tagName: 'CANVAS', ownerDocument: document, parentNode: null, width: 320, height: 180, clientWidth: 320, clientHeight: 180, style: {}, getContext: vi.fn() }
+          : { tagName: 'VIDEO', ownerDocument: document, parentNode: null, appendChild: vi.fn() }
+      },
+    }
+    const container = {
+      ownerDocument: document, tagName: 'DIV',
+      appendChild(node: object) {
+        children.push(node)
+        ;(node as { parentNode: unknown }).parentNode = { removeChild }
+        return node
+      },
+    }
+    const renderer = createFakeRenderer()
+    const engine = createMediaEngine({
+      createCustomPipeline: (options) => new FakeCustomPipeline(options) as unknown as CustomMediaPipeline,
+      createRenderer: () => renderer,
+    })
+    await engine.load({ target: container as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' })
+    expect(children[0]).toBe(retained)
+    expect(children).toHaveLength(2)
+    expect((children[1] as { tagName: string }).tagName).toBe('CANVAS')
+    engine.close()
+    expect(children).toEqual([retained])
+  })
+
+  it('restores a caller video after custom canvas teardown', async () => {
+    const document = {
+      createElement: vi.fn(() => ({ tagName: 'CANVAS', ownerDocument: document, parentNode: null, width: 320, height: 180, clientWidth: 320, clientHeight: 180, style: {}, getContext: vi.fn() })),
+    }
+    const video = new FakeVideo()
+    video.ownerDocument = document as unknown as FakeDocument
+    const children: unknown[] = [video]
+    const parent = {
+      replaceChild(next: object, previous: object): object {
+        const index = children.indexOf(previous)
+        if (index >= 0) children[index] = next
+        ;(next as { parentNode: unknown }).parentNode = parent
+        return previous
+      },
+      removeChild(node: unknown): void {
+        const index = children.indexOf(node)
+        if (index >= 0) children.splice(index, 1)
+      },
+    }
+    video.parentNode = parent
+    const renderer = createFakeRenderer()
+    const engine = createMediaEngine({
+      createCustomPipeline: (options) => new FakeCustomPipeline(options) as unknown as CustomMediaPipeline,
+      createRenderer: () => renderer,
+    })
+    await engine.load({ target: video as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' })
+    expect((children[0] as { tagName: string }).tagName).toBe('CANVAS')
+    engine.close()
+    expect(children).toEqual([video])
   })
 
   it('does not claim full playback when normal or low-power selects WebCodecs', async () => {

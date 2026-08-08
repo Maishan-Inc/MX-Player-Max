@@ -42,3 +42,13 @@ Phase 5 增加 `customAudioStats`、`audioClock`、`audiostatechange`、`audioun
 - seek、换源、错误或 close 会关闭所有尚未交付的 Frame。
 - 旧 epoch、preroll、非法或 close 后迟到的 Frame 会立即关闭并计入对应统计。
 - 普通事件只发布 queue 数量和 duration，不广播 `VideoFrame`，因此不会产生多个隐含所有者。
+
+Renderer 的 `render(frame)` 是第二个明确所有权边界：一旦接受 frame，Renderer 在上传、绘制、非法参数、device/context lost 或 closed 路径都恰好 close 一次。Scheduler 的 drop/stale 决策由消费方 close；已经通过 `readVideoFrame()` 交给外部但没有传给 Renderer 的 frame 仍只归外部调用方。重复提交同一个对象返回 `RENDERER_FRAME_INVALID`，不会重复 close。
+
+## Phase 6 Renderer contract
+
+`CustomVideoOptions.renderer` 接受 `auto | webgpu | webgl2 | canvas2d`；auto 使用能力验证后的 WebGPU -> WebGL2 -> Canvas2D 链。`render` 提供 crop/rotation/fit/output-size/DPR，`filter` 提供固定的 `none | grayscale | brightness | contrast | saturate` 集合，`preserveHdr` 只是请求而不是保真承诺。滤镜参数由 Renderer 校验和限幅，非法输入返回 `RENDERER_FILTER_UNSUPPORTED`。
+
+`MediaEngine.rendererKind`、`rendererState` 和 `rendererStats` 是只读状态。`rendererchange`、`rendererstatechange`、`rendererstats` 事件只包含 backend/state、尺寸、颜色模式/range、HDR 结果、filter 和有界计数，不包含 `VideoFrame`、`GPUTexture`、像素、`AudioData`、PCM 或浏览器原始异常文本。`setVideoFilter()` 和 `setVideoTransform()` 可更新已激活的 Custom renderer。Phase 6 的 Native -> Custom 切换是 load-time：Native 活跃时调用这些方法返回 `RENDERER_BACKEND_UNAVAILABLE`，应用需要用 `customVideo.filter`/`customVideo.render` 重新 load。
+
+Renderer 尺寸必须是正安全整数，crop 必须位于 frame bounds，rotation 只允许 0/90/180/270，DPR 为有限 `(0, 8]`，canvas backing dimension 硬上限为 16,384 并同时受 backend texture limit 限制。SDR BT.709/sRGB 与 full/limited/unknown range 会显式记录；未知元数据不猜测 HDR。Phase 6 缺少标准的端到端 display-HDR 确认信号，因此 WebGPU/WebGL2/Canvas2D 都保守返回 `hdrPreserved=false`；Native HTMLVideo 仍是当前可声明平台 HDR 色彩管理的路径。

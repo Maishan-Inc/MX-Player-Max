@@ -124,7 +124,7 @@ function createCandidates(
   const renderer = selectCustomRenderer(context.snapshot)
   if (renderer && context.media.webCodecs.playable === 'supported' && supportsRequiredWebCodecs(context)) {
     const advancedIntent = intent !== 'normal' && intent !== 'low-power'
-    const reasons = [advancedIntent ? 'custom-frame-access' : 'webcodecs-fallback', `renderer:${renderer}`]
+    const reasons = [advancedIntent ? 'custom-frame-access' : 'webcodecs-fallback', `renderer:${renderer}`, `renderer-fallback-chain:${rendererFallbackChain(context.snapshot).join('>')}`]
     let score = advancedIntent ? 120 : 70
     if (renderer === 'webgpu') {
       score += 20
@@ -209,10 +209,18 @@ function webCodecsRequirements(context: CapabilityContext): string[] {
 }
 
 function selectCustomRenderer(capabilities: CapabilitySnapshot): Exclude<RendererKind, 'native'> | null {
-  if (capabilities.webGpu) return 'webgpu'
+  if (capabilities.webGpu && capabilities.webGpuFeatures.maxTextureDimension2d > 0) return 'webgpu'
   if (capabilities.webGl2) return 'webgl2'
   if (capabilities.canvas2d) return 'canvas2d'
   return null
+}
+
+function rendererFallbackChain(capabilities: CapabilitySnapshot): string[] {
+  const chain: string[] = []
+  if (capabilities.webGpu && capabilities.webGpuFeatures.maxTextureDimension2d > 0) chain.push('webgpu')
+  if (capabilities.webGl2) chain.push('webgl2')
+  if (capabilities.canvas2d) chain.push('canvas2d')
+  return chain
 }
 
 function hasHdrVideo(media: MediaDescriptor): boolean {

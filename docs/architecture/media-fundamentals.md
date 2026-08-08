@@ -489,3 +489,13 @@ ec-3 + Atmos    → Safari 原生解码，系统透传给 HDMI/AirPlay
 这就是 `codec-strategy.md` 第 7 节按**容器分组**而不是按 Codec 分组的原因，也是 7.3 节 MKV 表格里 HTMLVideo 列恒为「淘汰」的推导过程。
 
 也正因如此，播放器 UI 上不应该提供「开启 HDR」「开启杜比全景声」这类开关——它们不是开关，是一整条能力链的结果。正确做法是**如实显示当前保真度状态**（`HDR10 · 原生路径 · 已保真` / `Dolby Atmos · 已降混为 5.1`），并在用户选择会导致降级的操作（如对 HDR 内容启用滤镜）时明确告知代价。
+
+## 13. VideoFrame presentation fundamentals
+
+A decoded `VideoFrame` is a scarce platform resource, not a reusable JavaScript value. Queue ownership belongs to the decoder pipeline; a successful `readVideoFrame()` transfers ownership to its caller. Passing that object to a renderer transfers temporary ownership again, and the renderer closes it after upload/draw. Scheduler drops, stale epochs, invalid frames and late frames must also close exactly once. Reusing or broadcasting the same frame creates double-close or use-after-close behavior, so ordinary events contain counters only.
+
+Display dimensions and coded dimensions are different concepts. Crop must remain inside the selected frame bounds; output CSS size is multiplied by DPR to produce the backing canvas size. The engine accepts only positive safe integers, 0/90/180/270 rotation and a bounded DPR, then caps both canvas and texture dimensions. `contain` preserves the whole frame with unused canvas area, `cover` fills while clipping, and `fill` may change aspect ratio.
+
+Color metadata is descriptive, not proof of end-to-end display fidelity. BT.709/sRGB and full/limited range can be reported directly from `VideoFrame.colorSpace`. BT.2020 primaries do not by themselves prove HDR; PQ or HLG transfer metadata and a confirmed high-precision texture/canvas/display path are also required. WebGL2 or Canvas2D drawing can remain watchable while honestly reporting `hdrPreserved=false`. The renderer does not use pixel readback to infer color because full-frame GPU-to-CPU copies are slow, privacy-sensitive and unnecessary for presentation.
+
+The presentation time is chosen before drawing. With audio, the number of samples actually consumed by AudioWorklet maps AudioContext time to media time. Without audio, the media wall clock provides the same pause/resume/seek/rate mapping. rAF is only a wake-up mechanism; it is not the media clock. This is why increasing decode concurrency cannot implement playback rate and why an early frame waits while a sufficiently late frame is closed as a drop.

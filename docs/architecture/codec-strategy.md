@@ -458,3 +458,21 @@ manifest 必须记录每个变体的真实体积与 SHA-256，运行时下载后
 - **ProRes 解码** — FFmpeg 中为逆向实现，商业分发需评估 Apple 相关权利。
 
 未完成许可证与专利审查的二进制不得发布到 npm 或公共 CDN。
+
+## 13. Phase 6 renderer selection
+
+Renderer selection is capability-driven after a Custom decoder candidate is viable. It never uses a browser-name mapping:
+
+```text
+verified WebCodecs/WASM candidate
+  -> WebGPU available and maxTextureDimension2d > 0
+  -> otherwise WebGL2 context available
+  -> otherwise Canvas2D context available
+  -> otherwise eliminate the Custom candidate
+```
+
+Candidate reasons record the selected renderer and fallback chain. `filters`, `frame-access`, `editing` and `ai-enhance` exclude pure Native HTMLVideo candidates because Native cannot expose frames. `normal` and `low-power` may still prefer Native. A non-`none` load-time filter promotes a normal/low-power request to `filters`, making the Custom requirement explicit before initialization. Backend initialization still validates the real adapter/device/context because a cached snapshot is necessary but not sufficient.
+
+Phase 6 lacks a standard end-to-end display-HDR confirmation signal, so WebGPU, WebGL2 and Canvas2D all remain SDR-viewable Custom paths with `hdrPreserved=false`. They are not removed merely because HDR cannot be preserved unless `preserveHdr` becomes a future hard product requirement; Native HTMLVideo remains preferred for platform-managed HDR. All three Custom backends support the fixed five-filter set, crop, rotation, fit and bounded sizing, so filter capability failures are eliminated before or rejected with stable errors rather than ignored.
+
+Initial explicit renderer preferences are strict. Runtime WebGPU loss first attempts same-backend rebuild; a failed rebuild may use the remaining WebGL2/Canvas2D chain and records fallback in events/stats. WebGL2 context restore is attempted before fallback. Phase 6 supports load-time Native/Custom selection; runtime Native <-> Custom migration with source/time/rate/volume/mute preservation is documented as not implemented and must not be implied by `setVideoFilter()`.

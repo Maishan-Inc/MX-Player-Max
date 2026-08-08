@@ -92,7 +92,7 @@ async function probeWebGpu(): Promise<WebGpuFeatureSnapshot> {
       maxComputeWorkgroupStorageSize: limits.maxComputeWorkgroupStorageSize,
       maxTextureDimension2d: limits.maxTextureDimension2D,
       maxBufferSize: limits.maxBufferSize,
-      importExternalTexture: false,
+      importExternalTexture: typeof (globalThis as typeof globalThis & { GPUDevice?: { prototype?: { importExternalTexture?: unknown } } }).GPUDevice?.prototype?.importExternalTexture === 'function',
       adapterVendor: info.vendor || null,
       adapterArchitecture: info.architecture || null,
       isFallbackAdapter: info.isFallbackAdapter,

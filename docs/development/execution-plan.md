@@ -25,7 +25,7 @@ Phase 2  Range Loader 与容器抽象       实现完成，三浏览器验收待
 Phase 3  NativeMediaPipeline          实现完成，三浏览器验收待执行
 Phase 4  WebCodecs CustomMediaPipeline  实现完成，三浏览器验收待执行
 Phase 5  音频时钟与 AudioWorklet
-Phase 6  WebGPU/WebGL2/Canvas2D 渲染器
+Phase 6  WebGPU/WebGL2/Canvas2D 渲染器（实现完成，浏览器验收待执行）
 Phase 7  AI 后处理（插帧与超分）
 Phase 8  SRT/ASS 字幕内核
 Phase 9  UI 包（控制条、字幕菜单、主题）
@@ -193,6 +193,8 @@ Phase 13 质量、安全和性能固化
 
 目标：提供高级帧处理能力，同时保证没有 WebGPU 时仍可观看。
 
+状态：实现完成；公共 API、三种 Renderer、rAF scheduler、Core/SDK 集成、fake API 测试与本机 TypeScript/Vitest/构建验收已交付。真实 Chrome/Chromium、Firefox、macOS Safari 最新两个稳定版本和 30 分钟 drift/CPU/内存/功耗 smoke 待外部浏览器矩阵执行，当前标记 pending。
+
 ### 任务
 
 1. 实现 WebGPU Renderer 和设备丢失重建。
@@ -207,6 +209,18 @@ Phase 13 质量、安全和性能固化
 - WebGPU、WebGL2、Canvas2D 依次降级。
 - 滤镜开启时自动切换自定义路径，关闭后可回到 NativeMediaPipeline。
 - Renderer close 后释放 GPU 资源和 VideoFrame。
+
+### 已交付约束
+
+- `auto` 使用 WebGPU -> WebGL2 -> Canvas2D；显式 preference 初始不可用时稳定失败。WebGPU device lost 先原地重建，失败再 fallback；WebGL2 context lost 先等待 restore/rebuild。
+- 固定 WebGPU/WGSL、WebGL2/GLSL 与 Canvas2D `drawImage` 路径，支持 none/grayscale/brightness/contrast/saturate、crop、0/90/180/270 rotation、contain/cover/fill、DPR 和 16,384/texture 双重尺寸上限。
+- SDR BT.709/sRGB、full/limited/unknown range 与保守 HDR 统计；WebGL2/Canvas2D 不声明 HDR 保真，未知 metadata 不猜测。
+- rAF loop 同时最多一个 read Promise 和一个 retained frame，继续使用 Phase 5 AudioContext sample clock/MediaWallClock 与 VideoFrameScheduler wait/present/drop。pause/resume/rate/seek/epoch/EOS 不创建额外解码并发。
+- `readVideoFrame()` 即时 pull/epoch/外部所有权不变；Renderer 仅对传入 `render(frame)` 的 frame 负责，并在所有路径恰好 close 一次。
+- caller canvas 复用；container 只增加 owned canvas 且不清 children；caller video 在 Custom 生命周期内被 canvas 替换并在 teardown 恢复，不创建隐藏 HTMLVideo。
+- Core/SDK 暴露 renderer kind/state/stats、稳定事件及 filter/transform API；事件不携带 Frame、texture、像素、PCM、URL 或原始平台错误。
+- Phase 6 只实现 load-time Native/Custom path selection。运行时关闭滤镜并自动迁回 Native 尚未实现；Native 上调用 `setVideoFilter()` 稳定返回 `RENDERER_BACKEND_UNAVAILABLE`，应用需重新 load。
+- Phase 7 AI postprocess 与 Phase 8 subtitle overlay 保持独立后续边界。
 
 ## 10. Phase 7：AI 后处理（插帧与超分）
 

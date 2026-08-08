@@ -6,6 +6,8 @@ import {
 import { createRangeLoader, probeContainer, type RangeLoader } from '@mx-player-max/demux'
 import { createPlatformPolicy } from '@mx-player-max/platform'
 import { createStrategyEngine } from '@mx-player-max/strategy'
+import { createRenderer } from '@mx-player-max/renderers'
+import type { ManagedVideoRenderer, RendererEvent, RendererFactoryOptions } from '@mx-player-max/renderers'
 import type {
   AudioClockSnapshot,
   CustomAudioStats,
@@ -24,6 +26,11 @@ import type {
   PlaybackSelection,
   PlaybackState,
   SourceDescriptor,
+  CustomRendererKind,
+  RendererStats,
+  RendererState,
+  VideoFilterOptions,
+  VideoTransformOptions,
 } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
 import { CustomMediaPipeline, type CustomMediaPipelineOptions } from './custom/pipeline'
@@ -31,6 +38,7 @@ import type { CustomPipelineEvent } from './custom/events'
 import { createEngineError, isEngineError, type EngineErrorException } from './native/errors'
 import { NativeMediaPipeline, type NativePipelineEvent } from './native/pipeline'
 import { resolveVideoTarget, type ResolvedVideoTarget } from './native/target'
+import { CustomRenderLoop } from './custom/render-loop'
 
 export { EngineErrorException, isEngineError } from './native/errors'
 export { NativeMediaPipeline } from './native/pipeline'
@@ -58,8 +66,14 @@ type ActivePipeline =
   | { kind: 'native'; pipeline: NativeMediaPipeline }
   | { kind: 'custom-video'; pipeline: CustomMediaPipeline }
 
+interface ResolvedCustomCanvasTarget {
+  canvas: HTMLCanvasElement
+  restore(): void
+}
+
 export interface MediaEngineDependencies {
   createCustomPipeline?(options: CustomMediaPipelineOptions): CustomMediaPipeline
+  createRenderer?(options: RendererFactoryOptions): ManagedVideoRenderer
 }
 
 export function createMediaEngine(dependencies: MediaEngineDependencies = {}): MediaEngine {
@@ -69,6 +83,11 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let activePipeline: ActivePipeline | null = null
   let probeReader: RangeLoader | null = null
   let target: ResolvedVideoTarget | null = null
+  let customCanvas: ResolvedCustomCanvasTarget | null = null
+  let activeRenderer: ManagedVideoRenderer | null = null
+  let renderLoop: CustomRenderLoop | null = null
+  let customPipelineReady = false
+  let customRendererRequired = false
   let epoch = 0
   let closed = false
   const listeners = new Map<EngineEventName, Set<(payload: unknown) => void>>()
@@ -91,21 +110,31 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   }
 
   const disposeTarget = (): void => {
-    if (!target?.owned) return
+    if (!target?.owned || !target.video) return
     try { target.video.parentNode?.removeChild(target.video) } catch { /* best effort cleanup */ }
+  }
+
+  const disposeCustomCanvas = (): void => {
+    if (!customCanvas) return
+    try { customCanvas.restore() } catch { /* best effort cleanup */ }
+    customCanvas = null
   }
 
   const releaseUnusedOwnedVideo = (): void => {
-    if (!target?.owned) return
+    if (!target?.owned || !target.video) return
     try { target.video.parentNode?.removeChild(target.video) } catch { /* best effort cleanup */ }
-    target = null
   }
 
   const disposePipeline = (): void => {
+    renderLoop?.close()
+    renderLoop = null
+    activeRenderer?.close()
+    activeRenderer = null
     probeReader?.close()
     probeReader = null
     activePipeline?.pipeline.close()
     activePipeline = null
+    disposeCustomCanvas()
     disposeTarget()
     target = null
   }
@@ -142,22 +171,41 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     if (closed || loadEpoch !== epoch || activePipeline?.kind !== 'custom-video' || currentState === 'error') return
     switch (event.type) {
       case 'ready': {
-        const wasReady = currentState === 'ready'
-        setState('ready')
-        if (!wasReady && currentSelection) emit('ready', { selection: currentSelection })
+        customPipelineReady = true
+        publishCustomReady()
         break
       }
-      case 'playing': setState('playing'); break
-      case 'paused': if (currentState !== 'ended') setState('paused'); break
-      case 'seeking': setState('seeking'); break
-      case 'seeked': setState(event.resume); break
+      case 'playing': renderLoop?.start(); setState('playing'); break
+      case 'paused': renderLoop?.pause(); if (currentState !== 'ended') setState('paused'); break
+      case 'seeking': renderLoop?.stop(true); setState('seeking'); break
+      case 'seeked': if (event.resume === 'playing') renderLoop?.start(); setState(event.resume); break
       case 'frameavailable': emit('frameavailable', { queuedFrames: event.queuedFrames, bufferedDuration: event.bufferedDuration }); break
       case 'audiostatechange': emit('audiostatechange', { state: event.stats.outputState, stats: event.stats }); break
       case 'audiounderrun': emit('audiounderrun', { count: event.stats.underruns, bufferedDuration: event.stats.bufferedDuration }); break
       case 'clockupdate': emit('clockupdate', { clock: event.clock }); break
       case 'buffering': emit('buffering', { bufferedAhead: event.bufferedAhead }); break
-      case 'ended': setState('ended'); break
+      case 'ended': renderLoop?.stop(true); setState('ended'); break
       case 'error': emitError(event.error); break
+    }
+  }
+
+  const publishCustomReady = (): void => {
+    if (!customPipelineReady || (customRendererRequired && activeRenderer?.state !== 'ready')) return
+    const wasReady = currentState === 'ready'
+    setState('ready')
+    if (!wasReady && currentSelection) emit('ready', { selection: currentSelection })
+  }
+
+  const handleRendererEvent = (event: RendererEvent, loadEpoch: number): void => {
+    if (closed || loadEpoch !== epoch || activePipeline?.kind !== 'custom-video' || !activeRenderer) return
+    if (event.type === 'state') {
+      emit('rendererstatechange', { kind: event.kind, previous: event.previous, current: event.current, reason: event.reason })
+    } else if (event.type === 'fallback') {
+      emit('rendererchange', { previous: event.previous, current: event.current, reason: event.reason })
+    } else if (event.type === 'stats') {
+      emit('rendererstats', { stats: event.stats })
+    } else if (event.type === 'error') {
+      emit('error', { error: { code: event.error.code, message: event.error.message, recoverable: event.error.recoverable } })
     }
   }
 
@@ -180,6 +228,9 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     get audioClock(): AudioClockSnapshot | null {
       return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioClock : null
     },
+    get rendererKind(): CustomRendererKind | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.kind ?? null : null },
+    get rendererState(): RendererState | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.state ?? null : null },
+    get rendererStats(): RendererStats | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.stats ?? null : null },
 
     on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
       let eventListeners = listeners.get(event)
@@ -211,8 +262,12 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       disposePipeline()
       currentMedia = null
       currentSelection = null
+      customPipelineReady = false
+      customRendererRequired = false
       setState('loading')
-      const intent = options.intent ?? 'normal'
+      const requestedIntent = options.intent ?? 'normal'
+      const filterEnabled = options.customVideo?.filter !== undefined && options.customVideo.filter.kind !== 'none'
+      const intent = filterEnabled && (requestedIntent === 'normal' || requestedIntent === 'low-power') ? 'filters' : requestedIntent
 
       try {
         target = resolveVideoTarget(options.target)
@@ -255,6 +310,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
           if (report.native.playable !== 'supported' || !contentType) {
             throw createEngineError(ErrorCodes.NATIVE_NOT_SUPPORTED, 'The media is not supported by the native video path', false)
           }
+          if (!target.video) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Native playback requires a video element or container target', false)
           currentMedia = media
           currentSelection = playbackSelection
           const nativePipeline = new NativeMediaPipeline(target.video, {
@@ -280,20 +336,32 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         if (playbackSelection.backend.kind !== 'webcodecs') {
           throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The selected custom backend is not available in Phase 4', true)
         }
-        if (intent === 'normal' || intent === 'low-power') {
+        const shouldCreateRenderer = dependencies.createRenderer !== undefined || dependencies.createCustomPipeline === undefined
+        if ((intent === 'normal' || intent === 'low-power') && !shouldCreateRenderer) {
           const code = capabilities.webCodecsVideo && report.webCodecs.video.status === 'supported'
             ? ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE
             : ErrorCodes.NATIVE_BACKEND_UNAVAILABLE
           throw createEngineError(code, 'Phase 4 WebCodecs does not provide complete audio/video playback', true)
         }
         if (!capabilities.webCodecsVideo || report.webCodecs.video.status !== 'supported' || !report.query.video) {
-          throw createEngineError(ErrorCodes.WEBCODECS_NOT_SUPPORTED, 'The selected video configuration is not supported by WebCodecs', false)
+          // A normal/low-power request must never silently turn into a partial
+          // custom path when WebCodecs cannot provide the selected video track.
+          // Preserve the native-path contract for that case; explicit custom
+          // intents still expose the precise WebCodecs capability error.
+          const code = intent === 'normal' || intent === 'low-power'
+            ? ErrorCodes.NATIVE_BACKEND_UNAVAILABLE
+            : ErrorCodes.WEBCODECS_NOT_SUPPORTED
+          throw createEngineError(code, 'The selected video configuration is not supported by the requested playback path', false)
         }
         const hasAudioTrack = media.tracks.some((track) => track.kind === 'audio')
         if (hasAudioTrack && (!capabilities.webCodecsAudio || report.webCodecs.audio.status !== 'supported' || !report.query.audio)) {
           throw createEngineError(ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE, 'The selected audio configuration is not supported by WebCodecs', false)
         }
         releaseUnusedOwnedVideo()
+        customRendererRequired = shouldCreateRenderer
+        if (shouldCreateRenderer) {
+          customCanvas = createCustomCanvasTarget(target)
+        }
         currentMedia = media
         currentSelection = playbackSelection
         const pipelineOptions: CustomMediaPipelineOptions = {
@@ -312,6 +380,27 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         activePipeline = { kind: 'custom-video', pipeline: customPipeline }
         emit('backendchange', { previous: previousSelection, current: playbackSelection.backend, reason: 'strategy-selection' })
         await customPipeline.initialize()
+        if (shouldCreateRenderer && customCanvas) {
+          const rendererOptions: RendererFactoryOptions = {
+            capabilities,
+            ...(options.customVideo?.renderer === undefined ? {} : { preference: options.customVideo.renderer }),
+            ...(options.customVideo?.filter === undefined ? {} : { filter: options.customVideo.filter }),
+            ...(options.customVideo?.render === undefined ? {} : { transform: options.customVideo.render }),
+            ...(options.customVideo?.preserveHdr === undefined ? {} : { preserveHdr: options.customVideo.preserveHdr }),
+            onEvent: (event) => handleRendererEvent(event, loadEpoch),
+          }
+          activeRenderer = dependencies.createRenderer?.(rendererOptions)
+            ?? createRenderer(options.customVideo?.renderer ?? 'auto', rendererOptions)
+          await activeRenderer.attach(customCanvas.canvas)
+          publishCustomReady()
+          renderLoop = new CustomRenderLoop({
+            readVideoFrame: () => customPipeline.readVideoFrame(),
+            getClock: () => customPipeline.audioClock,
+            renderer: activeRenderer,
+            isActive: () => !closed && loadEpoch === epoch && activePipeline?.kind === 'custom-video',
+            onError: (error) => handleRendererEvent({ type: 'error', kind: activeRenderer?.kind ?? 'canvas2d', error }, loadEpoch),
+          })
+        }
         if (loadEpoch !== epoch || closed) throw loadAborted(intent)
         if (options.autoplay === true) await customPipeline.play()
       } catch (cause) {
@@ -362,6 +451,20 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       ensureOpen()
       if (!activePipeline) throw createEngineError(ErrorCodes.NATIVE_OPERATION_FAILED, 'No media is loaded', true)
       activePipeline.pipeline.setMuted(muted)
+    },
+
+    async setVideoFilter(filter: VideoFilterOptions): Promise<void> {
+      ensureOpen()
+      if (activePipeline?.kind !== 'custom-video' || !activeRenderer) {
+        throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'Runtime Native to Custom renderer switching requires a reload', true)
+      }
+      activeRenderer.setFilter(filter)
+    },
+
+    setVideoTransform(transform: VideoTransformOptions): void {
+      ensureOpen()
+      if (activePipeline?.kind !== 'custom-video' || !activeRenderer) throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'A Custom renderer is not active', true)
+      activeRenderer.setTransform(transform)
     },
 
     readVideoFrame(): Promise<DecodedVideoFrame | null> {
@@ -425,10 +528,45 @@ function validateSource(source: SourceDescriptor): void {
   }
 }
 
+function createCustomCanvasTarget(resolved: ResolvedVideoTarget | null): ResolvedCustomCanvasTarget {
+  if (!resolved) throw createEngineError(ErrorCodes.RENDERER_TARGET_INVALID, 'A Custom renderer has no output target', false)
+  if (isCanvasTarget(resolved.target)) return { canvas: resolved.target, restore: () => {} }
+  const doc = resolved.target.ownerDocument
+  if (!doc) throw createEngineError(ErrorCodes.RENDERER_TARGET_INVALID, 'A Custom renderer target has no owner document', false)
+  let canvas: HTMLCanvasElement
+  try { canvas = doc.createElement('canvas') }
+  catch (cause) { throw createEngineError(ErrorCodes.RENDERER_TARGET_INVALID, 'The Custom renderer canvas could not be created', false, cause) }
+  try {
+    if (resolved.container) {
+      resolved.container.appendChild(canvas)
+      return { canvas, restore: () => { canvas.parentNode?.removeChild(canvas) } }
+    }
+    const video = resolved.video
+    const parent = video?.parentNode
+    if (!video || !parent || typeof (parent as { replaceChild?: unknown }).replaceChild !== 'function') throw new Error('detached-target')
+    parent.replaceChild(canvas, video)
+    return {
+      canvas,
+      restore: () => {
+        if (canvas.parentNode && typeof (canvas.parentNode as { replaceChild?: unknown }).replaceChild === 'function') {
+          canvas.parentNode.replaceChild(video, canvas)
+        }
+      },
+    }
+  } catch (cause) {
+    throw createEngineError(ErrorCodes.RENDERER_TARGET_INVALID, 'The Custom renderer canvas could not be attached', false, cause)
+  }
+}
+
+function isCanvasTarget(value: HTMLElement): value is HTMLCanvasElement {
+  if (typeof HTMLCanvasElement !== 'undefined' && value instanceof HTMLCanvasElement) return true
+  return String((value as { tagName?: unknown }).tagName ?? '').toLowerCase() === 'canvas'
+}
+
 function mapLoadError(cause: unknown, intent: MXPlayerOptions['intent']): EngineErrorException {
   const customIntent = intent !== undefined && intent !== 'normal' && intent !== 'low-power'
   const code = typeof cause === 'object' && cause !== null && 'code' in cause ? String((cause as { code?: unknown }).code) : ''
-  if (isEngineError(cause) && (customIntent || code.startsWith('CUSTOM_') || code.startsWith('WEBCODECS_') || code.startsWith('AUDIO_'))) return cause as EngineErrorException
+  if (isEngineError(cause) && (customIntent || code.startsWith('CUSTOM_') || code.startsWith('WEBCODECS_') || code.startsWith('AUDIO_') || code.startsWith('RENDERER_'))) return cause as EngineErrorException
   if (code === ErrorCodes.RANGE_CORS_FAILED) return createEngineError(ErrorCodes.NATIVE_CORS_FAILED, 'The remote media failed CORS validation', true, cause)
   if (code === ErrorCodes.RANGE_NETWORK_FAILED) return createEngineError(ErrorCodes.NATIVE_NETWORK_FAILED, 'The remote media network request failed', true, cause)
   if (code === ErrorCodes.RANGE_ABORTED) return createEngineError(ErrorCodes.NATIVE_ABORTED, 'The media load was aborted', true, cause)

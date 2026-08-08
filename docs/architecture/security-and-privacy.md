@@ -38,6 +38,14 @@ Demux/Decoder Worker 请求必须同时匹配 sessionId、epoch 和 requestId。
 
 VideoFrame 是显式资源：queue 持有期间归 pipeline，`readVideoFrame()` 返回后归调用方。pipeline 只关闭未交付 Frame；事件不广播 Frame。队列、decoder submission、Worker pending request 和 pull reader 均有硬上限，正常 Frame 溢出不会静默丢弃。
 
+## Phase 6 Renderer 边界
+
+Renderer 不访问网络、不解析容器、不记录媒体 URL/CodecPrivate，也不把 `VideoFrame`、`GPUTexture`、像素数组、shader 编译详情或原始 DOM/GPU exception 放进公共事件。公共 renderer 错误只暴露稳定 `RENDERER_*` code、安全 message 和 recoverable 标志；fallback 原因也是稳定 code。Renderer 的正常呈现路径禁止 `readPixels()`、`getImageData()` 或其他全帧 GPU-to-CPU 回读。
+
+Canvas width/height、DPR、crop、rotation、frame dimensions 和 texture limits 都按不可信运行时输入验证，防止 NaN、Infinity、负数、安全整数溢出和超大显存分配。WebGPU 只保留固定 pipeline/sampler/uniform/input texture；WebGL2 只保留固定 program/texture/buffer/VAO；filter 从固定枚举选择，不拼接动态 shader。rAF 同时只允许一个 read Promise 和一个 retained frame，避免 Promise/frame 队列无界增长。
+
+`render(frame)` 接受后负责恰好 close 一次；upload/draw 异常也必须释放 frame 和临时资源。WebGPU device loss 清理旧 texture/buffer/context 后才重建；WebGL2 context loss 删除资源、限制恢复等待并移除 listener/timer。`close()` 取消 rAF、使 pending read generation 失效、关闭 retained/late frame、释放 GPU/GL 对象、移除 canvas listeners，并恢复或删除仅由引擎拥有的 canvas。close 后不得再发 renderer/frame/state/error/clock 事件。
+
 ## 字幕安全
 
 SRT/ASS 文本按纯文本输出。只对白名单解析 ASS 样式和换行，禁止把 `Dialogue`、字体名或外挂字幕内容拼接成 HTML、CSS URL 或脚本。

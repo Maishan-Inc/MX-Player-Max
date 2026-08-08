@@ -101,6 +101,87 @@ export interface CustomVideoOptions {
   operationTimeoutMs?: number
   hardwareAcceleration?: 'no-preference' | 'prefer-hardware' | 'prefer-software'
   optimizeForLatency?: boolean
+  /** Preferred presentation backend. `auto` tries WebGPU, WebGL2, then Canvas2D. */
+  renderer?: VideoRendererPreference
+  /** Crop, rotation, fit, and output-density controls applied by the renderer. */
+  render?: VideoTransformOptions
+  /** Fixed, bounded color filter applied by the renderer. */
+  filter?: VideoFilterOptions
+  /** Request HDR preservation. A renderer only reports success after end-to-end confirmation. */
+  preserveHdr?: boolean
+}
+
+export type VideoRendererPreference = 'auto' | 'webgpu' | 'webgl2' | 'canvas2d'
+export type CustomRendererKind = Exclude<RendererKind, 'native'>
+export type VideoFilterKind = 'none' | 'grayscale' | 'brightness' | 'contrast' | 'saturate'
+export type VideoRotation = 0 | 90 | 180 | 270
+export type VideoFit = 'contain' | 'cover' | 'fill'
+
+export interface VideoCropRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface VideoTransformOptions {
+  crop?: VideoCropRect
+  rotation?: VideoRotation
+  fit?: VideoFit
+  /** Override the output CSS width in pixels. Both output dimensions must be supplied together. */
+  outputWidth?: number
+  /** Override the output CSS height in pixels. Both output dimensions must be supplied together. */
+  outputHeight?: number
+  /** Override `window.devicePixelRatio`. Valid values are finite and greater than zero. */
+  devicePixelRatio?: number
+}
+
+export type VideoFilterOptions =
+  | { kind: 'none' }
+  | { kind: 'grayscale'; amount?: number }
+  | { kind: 'brightness'; amount?: number }
+  | { kind: 'contrast'; amount?: number }
+  | { kind: 'saturate'; amount?: number }
+
+export type RendererState =
+  | 'uninitialized'
+  | 'initializing'
+  | 'ready'
+  | 'lost'
+  | 'rebuilding'
+  | 'fallback'
+  | 'error'
+  | 'closed'
+
+export type RendererColorMode = 'sdr-bt709' | 'sdr-srgb' | 'hdr' | 'unknown'
+export type RendererColorRange = 'full' | 'limited' | 'unknown'
+
+export interface RendererCapabilities {
+  kind: CustomRendererKind
+  available: boolean
+  filters: readonly VideoFilterKind[]
+  maxTextureDimension2d: number
+  externalTexture: boolean
+  hdr: boolean
+  lossRecovery: boolean
+}
+
+export interface RendererStats {
+  kind: CustomRendererKind
+  state: RendererState
+  presentedFrames: number
+  droppedFrames: number
+  waitFrames: number
+  invalidFrames: number
+  fallbackCount: number
+  width: number
+  height: number
+  devicePixelRatio: number
+  colorMode: RendererColorMode
+  colorRange: RendererColorRange
+  hdrPreserved: boolean
+  hdrReason: string | null
+  filter: VideoFilterKind
 }
 
 /**
@@ -513,6 +594,9 @@ export interface EngineEventMap {
   audiostatechange: { state: AudioOutputState; stats: CustomAudioStats }
   audiounderrun: { count: number; bufferedDuration: Micros }
   clockupdate: { clock: AudioClockSnapshot }
+  rendererchange: { previous: CustomRendererKind | null; current: CustomRendererKind; reason: string }
+  rendererstatechange: { kind: CustomRendererKind; previous: RendererState; current: RendererState; reason: string | null }
+  rendererstats: { stats: RendererStats }
   error: { error: EngineError }
 }
 
@@ -613,6 +697,19 @@ export const ErrorCodes = {
   CONTAINER_INVALID: 'CONTAINER_INVALID',
   CONTAINER_LIMIT_EXCEEDED: 'CONTAINER_LIMIT_EXCEEDED',
   RENDERER_AI_UNSUPPORTED: 'RENDERER_AI_UNSUPPORTED',
+  RENDERER_BACKEND_UNAVAILABLE: 'RENDERER_BACKEND_UNAVAILABLE',
+  RENDERER_TARGET_INVALID: 'RENDERER_TARGET_INVALID',
+  RENDERER_CONTEXT_UNAVAILABLE: 'RENDERER_CONTEXT_UNAVAILABLE',
+  RENDERER_DEVICE_REQUEST_FAILED: 'RENDERER_DEVICE_REQUEST_FAILED',
+  RENDERER_DEVICE_LOST: 'RENDERER_DEVICE_LOST',
+  RENDERER_DEVICE_REBUILD_FAILED: 'RENDERER_DEVICE_REBUILD_FAILED',
+  RENDERER_SHADER_FAILED: 'RENDERER_SHADER_FAILED',
+  RENDERER_FRAME_INVALID: 'RENDERER_FRAME_INVALID',
+  RENDERER_RESIZE_INVALID: 'RENDERER_RESIZE_INVALID',
+  RENDERER_FILTER_UNSUPPORTED: 'RENDERER_FILTER_UNSUPPORTED',
+  RENDERER_HDR_UNSUPPORTED: 'RENDERER_HDR_UNSUPPORTED',
+  RENDERER_OPERATION_FAILED: 'RENDERER_OPERATION_FAILED',
+  RENDERER_CLOSED: 'RENDERER_CLOSED',
   RENDERER_AI_MODEL_LOAD_FAILED: 'RENDERER_AI_MODEL_LOAD_FAILED',
   RENDERER_AI_MODEL_HASH_MISMATCH: 'RENDERER_AI_MODEL_HASH_MISMATCH',
   RENDERER_AI_PIPELINE_FAILED: 'RENDERER_AI_PIPELINE_FAILED',
@@ -652,6 +749,9 @@ export interface MediaEngine extends EngineEventSource {
   readonly customVideoStats: CustomVideoStats | null
   readonly customAudioStats: CustomAudioStats | null
   readonly audioClock: AudioClockSnapshot | null
+  readonly rendererKind: CustomRendererKind | null
+  readonly rendererState: RendererState | null
+  readonly rendererStats: RendererStats | null
 
   load(options: MXPlayerOptions): Promise<void>
   play(): Promise<void>
@@ -660,6 +760,8 @@ export interface MediaEngine extends EngineEventSource {
   setPlaybackRate(rate: number): void
   setVolume(volume: number): void
   setMuted(muted: boolean): void
+  setVideoFilter(filter: VideoFilterOptions): Promise<void>
+  setVideoTransform(transform: VideoTransformOptions): void
   readVideoFrame(): Promise<DecodedVideoFrame | null>
   requestFullscreen(): Promise<void>
   exitFullscreen(): Promise<void>

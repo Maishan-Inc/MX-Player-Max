@@ -3,15 +3,17 @@ import type { EngineErrorException } from './errors'
 import { createEngineError } from './errors'
 
 export interface ResolvedVideoTarget {
-  video: HTMLVideoElement
+  video: HTMLVideoElement | null
   owned: boolean
   container: HTMLElement | null
+  target: HTMLElement
 }
 
 export function resolveVideoTarget(target: string | HTMLElement): ResolvedVideoTarget {
   const resolved = typeof target === 'string' ? queryTarget(target) : target
   if (!isHtmlElement(resolved)) throw invalidTarget()
-  if (isVideoElement(resolved)) return { video: resolved as HTMLVideoElement, owned: false, container: null }
+  if (isVideoElement(resolved)) return { video: resolved as HTMLVideoElement, owned: false, container: null, target: resolved }
+  if (isCanvasElement(resolved)) return { video: null, owned: false, container: null, target: resolved }
 
   const doc = resolved.ownerDocument ?? (typeof document === 'undefined' ? null : document)
   if (!doc) throw invalidTarget()
@@ -22,7 +24,7 @@ export function resolveVideoTarget(target: string | HTMLElement): ResolvedVideoT
   } catch (cause) {
     throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'The playback target cannot host a video element', false, cause)
   }
-  return { video, owned: true, container: resolved }
+  return { video, owned: true, container: resolved, target: resolved }
 }
 
 function queryTarget(selector: string): unknown {
@@ -47,7 +49,12 @@ function isVideoElement(value: unknown): value is HTMLVideoElement {
     && String((value as { tagName?: unknown }).tagName ?? '').toLowerCase() === 'video'
 }
 
+function isCanvasElement(value: unknown): value is HTMLCanvasElement {
+  if (typeof HTMLCanvasElement !== 'undefined' && value instanceof HTMLCanvasElement) return true
+  return typeof value === 'object' && value !== null
+    && String((value as { tagName?: unknown }).tagName ?? '').toLowerCase() === 'canvas'
+}
+
 function invalidTarget(): EngineErrorException {
   return createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'The playback target was not found or is not an element', false)
 }
-

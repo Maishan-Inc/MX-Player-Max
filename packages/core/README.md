@@ -25,7 +25,7 @@ NativeMediaPipeline 只消费和管理 HTMLVideoElement 及其原生音频，不
 
 ## Phase 4/5 CustomMediaPipeline
 
-策略最终选择 `webcodecs`，具体视频 capability 为 `supported`，且意图为 `frame-access`、`filters`、`editing` 或 `ai-enhance` 时，core 初始化 CustomMediaPipeline。Phase 5 在存在音轨时再次验证具体 AudioDecoder capability，并在同一个 Demux Worker response 内将音视频 packet 分别送入两个有界路径；缺失或不支持音频能力不会静默无声成功。`normal`/`low-power` 仍受 Phase 6 Renderer 门禁，不宣称完整 Custom 播放。
+策略最终选择 `webcodecs`，具体视频 capability 为 `supported`，且意图为 `frame-access`、`filters`、`editing` 或 `ai-enhance` 时，core 初始化 CustomMediaPipeline。存在音轨时再次验证具体 AudioDecoder capability，并在同一个 Demux Worker response 内将音视频 packet 分别送入两个有界路径；缺失或不支持音频能力不会静默无声成功。Phase 6 还要求 Renderer 和输出 canvas 成功初始化后才发布 Custom `ready`。
 
 ```ts
 const engine = createMediaEngine()
@@ -35,7 +35,7 @@ await engine.load({
   intent: 'frame-access',
   customVideo: { maxDecodedFrames: 8, lowWaterMark: 3 },
 })
-await engine.play() // 只启动解码泵，不显示画面
+await engine.play() // 启动解码泵、音频输出和 rAF render loop
 
 const decoded = await engine.readVideoFrame()
 if (decoded) {
@@ -53,6 +53,23 @@ CustomMediaPipeline 通过 Phase 2 `DemuxWorkerController` 和既有 start/read/
 
 seek 提升 epoch，停止旧 pump，关闭 queue Frame，拒绝旧 reader，reset/reconfigure decoder，再调用 Phase 2 关键帧 seek。新 epoch 从 key packet 开始，target 之前的 preroll Frame 会 close；连续 seek 只有最后 epoch 可以完成。Demux EOS 后必须等待 `flush()` 产生的 Frame，queue 耗尽后才返回 `null` 并进入 ended。
 
-音频输出链使用 AudioDecoder → Float32 PCM → 有界 ring/MessagePort/SAB → AudioWorklet → GainNode。AudioContext 实际消费采样数是主时钟；无音轨使用墙钟。seek 提升统一 epoch，跨越 target 的 audio block 按 sample 精确裁剪，EOS 只有视频 queue 与音频 PCM 都 drain 后才 ended。当前不实现 time-stretch 保音调。Phase 5 不创建 Renderer；`readVideoFrame()` 仍保持 Phase 4 即时 pull 和调用方所有权。
+音频输出链使用 AudioDecoder → Float32 PCM → 有界 ring/MessagePort/SAB → AudioWorklet → GainNode。AudioContext 实际消费采样数是主时钟；无音轨使用墙钟。seek 提升统一 epoch，跨越 target 的 audio block 按 sample 精确裁剪，EOS 只有视频 queue 与音频 PCM 都 drain 后才 ended。当前不实现 time-stretch 保音调。`readVideoFrame()` 仍保持 Phase 4 即时 pull 和调用方所有权；只有调用方把返回 frame 传给 Renderer 后，Renderer 才接管并 close。
 
 `close()` 终止 Demux Worker、关闭 VideoDecoder、清空并 close 未交付 Frame、拒绝 reader/seek/Worker Promise、清除 operation timer 和监听器。已经由 `readVideoFrame()` 交付的 Frame 不会被 pipeline 再关闭。
+
+## Phase 6 presentation
+
+```text
+Demux Worker -> VideoDecoder -> bounded VideoFrame queue
+             -> CustomRenderLoop -> VideoFrameScheduler -> Managed Renderer -> canvas
+AudioDecoder -> AudioWorklet -> AudioContext sample clock -----------^
+no audio     -> MediaWallClock --------------------------------------^
+```
+
+`auto` renderer selection is WebGPU -> WebGL2 -> Canvas2D. A caller canvas is reused. A container receives one engine-owned canvas without clearing existing children. A caller video is replaced by the Custom canvas and restored on teardown; no hidden HTMLVideo drives Custom rendering. Native playback continues to reuse/create only the Native video element.
+
+The rAF loop has at most one in-flight `readVideoFrame()` and one retained frame. The Phase 5 scheduler waits early frames, presents on-time frames and closes late/stale frames as drops. AudioContext consumed sample frames remain the master clock when audio exists; `MediaWallClock` is used otherwise. Pause stops new feed/read/render, resume cannot create a second loop, rate changes remain clock mappings, and seek stops the old generation before the shared epoch advances. Old pending reads may settle but are immediately closed and cannot be consumed by the new generation. EOS still comes only from the Custom pipeline after video decoder/queue and audio PCM drain.
+
+`setVideoFilter()` and `setVideoTransform()` update an active Custom renderer. A non-`none` load-time filter converts `normal`/`low-power` intent to `filters`, excluding Native during strategy ranking. Runtime Native <-> Custom migration is intentionally not implemented in Phase 6: use a new `load()` to switch atomically; source, track/time/rate/volume/mute preservation across such an application-managed reload is the caller's responsibility. This limitation avoids altering existing Native autoplay and HTMLVideo semantics.
+
+Renderer `device.lost` first attempts in-place WebGPU rebuild; failed rebuild or unrecoverable WebGL2 context loss triggers Managed fallback. Core exposes renderer kind/state/stats and stable events only. `close()` cancels rAF, invalidates pending reads, closes the renderer, releases GPU/GL resources and listeners, removes/restores only engine-owned canvas nodes, then closes decoder/audio/worker resources. After close no renderer, frame, state, error or clock callback is forwarded.

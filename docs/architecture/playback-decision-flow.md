@@ -561,18 +561,25 @@ function createMSECandidates(media: MediaDescriptor, caps: CapabilitySnapshot): 
 }
 ```
 
-## 9. 与现有代码的差距
+## 9. 当前实现边界
 
-当前 `packages/types/src/index.ts` 的 `BackendKind` 是三个值：
+`BackendKind` 已预留 `mse`，`workerMediaSource` 也按标准 API 探测，但策略仍只生成 native、WebCodecs 和已声明 WASM decoder 候选。MSE、HLS/DASH、直播和 remux 不属于 Phase 6；`MediaSource.isTypeSupported()` 与真实 MSE pipeline 留给后续流媒体阶段。
 
-```ts
-export type BackendKind = 'html-video' | 'webcodecs' | 'wasm'
+## 10. Phase 6 renderer decision
+
+```text
+intent + media + capability report
+  -> normal/low-power and Native viable: keep HTMLVideo candidate
+  -> filters/frame-access/editing/AI: remove pure Native candidate
+  -> concrete WebCodecs video/audio supported
+  -> choose Custom renderer capability chain
+       WebGPU(maxTextureDimension2d > 0)
+       -> WebGL2
+       -> Canvas2D
+  -> initialize only selected decoder/pipeline and renderer
+  -> ready only after demux + video + audio(if present) + renderer + target
 ```
 
-**少了 `'mse'`。** 这是有意推迟的——首阶段不实现 MSE 分片管线，所以在阶段 6 跳过 MSE 候选。但类型层面应该预留这个值，避免后续增补时破坏类型兼容。
+A load-time non-`none` filter changes a normal/low-power request into the `filters` intent before strategy ranking. This prevents selecting Native and failing later. Explicit renderer preferences remain strict at initial load. Auto initialization tries the remaining chain on adapter/device/context failure. Runtime WebGPU device loss first rebuilds the same backend; only failed rebuild falls back. WebGL2 context loss waits for restore and rebuild before fallback. Each fallback updates renderer events/stats without changing the decoder epoch or consuming a frame twice.
 
-同样，`packages/strategy/src/index.ts` 只创建了三个候选（native、webcodecs、wasm），MSE 候选的生成逻辑需要在实现 MSE 能力时补充。
-
-`packages/capabilities/src/index.ts` 的 `workerMediaSource` 字段当前硬编码为 `false`——这是正确的（首阶段不实现），但为 MSE 决策做准备时应改为先从 `MediaSource.canConstructInDedicatedWorker` 探测。
-
-**首阶段可落地的改进：** Phase 1 的能力探测应该把 `MediaSource.isTypeSupported()` 也纳入（用于 MSE 候选的验证），即使结果暂时不用。
+The selected target is also part of readiness. A caller canvas is reused; a container receives an owned canvas without child clearing; a caller video remains the Native target or is temporarily replaced/restored for Custom. There is no hidden video in the Custom path. Phase 6 does not implement automatic runtime Native <-> Custom migration; filter path changes require a new load and are documented as such.

@@ -14,6 +14,11 @@ import type {
   NativePlaybackStats,
   PlaybackSelection,
   PlaybackState,
+  CustomRendererKind,
+  RendererStats,
+  RendererState,
+  VideoFilterOptions,
+  VideoTransformOptions,
 } from '@mx-player-max/types'
 
 export class MXPlayer {
@@ -33,6 +38,9 @@ export class MXPlayer {
   get customVideoStats(): CustomVideoStats | null { return this.engine.customVideoStats }
   get customAudioStats(): CustomAudioStats | null { return this.engine.customAudioStats }
   get audioClock(): AudioClockSnapshot | null { return this.engine.audioClock }
+  get rendererKind(): CustomRendererKind | null { return this.engine.rendererKind }
+  get rendererState(): RendererState | null { return this.engine.rendererState }
+  get rendererStats(): RendererStats | null { return this.engine.rendererStats }
 
   on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
     return this.engine.on(event, listener)
@@ -52,6 +60,8 @@ export class MXPlayer {
   setPlaybackRate(rate: number): void { this.engine.setPlaybackRate(rate) }
   setVolume(volume: number): void { this.engine.setVolume(volume) }
   setMuted(muted: boolean): void { this.engine.setMuted(muted) }
+  setVideoFilter(filter: VideoFilterOptions): Promise<void> { return this.engine.setVideoFilter(filter) }
+  setVideoTransform(transform: VideoTransformOptions): void { this.engine.setVideoTransform(transform) }
   readVideoFrame(): Promise<DecodedVideoFrame | null> { return this.engine.readVideoFrame() }
   requestFullscreen(): Promise<void> { return this.engine.requestFullscreen() }
   exitFullscreen(): Promise<void> { return this.engine.exitFullscreen() }
