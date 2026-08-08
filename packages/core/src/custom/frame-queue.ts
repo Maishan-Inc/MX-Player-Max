@@ -74,6 +74,31 @@ export class VideoFrameQueue {
     return queued.value
   }
 
+  peekAt(timestamp: Micros): DecodedVideoFrame | null {
+    let match: DecodedVideoFrame | null = null
+    for (const queued of this.#frames) {
+      if (queued.value.timestamp > timestamp) break
+      match = queued.value
+    }
+    return match
+  }
+
+  peekNext(timestamp: Micros): DecodedVideoFrame | null {
+    return this.#frames.find((queued) => queued.value.timestamp > timestamp)?.value ?? null
+  }
+
+  /** Remove frames through a timestamp without closing them; caller owns the result. */
+  detachThrough(timestamp: Micros): DecodedVideoFrame[] {
+    const detached: DecodedVideoFrame[] = []
+    while (this.#frames[0] && this.#frames[0].value.timestamp <= timestamp) {
+      const queued = this.#frames.shift()
+      if (!queued) break
+      this.#bufferedDuration = Math.max(0, this.#bufferedDuration - (queued.value.duration ?? 0))
+      detached.push(queued.value)
+    }
+    return detached
+  }
+
   clear(): number {
     let closed = 0
     for (const queued of this.#frames) {

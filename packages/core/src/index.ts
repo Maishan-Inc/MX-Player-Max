@@ -39,6 +39,18 @@ import { createEngineError, isEngineError, type EngineErrorException } from './n
 import { NativeMediaPipeline, type NativePipelineEvent } from './native/pipeline'
 import { resolveVideoTarget, type ResolvedVideoTarget } from './native/target'
 import { CustomRenderLoop } from './custom/render-loop'
+import {
+  AiPipeline,
+  RIFE_V425_MANIFEST,
+  RT4KSR_X2_MANIFEST,
+  WebGpuInterpolationStage,
+  WebGpuSuperResolutionStage,
+  loadAiModelAsset,
+  parseMxai,
+  type AiPipelineEvent,
+  type AiPipelineOptions,
+} from '@mx-player-max/postprocess'
+import type { CustomRenderableFrame } from './custom/render-loop'
 
 export { EngineErrorException, isEngineError } from './native/errors'
 export { NativeMediaPipeline } from './native/pipeline'
@@ -86,6 +98,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let customCanvas: ResolvedCustomCanvasTarget | null = null
   let activeRenderer: ManagedVideoRenderer | null = null
   let renderLoop: CustomRenderLoop | null = null
+  let aiPipeline: AiPipeline | null = null
   let customPipelineReady = false
   let customRendererRequired = false
   let epoch = 0
@@ -128,6 +141,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   const disposePipeline = (): void => {
     renderLoop?.close()
     renderLoop = null
+    aiPipeline?.close()
+    aiPipeline = null
     activeRenderer?.close()
     activeRenderer = null
     probeReader?.close()
@@ -177,7 +192,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       }
       case 'playing': renderLoop?.start(); setState('playing'); break
       case 'paused': renderLoop?.pause(); if (currentState !== 'ended') setState('paused'); break
-      case 'seeking': renderLoop?.stop(true); setState('seeking'); break
+      case 'seeking': renderLoop?.stop(true); aiPipeline?.reset(activePipeline.pipeline.epoch); setState('seeking'); break
       case 'seeked': if (event.resume === 'playing') renderLoop?.start(); setState(event.resume); break
       case 'frameavailable': emit('frameavailable', { queuedFrames: event.queuedFrames, bufferedDuration: event.bufferedDuration }); break
       case 'audiostatechange': emit('audiostatechange', { state: event.stats.outputState, stats: event.stats }); break
@@ -206,6 +221,17 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       emit('rendererstats', { stats: event.stats })
     } else if (event.type === 'error') {
       emit('error', { error: { code: event.error.code, message: event.error.message, recoverable: event.error.recoverable } })
+    }
+  }
+
+  const handleAiEvent = (event: AiPipelineEvent, loadEpoch: number): void => {
+    if (closed || loadEpoch !== epoch || activePipeline?.kind !== 'custom-video') return
+    if (event.type === 'qualitychange' && event.previous !== undefined && event.current !== undefined) {
+      emit('qualitychange', { previous: event.previous, current: event.current, reasons: [event.reason] })
+    } else if (event.type === 'error') {
+      emit('error', { error: { code: ErrorCodes.RENDERER_AI_PIPELINE_FAILED, message: event.reason, recoverable: true } })
+    } else if (event.type === 'fallback') {
+      emit('error', { error: { code: ErrorCodes.RENDERER_AI_PIPELINE_FAILED, message: `AI post-processing fell back to passthrough: ${event.reason}`, recoverable: true } })
     }
   }
 
@@ -364,6 +390,15 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         }
         currentMedia = media
         currentSelection = playbackSelection
+        if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier === 'off') {
+          emit('error', {
+            error: {
+              code: ErrorCodes.RENDERER_AI_UNSUPPORTED,
+              message: 'AI post-processing is unavailable; continuing with the verified custom passthrough path',
+              recoverable: true,
+            },
+          })
+        }
         const pipelineOptions: CustomMediaPipelineOptions = {
           source: options.source,
           media,
@@ -392,13 +427,62 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
           activeRenderer = dependencies.createRenderer?.(rendererOptions)
             ?? createRenderer(options.customVideo?.renderer ?? 'auto', rendererOptions)
           await activeRenderer.attach(customCanvas.canvas)
+          const renderer = activeRenderer
+          const rendererDevice = renderer.kind === 'webgpu' ? renderer.device : null
+          if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier !== 'off'
+            && renderer.kind === 'webgpu' && rendererDevice && 'decodedFrameSource' in customPipeline) {
+            let rifeModel: ReturnType<typeof parseMxai> | undefined
+            let rt4kSrModel: ReturnType<typeof parseMxai> | undefined
+            if (options.aiModelBaseUrl !== undefined) {
+              try {
+                const asset = await loadAiModelAsset(RIFE_V425_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
+                rifeModel = parseMxai(asset.bytes)
+              } catch (error) {
+                emit('error', { error: { code: aiModelErrorCode(error), message: `RIFE model load failed: ${String(error)}`, recoverable: true } })
+              }
+              try {
+                const asset = await loadAiModelAsset(RT4KSR_X2_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
+                rt4kSrModel = parseMxai(asset.bytes)
+              } catch (error) {
+                emit('error', { error: { code: aiModelErrorCode(error), message: `RT4KSR model load failed: ${String(error)}`, recoverable: true } })
+              }
+            }
+            const aiOptions: AiPipelineOptions = {
+              upstream: customPipeline.decodedFrameSource,
+              initialTier: playbackSelection.aiPlan?.proposedTier ?? 'low',
+              ...(options.aiPostProcess?.maxTier === undefined ? {} : { maxTier: options.aiPostProcess.maxTier }),
+              ...(options.aiPostProcess?.interpolation === 'off' ? {} : { interpolation: new WebGpuInterpolationStage({ device: rendererDevice, ...(rifeModel === undefined ? {} : { model: rifeModel }) }) }),
+              ...(options.aiPostProcess?.superResolution === 'off' ? {} : { superResolution: new WebGpuSuperResolutionStage({ device: rendererDevice, ...(rt4kSrModel === undefined ? {} : { model: rt4kSrModel }) }) }),
+              onEvent: (event) => handleAiEvent(event, loadEpoch),
+            }
+            aiPipeline = new AiPipeline(aiOptions)
+          }
           publishCustomReady()
           renderLoop = new CustomRenderLoop({
             readVideoFrame: () => customPipeline.readVideoFrame(),
+            ...(aiPipeline === null ? {} : {
+              readRenderableFrame: async (): Promise<CustomRenderableFrame | null> => {
+                const clock = customPipeline.audioClock
+                const processed = await aiPipeline?.frameAt(clock.mediaTime, clock.epoch)
+                if (!processed) return null
+                const detached = customPipeline.consumeFramesThrough(processed.timestamp)
+                if (processed.location === 'cpu') {
+                  const delivered = detached.find((value) => value.frame === processed.frame)
+                  for (const value of detached) if (value !== delivered) safeCloseVideoFrame(value.frame)
+                  if (!delivered) {
+                    safeCloseVideoFrame(processed.frame)
+                    return null
+                  }
+                  return { kind: 'video', frame: delivered }
+                }
+                for (const value of detached) safeCloseVideoFrame(value.frame)
+                return { kind: 'gpu', frame: { ...processed, epoch: clock.epoch } }
+              },
+            }),
             getClock: () => customPipeline.audioClock,
-            renderer: activeRenderer,
+            renderer,
             isActive: () => !closed && loadEpoch === epoch && activePipeline?.kind === 'custom-video',
-            onError: (error) => handleRendererEvent({ type: 'error', kind: activeRenderer?.kind ?? 'canvas2d', error }, loadEpoch),
+            onError: (error) => handleRendererEvent({ type: 'error', kind: renderer.kind, error }, loadEpoch),
           })
         }
         if (loadEpoch !== epoch || closed) throw loadAborted(intent)
@@ -585,7 +669,17 @@ function toEngineError(cause: unknown, fallbackCode: string, message: string): E
   return createEngineError(fallbackCode, message, true, cause)
 }
 
+function aiModelErrorCode(cause: unknown): typeof ErrorCodes.RENDERER_AI_MODEL_LOAD_FAILED | typeof ErrorCodes.RENDERER_AI_MODEL_HASH_MISMATCH {
+  return String(cause).toLowerCase().includes('hash')
+    ? ErrorCodes.RENDERER_AI_MODEL_HASH_MISMATCH
+    : ErrorCodes.RENDERER_AI_MODEL_LOAD_FAILED
+}
+
 function loadAborted(intent: MXPlayerOptions['intent'], cause?: unknown): EngineErrorException {
   const customIntent = intent !== undefined && intent !== 'normal' && intent !== 'low-power'
   return createEngineError(customIntent ? ErrorCodes.WEBCODECS_ABORTED : ErrorCodes.NATIVE_ABORTED, 'The media load was superseded', true, cause)
+}
+
+function safeCloseVideoFrame(frame: VideoFrame): void {
+  try { frame.close() } catch { /* best effort */ }
 }

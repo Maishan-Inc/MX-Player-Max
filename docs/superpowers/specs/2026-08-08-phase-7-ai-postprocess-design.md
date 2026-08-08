@@ -33,7 +33,7 @@ Assets use a versioned `MXAI` binary tensor format. The header contains a magic 
 
 The manifest mirrors the WASM manifest pattern and records model, version, tier, precision variants, SHA-256 per variant, license, upstream URL plus immutable commit, build flags, patent risk, required WebGPU features, and a release-review status. The loader uses a caller-provided base URL or `aiModelBaseUrl`, performs lazy fetch, verifies SHA-256 with Web Crypto, and stores verified blobs in versioned Cache Storage when available. A failed URL/hash is remembered for the session to avoid retrying a known-bad asset. Responses are treated as opaque bytes only.
 
-RIFE uses the MIT-licensed Practical-RIFE upstream at commit `17d8c7a1005b37f4c97bfee04e316aaec7fdc536`. RT4KSR is loaded only after its exact upstream commit, redistribution terms, training-data notice, and patent review are recorded. An unresolved review keeps the manifest entry non-publishable and prevents automatic selection. Converted weights are derived artifacts, not silently relabeled as upstream files.
+RIFE uses the MIT-licensed Practical-RIFE upstream at commit `17d8c7a1005b37f4c97bfee04e316aaec7fdc536`; the vendored archive is the upstream 4.25 release because that upstream does not publish a lockable 4.6 artifact. RT4KSR uses `eduardzamfir/RT4KSR` at commit `fd6627a48d789adf5d9aad29f02ab2a3d2a25296` under Apache-2.0. Both exact commits, redistribution terms, training-data notice, and patent review are recorded. An unresolved review keeps the manifest entry non-publishable and prevents automatic selection. Converted weights are derived artifacts, not silently relabeled as upstream files.
 
 ## GPU Runtime
 

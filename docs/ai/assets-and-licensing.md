@@ -10,7 +10,7 @@
 export type ModelPrecision = 'f32' | 'f16'
 
 export interface AiModelManifest {
-  readonly model: string           // 'rt4ksr-x2' | 'rife-v4.6' | 'anime4k-cnnx2-ul'
+  readonly model: string           // 'rt4ksr-x2' | 'rife-v4.25' | 'anime4k-cnnx2-ul'
   readonly version: string
   readonly tier: AiQualityTier
   readonly variants: Partial<Record<ModelPrecision, string>>
@@ -32,32 +32,21 @@ export interface AiModelManifest {
     superres/*.wgsl          # 手写着色器源码
     assets/manifest.json     # 模型 manifest
     assets/weights/
+      rt4ksr/rt4ksr_x2.mxai
+      rife/rife_v4.25.mxai
 
-CDN（编译后）：
-  https://cdn.example.com/models/
-    rt4ksr-x2/
-      v1.0.0/
-        model-f32.bin
-        model-f16.bin
-        manifest.json
-    rife-v4.6/
-      v2.4.0/
-        model-f32.bin
-        model-f16.bin
-        manifest.json
-    anime4k-cnnx2-ul/
-      v4.1.0/
-        pipelines-ul.wgsl    # Anime4K 只需着色器，无权重文件
-        manifest.json
+自托管根目录（由应用通过 `aiModelBaseUrl` 指定）：
+  weights/rt4ksr/rt4ksr_x2.mxai
+  weights/rife/rife_v4.25.mxai
 ```
 
 ### SDK 自托管
 
-开发者可通过 `MXPlayerOptions.aiModelBaseUrl` 覆盖默认 CDN，将模型文件部署到自己的服务。加载逻辑：
+开发者必须通过 `MXPlayerOptions.aiModelBaseUrl` 指定模型根目录，将模型文件部署到自己的服务。SDK 不隐式请求未拥有的默认 CDN。加载逻辑：
 
 ```typescript
-const base = options.aiModelBaseUrl ?? 'https://cdn.example.com/models'
-const url = `${base}/${manifest.model}/v${manifest.version}/${manifest.variants['f16'] ?? manifest.variants['f32']}`
+const base = options.aiModelBaseUrl
+const url = new URL(manifest.variants.f32!, base)
 ```
 
 ## 加载规则（镜像 wasm-and-distribution.md §2）
@@ -79,9 +68,10 @@ const url = `${base}/${manifest.model}/v${manifest.version}/${manifest.variants[
 |---|---|
 | 上游 | CVPR 2023 NTIRE RT4KSR baseline |
 | 模型规模 | 约 100K–500K 参数（随 tier 变化） |
-| 权重文件 | 1–4 MB（tier f32） / 0.5–2 MB（tier f16） |
+| 上游权重 | `rt4ksr_x2.pth`（Apache-2.0） |
+| 浏览器产物 | `rt4ksr_x2.mxai`（51 个 inference tensor），SHA-256 `c34a7654fe40f34f6ee0ba47c9c3bea504b18a7c9c045261bfd4733f2662fba0` |
 | 训练数据 | DIV2K + Flickr2K |
-| 许可证 | 待确认（见下方审查清单） |
+| 许可证 | Apache-2.0（上游 commit 已锁定） |
 | 输入 | Y通道或 RGB，1920×1080 / 1280×720 |
 | 输出 | RGB，×2 放大 |
 
@@ -89,9 +79,10 @@ const url = `${base}/${manifest.model}/v${manifest.version}/${manifest.variants[
 
 | 字段 | 值 |
 |---|---|
-| 上游 | hzwer/Practical-RIFE (v4.6) |
+| 上游 | hzwer/Practical-RIFE (v4.25) |
 | 模型规模 | 约 10M 参数 |
-| 权重文件 | 约 40 MB（f32） / 20 MB（f16） |
+| 上游权重 | `RIFEv4.25.zip`（MIT） |
+| 浏览器产物 | `rife_v4.25.mxai`（198 个 tensor），SHA-256 `665472509a3c9b50d9436d07e85754b8f1c4bb27ab48a3e531a6ebaec5bac56c` |
 | 训练数据 | Vimeo90K |
 | 许可证 | **MIT**（© Megvii Inc.）。上游 ECCV2022-RIFE 与 Practical-RIFE 的权重均为 MIT |
 | 许可证陷阱 | 风险来自**下游封装**而非 RIFE 本身。例如 `ComfyUI-Rife-Tensorrt` 为 CC BY-NC-SA（禁商用）。只能从 hzwer 上游取权重，绝不从第三方整合包取 |
@@ -119,20 +110,20 @@ AGENTS.md §5 的强制要求（**不得跳过，不得推迟到实现阶段后*
 
 | 审查项 | RT4KSR | RIFE | Anime4K |
 |---|---|---|---|
-| 上游仓库 / commit | ⬜ 待确认 | ✅ hzwer/Practical-RIFE（须锁 commit） | ⬜ 待确认 |
-| 许可证条款 | ⬜ 待评估 | ✅ MIT（© Megvii Inc.） | ⬜ MIT 已确认 |
-| 商业分发允许 | ⬜ 待评估 | ✅ MIT 允许 | ✅ MIT |
-| 再分发权重文件允许 | ⬜ 待评估 | ✅ 允许，须保留版权声明 | N/A（着色器） |
+| 上游仓库 / commit | ✅ eduardzamfir/RT4KSR@fd6627a4 | ✅ hzwer/Practical-RIFE@17d8c7a1 | ⬜ 待确认 |
+| 许可证条款 | ✅ Apache-2.0 | ✅ MIT（upstream authors） | ⬜ MIT 已确认 |
+| 商业分发允许 | ✅ Apache-2.0 条款允许 | ✅ MIT 允许 | ✅ MIT |
+| 再分发权重文件允许 | ✅ 上游仓库随 Apache-2.0 分发 | ✅ 上游 archive 随 MIT 分发 | N/A（着色器） |
 | **来源纯净性** | N/A | ⚠️ **只能取上游**。下游整合包（如 ComfyUI-Rife-Tensorrt = CC BY-NC-SA）会污染许可证 | N/A |
-| 训练数据许可证 | ⬜ DIV2K 需确认 | ⬜ Vimeo90K 需确认 | N/A（传统方法） |
-| 专利覆盖（基础方法） | ⬜ CNN 超分无风险 | ⬜ 建议检索 | ✅ 低风险 |
-| 专利覆盖（具体实现） | ⬜ 待评估 | ⬜ 建议检索 | ✅ 低风险 |
-| 编译/转换参数记录 | 不适用（权重） | 不适用（权重） | ✅ 着色器源码 |
+| 训练数据许可证 | ⚠️ 训练数据不随仓库分发 | ⚠️ Vimeo90K 不随仓库分发 | N/A（传统方法） |
+| 专利覆盖（基础方法） | ✅ 低风险，保留 Apache 专利审查 | ⚠️ 建议对光流/warp 具体实现检索 | ✅ 低风险 |
+| 专利覆盖（具体实现） | ✅ 工程审查通过 | ⚠️ 工程审查通过，法务仍可复核 | ✅ 低风险 |
+| 编译/转换参数记录 | ✅ MXAI v1 f32，无量化 | ✅ MXAI v1 f32，仅 inference tensors | ✅ 着色器源码 |
 | 第三方依赖 | PyTorch 导出 | PyTorch 导出 | 无 |
-| 产物大小 | 1–4 MB | 20–40 MB | ~50 KB |
-| CDN 就绪 | ⬜ | ⬜ | ✅ |
+| 产物大小 | 613 KB MXAI + 1.7 MB 上游 | 24.6 MB MXAI + 22.9 MB 上游 archive | ~50 KB |
+| 自托管就绪 | ✅ | ✅ | ✅ |
 
-> **RIFE 许可证结论已更新（2026-08）**：早期评估将 RIFE 标为「高风险，可能阻断发布」，该结论**过重**。上游 ECCV2022-RIFE 与 Practical-RIFE 的权重均为 MIT，允许商用与再分发。真正的风险是**供应链**：多个流行的第三方封装采用 CC BY-NC-SA 等禁商用条款。因此审查重点从「能不能用 RIFE」转为「确保只从 hzwer 上游仓库按锁定 commit 取权重」，并在 manifest 的 `upstream` 字段记录该 commit。仍须在 vendor 前核对该 commit 的 `LICENSE` 文件本身，不能只依据 README 措辞。
+> **RIFE 许可证结论已更新（2026-08）**：锁定的 Practical-RIFE 4.25 archive 与仓库均为 MIT，允许商用与再分发。上游没有名为 4.6 的可锁定 archive，因此本阶段明确使用 4.25，不在 manifest 中伪装为 4.6。真正的风险是**供应链**：多个第三方封装采用 CC BY-NC-SA 等禁商用条款。因此只从 hzwer 上游按锁定 commit 取权重，并在 manifest 的 `upstream` 字段记录该 commit。
 
 ### 审查结论必须在 Phase A 完成
 

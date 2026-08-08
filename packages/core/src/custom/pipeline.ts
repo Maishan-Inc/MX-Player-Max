@@ -24,6 +24,7 @@ import { ErrorCodes } from '@mx-player-max/types'
 import { createEngineError, isEngineError, type EngineErrorException } from '../native/errors'
 import { DemuxWorkerSession, type DemuxSessionLike } from './demux-session'
 import { CustomAudioController, type CustomAudioControllerDependencies } from './audio-controller'
+import type { DecodedFrameSource, PipelineFrame } from '@mx-player-max/postprocess'
 import type { CustomPipelineEvent } from './events'
 import {
   resolveCustomVideoOptions,
@@ -172,9 +173,26 @@ export class CustomMediaPipeline {
   }
 
   get videoTrack(): TrackInfo { return this.#videoTrack }
+  get epoch(): number { return this.#epoch }
   get audioTrack(): TrackInfo | null { return this.#audio.track }
   get audioStats(): CustomAudioStats | null { return this.#audio.stats }
   get audioClock(): AudioClockSnapshot { return this.#audio.clock }
+  get decodedFrameSource(): DecodedFrameSource {
+    const pipeline = this
+    return {
+      peekAt: (timestamp) => toPipelineFrame(this.#queue.peekAt(timestamp)),
+      peekNext: (timestamp) => toPipelineFrame(this.#queue.peekNext(timestamp)),
+      get endOfStream() { return pipeline.#decoderEndOfStream },
+      get epoch() { return pipeline.#epoch },
+    }
+  }
+
+  consumeFramesThrough(timestamp: Micros): DecodedVideoFrame[] {
+    const frames = this.#queue.detachThrough(timestamp)
+    if (frames.length > 0) this.#signalCapacity()
+    this.#finishEndedIfDrained()
+    return frames
+  }
   get stats(): CustomVideoStats {
     return {
       decodedFrames: this.#decodedFrames,
@@ -735,6 +753,11 @@ export class CustomMediaPipeline {
     this.#audio.close()
     if (this.#callbacks.isActive()) this.#callbacks.onEvent({ type: 'error', error })
   }
+}
+
+function toPipelineFrame(value: DecodedVideoFrame | null): PipelineFrame | null {
+  if (!value) return null
+  return { location: 'cpu', frame: value.frame, timestamp: value.timestamp }
 }
 
 function safeMicros(value: number): Micros | null {

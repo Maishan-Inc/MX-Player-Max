@@ -195,6 +195,17 @@ export interface DecodedVideoFrame {
   epoch: number
 }
 
+/** GPU-resident frame exchanged between postprocess and a GPU-capable renderer. */
+export interface GpuVideoFrame {
+  readonly texture: GPUTexture
+  readonly width: number
+  readonly height: number
+  readonly timestamp: Micros
+  readonly epoch?: number
+  /** Return the texture to its bounded pool exactly once. */
+  readonly release: () => void
+}
+
 export interface CustomVideoStats {
   decodedFrames: number
   deliveredFrames: number

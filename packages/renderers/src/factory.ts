@@ -1,6 +1,6 @@
 import type {
   CustomRendererKind, RendererCapabilities, RendererKind, RendererStats, RendererState, VideoFilterOptions,
-  VideoRendererPreference, VideoTransformOptions,
+  VideoRendererPreference, VideoTransformOptions, GpuVideoFrame,
 } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
 import { type RendererBackendOptions } from './base'
@@ -73,6 +73,11 @@ export class ManagedRenderer implements ManagedVideoRenderer {
   get state(): RendererState { return this.#backend.state }
   get stats(): RendererStats { return { ...this.#backend.stats, fallbackCount: this.#fallbackCount } }
   get capabilities(): RendererCapabilities { return this.#backend.capabilities }
+  get device(): GPUDevice {
+    const device = (this.#backend as ManagedVideoRenderer & { device?: GPUDevice }).device
+    if (!device) throw rendererError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'The active renderer has no GPU device', true)
+    return device
+  }
 
   async attach(target: HTMLCanvasElement | HTMLVideoElement): Promise<void> {
     this.ensureOpen()
@@ -100,6 +105,14 @@ export class ManagedRenderer implements ManagedVideoRenderer {
   setFilter(filter: VideoFilterOptions): void { this.ensureOpen(); this.#filter = filter; this.#backend.setFilter(filter) }
   setTransform(transform: VideoTransformOptions): void { this.ensureOpen(); this.#transform = transform; this.#backend.setTransform(transform) }
   noteSchedule(action: 'wait' | 'drop'): void { if (!this.#closed) this.#backend.noteSchedule(action) }
+  renderTexture(frame: GpuVideoFrame): void {
+    const renderer = this.#backend as ManagedVideoRenderer & { renderTexture?: (value: GpuVideoFrame) => void }
+    if (!renderer.renderTexture) {
+      frame.release()
+      throw rendererError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'The active renderer does not accept GPU frames', true)
+    }
+    renderer.renderTexture(frame)
+  }
 
   close(): void {
     if (this.#closed) return

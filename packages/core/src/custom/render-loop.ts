@@ -1,9 +1,14 @@
 import { VideoFrameScheduler } from '@mx-player-max/audio'
-import type { AudioClockSnapshot, DecodedVideoFrame, EngineError } from '@mx-player-max/types'
+import type { AudioClockSnapshot, DecodedVideoFrame, EngineError, GpuVideoFrame } from '@mx-player-max/types'
 import type { ManagedVideoRenderer } from '@mx-player-max/renderers'
+
+export type CustomRenderableFrame =
+  | { readonly kind: 'video'; readonly frame: DecodedVideoFrame }
+  | { readonly kind: 'gpu'; readonly frame: GpuVideoFrame }
 
 export interface CustomRenderLoopDependencies {
   readVideoFrame(): Promise<DecodedVideoFrame | null>
+  readRenderableFrame?(): Promise<CustomRenderableFrame | null>
   getClock(): AudioClockSnapshot
   renderer: ManagedVideoRenderer
   onError(error: EngineError): void
@@ -25,9 +30,9 @@ export class CustomRenderLoop {
   #closed = false
   #generation = 0
   #raf: number | null = null
-  #read: Promise<DecodedVideoFrame | null> | null = null
+  #read: Promise<CustomRenderableFrame | null> | null = null
   #readGeneration = -1
-  #frame: DecodedVideoFrame | null = null
+  #frame: CustomRenderableFrame | null = null
 
   constructor(dependencies: CustomRenderLoopDependencies) {
     this.#dependencies = dependencies
@@ -36,7 +41,7 @@ export class CustomRenderLoop {
 
   get running(): boolean { return this.#running }
   get inFlightRead(): boolean { return this.#read !== null }
-  get retainedFrame(): DecodedVideoFrame | null { return this.#frame }
+  get retainedFrame(): CustomRenderableFrame | null { return this.#frame }
   get scheduler(): VideoFrameScheduler { return this.#scheduler }
 
   start(): void {
@@ -84,7 +89,7 @@ export class CustomRenderLoop {
     try {
       if (this.#frame === null) {
         if (this.#read === null) {
-          this.#read = this.#dependencies.readVideoFrame()
+          this.#read = this.readRenderableFrame()
           this.#readGeneration = generation
         } else if (this.#readGeneration !== generation) {
           return
@@ -93,7 +98,7 @@ export class CustomRenderLoop {
         this.#read = null
         this.#readGeneration = -1
         if (this.#closed || generation !== this.#generation || !this.#running || !this.#dependencies.isActive()) {
-          if (value) safeClose(value.frame)
+          if (value) safeCloseRenderable(value)
           return
         }
         if (value === null) {
@@ -104,23 +109,32 @@ export class CustomRenderLoop {
       }
       const frame = this.#frame
       if (frame === null) return
-      if (frame.epoch !== this.#dependencies.getClock().epoch) {
+      const timestamp = frame.kind === 'video' ? frame.frame.timestamp : frame.frame.timestamp
+      const frameEpoch = frame.kind === 'video' ? frame.frame.epoch : (frame.frame.epoch ?? this.#dependencies.getClock().epoch)
+      if (frameEpoch !== this.#dependencies.getClock().epoch) {
         this.#frame = null
-        safeClose(frame.frame)
+        safeCloseRenderable(frame)
         this.#dependencies.renderer.noteSchedule('drop')
         this.schedule()
         return
       }
-      const decision = this.#scheduler.decide(frame.timestamp, this.#dependencies.getClock())
+      const decision = this.#scheduler.decide(timestamp, this.#dependencies.getClock())
       if (decision.action === 'wait') {
         this.#dependencies.renderer.noteSchedule('wait')
       } else {
         this.#frame = null
         if (decision.action === 'drop') {
-          safeClose(frame.frame)
+          safeCloseRenderable(frame)
           this.#dependencies.renderer.noteSchedule('drop')
         } else {
-          try { this.#dependencies.renderer.render(frame.frame) } catch (cause) { this.#dependencies.onError(toError(cause)) }
+          try {
+            if (frame.kind === 'gpu') {
+              if (!this.#dependencies.renderer.renderTexture) throw toError(new Error('The active renderer does not accept GPU frames'))
+              this.#dependencies.renderer.renderTexture(frame.frame)
+            } else {
+              this.#dependencies.renderer.render(frame.frame.frame)
+            }
+          } catch (cause) { this.#dependencies.onError(toError(cause)) }
         }
       }
     } catch (cause) {
@@ -142,8 +156,13 @@ export class CustomRenderLoop {
 
   private discardRetained(): void {
     if (this.#frame === null) return
-    safeClose(this.#frame.frame)
+    safeCloseRenderable(this.#frame)
     this.#frame = null
+  }
+
+  private readRenderableFrame(): Promise<CustomRenderableFrame | null> {
+    if (this.#dependencies.readRenderableFrame) return this.#dependencies.readRenderableFrame()
+    return this.#dependencies.readVideoFrame().then((frame) => frame === null ? null : { kind: 'video', frame })
   }
 }
 
@@ -158,6 +177,14 @@ function defaultCancelAnimationFrame(id: number): void {
 }
 
 function safeClose(frame: VideoFrame): void { try { frame.close() } catch { /* best effort */ } }
+
+function safeCloseRenderable(value: CustomRenderableFrame): void {
+  if (value.kind === 'video') safeClose(value.frame.frame)
+  else {
+    try { value.frame.release() } catch { /* best effort */ }
+  }
+}
+
 
 function toError(cause: unknown): EngineError {
   if (typeof cause === 'object' && cause !== null && 'code' in cause && 'message' in cause && 'recoverable' in cause) return cause as EngineError

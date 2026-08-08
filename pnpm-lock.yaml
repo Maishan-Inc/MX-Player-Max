@@ -81,6 +81,9 @@ importers:
       '@mx-player-max/platform':
         specifier: workspace:*
         version: link:../platform
+      '@mx-player-max/postprocess':
+        specifier: workspace:*
+        version: link:../postprocess
       '@mx-player-max/renderers':
         specifier: workspace:*
         version: link:../renderers

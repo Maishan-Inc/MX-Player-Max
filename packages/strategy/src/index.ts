@@ -91,6 +91,7 @@ function createCandidates(
   const videoCodec = context.media.query.video?.codec ?? null
   const audioCodec = context.media.query.audio?.codec ?? null
   const nativeIntent = intent === 'normal' || intent === 'low-power'
+  const aiIntent = intent === 'ai-enhance'
   const hdr = hasHdrVideo(media)
 
   if (nativeIntent && context.media.native.playable === 'supported' && context.snapshot.htmlVideo) {
@@ -124,7 +125,12 @@ function createCandidates(
   const renderer = selectCustomRenderer(context.snapshot)
   if (renderer && context.media.webCodecs.playable === 'supported' && supportsRequiredWebCodecs(context)) {
     const advancedIntent = intent !== 'normal' && intent !== 'low-power'
+    const aiCapable = !context.snapshot.webGpuFeatures.isFallbackAdapter
+      && context.snapshot.webGpu
+      && context.snapshot.webGpuFeatures.maxTextureDimension2d > 0
+      && renderer === 'webgpu'
     const reasons = [advancedIntent ? 'custom-frame-access' : 'webcodecs-fallback', `renderer:${renderer}`, `renderer-fallback-chain:${rendererFallbackChain(context.snapshot).join('>')}`]
+    if (aiIntent && !aiCapable) reasons.push('ai-passthrough-fallback')
     let score = advancedIntent ? 120 : 70
     if (renderer === 'webgpu') {
       score += 20
@@ -146,7 +152,7 @@ function createCandidates(
     })
   }
 
-  if (renderer && supportsRequiredWasmDecoders(context)) {
+  if (!aiIntent && renderer && supportsRequiredWasmDecoders(context)) {
     const reasons = ['declared-wasm-decoder', `renderer:${renderer}`]
     let score = intent === 'normal' || intent === 'low-power' ? 10 : 40
     if (context.snapshot.wasmSimd) {

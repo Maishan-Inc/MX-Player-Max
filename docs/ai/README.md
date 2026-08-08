@@ -40,6 +40,6 @@
 
 ## 当前阶段
 
-本特性处于**契约层**阶段：类型、接口、探测器已落地，postprocess 包存在但仅含 passthrough 骨架。
+本特性已进入 Phase 7：postprocess 包包含拉取式链、WebGPU WGSL stage、governor、资产 manifest/哈希加载器和真实 RT4KSR/RIFE 上游权重。RIFE 资产为可锁定的 Practical-RIFE 4.25，而不是不存在于该上游的 4.6 文件。
 
-WGSL 实现与模型权重属阶段 7，依赖阶段 4（帧队列）、阶段 5（音频时钟）与阶段 6（WebGPU 渲染器）完成后才能启动。
+浏览器硬件 WebGPU smoke、模型转换后的数值等价性和长时间性能矩阵仍按阶段验收记录标记，不把 fake GPU 测试冒充真实设备证据。

@@ -168,6 +168,17 @@ describe('strategy engine', () => {
     expect(createStrategyEngine().rank(createMedia(), 'editing', createContext(snapshot))).toEqual([])
   })
 
+  it('keeps ai-enhance on WebCodecs and records passthrough when WebGPU is unavailable', () => {
+    const snapshot = createSnapshot({ webGpu: false, webGl2: true })
+    const ranked = createStrategyEngine().rank(createMedia(), 'ai-enhance', createContext(snapshot))
+    expect(ranked).toHaveLength(1)
+    expect(ranked[0]?.kind).toBe('webcodecs')
+    expect(ranked[0]?.id).toBe('webcodecs-ai')
+    expect(ranked[0]?.renderer).toBe('webgl2')
+    expect(ranked[0]?.reasons).toContain('ai-passthrough-fallback')
+    expect(createStrategyEngine().select(createMedia(), 'ai-enhance', createContext(snapshot)).aiPlan?.proposedTier).toBe('off')
+  })
+
   it('does not create a decoder candidate for media with no tracks', () => {
     const media = createMedia()
     media.tracks = []

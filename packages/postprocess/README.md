@@ -4,9 +4,13 @@ AI 后处理层：插帧与超分辨率。
 
 ## 当前阶段
 
-契约层实现完成。包含类型定义、passthrough 帧源骨架、governor 接口和模型 manifest schema。
+Phase 7 实现了拉取式 AI 链、WebGPU RIFE/RT4KSR stage、纹理池、governor、MXAI manifest/哈希加载器和真实上游权重资产。RIFE 资产明确为 Practical-RIFE 4.25；上游没有可锁定的 4.6 archive。
 
-WGSL 着色器实现、权重加载器、纹理池与 GPU 管线属于**阶段 5.5**，依赖阶段 4（帧队列）与阶段 5（WebGPU 渲染器）完成后方可启动。
+模型失败、shader/device loss、fallback adapter 和预算超限都会保留解码/音频时钟并回退为 passthrough。Native HTMLVideo 路径不会启用 AI。
+
+真实推理使用 `MXAI` v1 派生资产。应用在 `MXPlayerOptions.aiModelBaseUrl` 指向包含
+`weights/rt4ksr/rt4ksr_x2.mxai` 和 `weights/rife/rife_v4.25.mxai` 的 HTTPS 根目录后，Core
+才会懒加载、校验哈希并上传 tensor；未提供根目录时仍保留无模型的可恢复 passthrough。
 
 ## 架构
 
@@ -25,7 +29,7 @@ interface FrameSource {
 - 超分器放大该帧
 - passthrough 返回最近的原始帧
 
-详见 `docs/ai/overview.md`。
+详见 `docs/ai/overview.md` 和 `docs/development/phase-7-acceptance.md`。
 
 ## 依赖
 

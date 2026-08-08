@@ -1,4 +1,4 @@
-import type { RendererCapabilities } from '@mx-player-max/types'
+import type { GpuVideoFrame, RendererCapabilities } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
 import { BaseRenderer, FILTERS, type RendererBackendOptions } from './base'
 import { rendererError } from './errors'
@@ -39,7 +39,7 @@ export class WebGPURenderer extends BaseRenderer {
   readonly kind = 'webgpu' as const
   private context: GPUCanvasContext | null = null
   private adapter: GPUAdapter | null = null
-  private device: GPUDevice | null = null
+  private gpuDevice: GPUDevice | null = null
   private resources: GpuResources | null = null
   private configuredFormat: GPUTextureFormat = 'bgra8unorm'
   private inputTextureFormat: GPUTextureFormat = 'rgba8unorm'
@@ -49,7 +49,40 @@ export class WebGPURenderer extends BaseRenderer {
   private textureHeight = 1
 
   get capabilities(): RendererCapabilities {
-    return { kind: this.kind, available: this.device !== null, filters: FILTERS, maxTextureDimension2d: this.maxDimension, externalTexture: false, hdr: false, lossRecovery: true }
+    return { kind: this.kind, available: this.gpuDevice !== null, filters: FILTERS, maxTextureDimension2d: this.maxDimension, externalTexture: false, hdr: false, lossRecovery: true }
+  }
+
+  get device(): GPUDevice {
+    if (!this.gpuDevice) throw rendererError(ErrorCodes.RENDERER_DEVICE_LOST, 'The WebGPU device is unavailable', true)
+    return this.gpuDevice
+  }
+
+  renderTexture(frame: GpuVideoFrame): void {
+    const device = this.gpuDevice
+    const context = this.context
+    if (!device || !context || !this.resources) {
+      frame.release()
+      throw rendererError(ErrorCodes.RENDERER_DEVICE_LOST, 'The WebGPU device is unavailable', true)
+    }
+    try {
+      this.ensureTexture(frame.width, frame.height)
+      const resources = this.resources
+      if (!resources) throw rendererError(ErrorCodes.RENDERER_DEVICE_LOST, 'The WebGPU texture is unavailable', true)
+      const command = device.createCommandEncoder()
+      command.copyTextureToTexture(
+        { texture: frame.texture },
+        { texture: resources.texture },
+        { width: frame.width, height: frame.height, depthOrArrayLayers: 1 },
+      )
+      this.encodePresentation(command, resources)
+      device.queue.submit([command.finish()])
+      this.presentedFrames += 1
+      this.onEvent?.({ type: 'stats', stats: this.stats })
+    } catch (cause) {
+      throw rendererError(ErrorCodes.RENDERER_OPERATION_FAILED, 'WebGPU texture presentation failed', true, cause)
+    } finally {
+      frame.release()
+    }
   }
 
   constructor(options: RendererBackendOptions = {}) { super(options) }
@@ -71,10 +104,11 @@ export class WebGPURenderer extends BaseRenderer {
       throw rendererError(ErrorCodes.RENDERER_CLOSED, 'The renderer was closed during device initialization', false)
     }
     this.adapter = adapter
-    this.device = device
+    this.gpuDevice = device
     this.context = context
     this.configuredFormat = gpu.getPreferredCanvasFormat()
-    this.inputTextureFormat = this.configuredFormat === 'rgba16float' ? 'rgba16float' : 'rgba8unorm'
+    /* AI GPU frames use the same bounded rgba8unorm interchange format. */
+    this.inputTextureFormat = 'rgba8unorm'
     const limit = device.limits.maxTextureDimension2D
     if (Number.isSafeInteger(limit) && limit > 0) this.maxDimension = Math.min(this.maxDimension, limit)
     try {
@@ -94,7 +128,7 @@ export class WebGPURenderer extends BaseRenderer {
   }
 
   protected draw(frame: VideoFrame, validated: ValidatedFrame): void {
-    const device = this.device
+    const device = this.gpuDevice
     const context = this.context
     if (!device || !context || !this.resources) throw rendererError(ErrorCodes.RENDERER_DEVICE_LOST, 'The WebGPU device is unavailable', true)
     const width = validated.width
@@ -119,21 +153,27 @@ export class WebGPURenderer extends BaseRenderer {
       viewParams.setFloat32(36, scale.y, true)
       device.queue.writeBuffer(resources.params, 0, params)
       const command = device.createCommandEncoder()
-      const view = context.getCurrentTexture().createView()
-      const pass = command.beginRenderPass({ colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }] })
-      pass.setPipeline(resources.pipeline)
-      pass.setBindGroup(0, resources.bindGroup)
-      pass.draw(4)
-      pass.end()
+      this.encodePresentation(command, resources)
       device.queue.submit([command.finish()])
     } catch (cause) {
       throw rendererError(ErrorCodes.RENDERER_OPERATION_FAILED, 'WebGPU presentation failed', true, cause)
     }
   }
 
+  private encodePresentation(command: GPUCommandEncoder, resources: GpuResources): void {
+    const context = this.context
+    if (!context) throw rendererError(ErrorCodes.RENDERER_CONTEXT_UNAVAILABLE, 'The WebGPU canvas context is unavailable', true)
+    const view = context.getCurrentTexture().createView()
+    const pass = command.beginRenderPass({ colorAttachments: [{ view, clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }] })
+    pass.setPipeline(resources.pipeline)
+    pass.setBindGroup(0, resources.bindGroup)
+    pass.draw(4)
+    pass.end()
+  }
+
   protected resizeBackend(_width: number, _height: number): void {
-    if (!this.context || !this.device) return
-    this.context.configure({ device: this.device, format: this.configuredFormat, alphaMode: 'opaque', colorSpace: 'srgb' })
+    if (!this.context || !this.gpuDevice) return
+    this.context.configure({ device: this.gpuDevice, format: this.configuredFormat, alphaMode: 'opaque', colorSpace: 'srgb' })
   }
 
   protected override supportsHdr(_frame: ValidatedFrame): boolean { return false }
@@ -145,8 +185,8 @@ export class WebGPURenderer extends BaseRenderer {
     this.resources?.params.destroy?.()
     this.resources = null
     try { this.context?.unconfigure() } catch { /* best effort */ }
-    try { this.device?.destroy() } catch { /* best effort */ }
-    this.device = null
+    try { this.gpuDevice?.destroy() } catch { /* best effort */ }
+    this.gpuDevice = null
     this.adapter = null
     this.context = null
     this.lostPromise = null
@@ -156,7 +196,7 @@ export class WebGPURenderer extends BaseRenderer {
   }
 
   private ensureTexture(width: number, height: number): void {
-    const device = this.device
+    const device = this.gpuDevice
     const resources = this.resources
     if (!device || !resources || (this.textureWidth === width && this.textureHeight === height)) return
     const replacement = device.createTexture({ size: { width, height }, format: this.inputTextureFormat, usage: textureUsage() })
@@ -181,14 +221,14 @@ export class WebGPURenderer extends BaseRenderer {
       this.resources?.texture.destroy()
       this.resources?.params.destroy?.()
       this.resources = null
-      try { this.device?.destroy() } catch { /* lost devices may already be destroyed */ }
+      try { this.gpuDevice?.destroy() } catch { /* lost devices may already be destroyed */ }
       const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' })
       if (!adapter) throw rendererError(ErrorCodes.RENDERER_DEVICE_REBUILD_FAILED, 'A replacement WebGPU adapter is unavailable', true)
       if (this.closed) return
       const device = await adapter.requestDevice()
       if (this.closed) { device.destroy?.(); return }
       this.adapter = adapter
-      this.device = device
+      this.gpuDevice = device
       context.configure({ device, format: this.configuredFormat, alphaMode: 'opaque', colorSpace: 'srgb' })
       this.resources = createResources(device, this.configuredFormat, this.inputTextureFormat, 1, 1)
       this.textureWidth = 1

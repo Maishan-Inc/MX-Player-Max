@@ -1,6 +1,7 @@
 import type {
   CapabilitySnapshot,
   CustomRendererKind,
+  GpuVideoFrame,
   EngineError,
   RendererCapabilities,
   RendererColorMode,
@@ -36,10 +37,13 @@ export interface ManagedVideoRenderer extends VideoRenderer {
   readonly state: RendererState
   readonly stats: RendererStats
   readonly capabilities: RendererCapabilities
+  readonly device?: GPUDevice
   setFilter(filter: VideoFilterOptions): void
   setTransform(transform: VideoTransformOptions): void
   /** Called by Core when the scheduler waits or drops a frame. */
   noteSchedule(action: 'wait' | 'drop'): void
+  /** Optional zero-copy GPU frame path. Non-WebGPU backends omit it. */
+  renderTexture?(frame: GpuVideoFrame): void
 }
 
 export type RendererEvent =
@@ -70,7 +74,7 @@ export interface RendererFactoryOptions {
 
 export interface GpuTextureRenderer extends VideoRenderer {
   readonly device: GPUDevice
-  renderTexture(texture: GPUTexture, width: number, height: number): void
+  renderTexture(frame: GpuVideoFrame): void
 }
 
 export { RendererException, rendererError, isRendererError, publicRendererError } from './errors'

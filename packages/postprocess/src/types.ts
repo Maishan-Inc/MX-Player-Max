@@ -1,4 +1,4 @@
-import type { Micros } from '@mx-player-max/types'
+import type { GpuVideoFrame, Micros } from '@mx-player-max/types'
 
 /**
  * A single frame flowing through the post-processing pipeline.
@@ -15,9 +15,9 @@ export type PipelineFrame =
     }
   | {
       readonly location: 'gpu'
-      readonly texture: GPUTexture
-      readonly width: number
-      readonly height: number
+      readonly texture: GpuVideoFrame['texture']
+      readonly width: GpuVideoFrame['width']
+      readonly height: GpuVideoFrame['height']
       readonly timestamp: Micros
       /** Return the texture to the pool. Must be called exactly once. */
       readonly release: () => void
@@ -71,6 +71,8 @@ export interface SpatialStage {
  */
 export interface TemporalStage {
   readonly id: string
+  /** Number of decoded frames required ahead of the current clock time. */
+  readonly lookaheadFrames?: number
   /**
    * @param phase 0 → frame A, 1 → frame B, 0.5 → midpoint.
    *        Arbitrary timesteps are supported (RIFE).
