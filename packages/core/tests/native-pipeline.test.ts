@@ -138,6 +138,9 @@ describe('NativeMediaPipeline', () => {
     await pipeline.load({ kind: 'file', file: new Blob(['media']) as File }, 'video/mp4')
     expect(pipeline.features).toMatchObject({ fullscreen: true, pictureInPicture: true, requestVideoFrameCallback: true, fastSeek: true })
     await pipeline.requestFullscreen()
+    const fullscreenHost = { ownerDocument: video.ownerDocument, requestFullscreen: vi.fn(async () => {}) } as unknown as HTMLElement
+    await pipeline.requestFullscreen(fullscreenHost)
+    expect(fullscreenHost.requestFullscreen).toHaveBeenCalledTimes(1)
     await pipeline.requestPictureInPicture()
     video.fullscreenReject = Object.assign(new Error('blocked'), { name: 'NotAllowedError' })
     video.pipReject = Object.assign(new Error('blocked'), { name: 'NotAllowedError' })

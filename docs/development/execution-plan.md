@@ -274,6 +274,8 @@ Phase 13 质量、安全和性能固化
 - 多条重叠 cue 按稳定顺序渲染。
 - 内核不含任何 DOM 控件——菜单、字体选择器、拖拽句柄都不在本阶段。
 
+状态：实现完成；SRT/ASS/SSA、内嵌/外挂来源、轨道/epoch、Native/Custom 时钟、Overlay、样式存储和 Core/SDK API 已交付，本机 TypeScript/Vitest/构建验收通过。真实 Chrome/Chromium、Firefox、macOS Safari 最新两个稳定大版本的 CORS、字体、fullscreen/resize、AudioContext 时钟和连续 seek smoke matrix 仍标记 pending，fake DOM 不替代真实浏览器结果。
+
 ## 12. Phase 9：UI 包
 
 目标：让开发者装上即用，不必自己写控制条。

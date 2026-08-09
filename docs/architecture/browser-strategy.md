@@ -113,3 +113,15 @@ return backendLoader.start(selected)
 ```
 
 “毫秒级”只承诺本地能力判断和策略评分。远程文件的容器/Codec 探测时间取决于 Range 请求和网络 RTT，必须通过并行探测、最小 Range、缓存和预读降低等待。
+
+## 9. Phase 8 字幕兼容说明
+
+字幕内核不按浏览器名称选择实现。SRT/ASS 解析、轨道排序和 epoch 位于平台无关代码；浏览器只提供 DOM、Fetch、ResizeObserver、Fullscreen 和媒体时钟能力。
+
+| 环境 | Native 字幕时钟 | Custom 字幕时钟 | Overlay | 外挂 URL |
+|---|---|---|---|---|
+| Chrome/Chromium 桌面 | `HTMLVideo.currentTime` | AudioContext sample clock / MediaWallClock | video/canvas 宿主；ResizeObserver/fullscreen 待真实 smoke | HTTPS + CORS |
+| Firefox 桌面 | 同上 | 同上 | 同一 DOM 实现；字体 fallback/resize 待真实 smoke | HTTPS + CORS |
+| macOS Safari 桌面 | 同上 | AudioDecoder 可用时 AudioContext，否则实际所选媒体墙钟路径 | WebKit fullscreen/字体/ResizeObserver 待真实 smoke | HTTPS + CORS |
+
+`textContent`、Fetch CORS、ResizeObserver 和 Fullscreen API 的真实布局/安全表现仍需在最新两个稳定大版本执行。Vitest fake DOM 只验证代码契约，不作为三浏览器通过证据。PGS/VobSub、系统原生 TextTrack 菜单和完整 libass 不在 Phase 8 兼容声明内。

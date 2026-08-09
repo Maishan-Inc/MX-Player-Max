@@ -19,6 +19,11 @@ import type {
   RendererState,
   VideoFilterOptions,
   VideoTransformOptions,
+  ExternalSubtitleSourceDescriptor,
+  SubtitleCueStyle,
+  SubtitleState,
+  SubtitleTrack,
+  SubtitleTrackOptions,
 } from '@mx-player-max/types'
 
 export class MXPlayer {
@@ -41,6 +46,10 @@ export class MXPlayer {
   get rendererKind(): CustomRendererKind | null { return this.engine.rendererKind }
   get rendererState(): RendererState | null { return this.engine.rendererState }
   get rendererStats(): RendererStats | null { return this.engine.rendererStats }
+  get subtitleTracks(): readonly SubtitleTrack[] { return this.engine.subtitleTracks }
+  get selectedSubtitleTrack(): string | null { return this.engine.selectedSubtitleTrack }
+  get subtitleState(): SubtitleState { return this.engine.subtitleState }
+  get subtitleStyle(): SubtitleCueStyle { return this.engine.subtitleStyle }
 
   on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
     return this.engine.on(event, listener)
@@ -62,6 +71,15 @@ export class MXPlayer {
   setMuted(muted: boolean): void { this.engine.setMuted(muted) }
   setVideoFilter(filter: VideoFilterOptions): Promise<void> { return this.engine.setVideoFilter(filter) }
   setVideoTransform(transform: VideoTransformOptions): void { this.engine.setVideoTransform(transform) }
+  listSubtitleTracks(): readonly SubtitleTrack[] { return this.engine.listSubtitleTracks() }
+  addSubtitleTrack(source: ExternalSubtitleSourceDescriptor, options?: SubtitleTrackOptions): Promise<SubtitleTrack> { return this.engine.addSubtitleTrack(source, options) }
+  selectSubtitleTrack(trackId: string | null): Promise<void> { return this.engine.selectSubtitleTrack(trackId) }
+  removeSubtitleTrack(trackId: string): void { this.engine.removeSubtitleTrack(trackId) }
+  closeSubtitles(): void { this.engine.closeSubtitles() }
+  setSubtitleStyle(style: SubtitleCueStyle): void { this.engine.setSubtitleStyle(style) }
+  resetSubtitleStyle(): void { this.engine.resetSubtitleStyle() }
+  attachSubtitleOverlay(host?: HTMLElement): void { this.engine.attachSubtitleOverlay(host) }
+  detachSubtitleOverlay(): void { this.engine.detachSubtitleOverlay() }
   readVideoFrame(): Promise<DecodedVideoFrame | null> { return this.engine.readVideoFrame() }
   requestFullscreen(): Promise<void> { return this.engine.requestFullscreen() }
   exitFullscreen(): Promise<void> { return this.engine.exitFullscreen() }

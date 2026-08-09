@@ -31,6 +31,11 @@ import type {
   RendererState,
   VideoFilterOptions,
   VideoTransformOptions,
+  ExternalSubtitleSourceDescriptor,
+  SubtitleCueStyle,
+  SubtitleState,
+  SubtitleTrack,
+  SubtitleTrackOptions,
 } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
 import { CustomMediaPipeline, type CustomMediaPipelineOptions } from './custom/pipeline'
@@ -51,10 +56,13 @@ import {
   type AiPipelineOptions,
 } from '@mx-player-max/postprocess'
 import type { CustomRenderableFrame } from './custom/render-loop'
+import { CoreSubtitleController } from './subtitles'
+import { DEFAULT_SUBTITLE_STYLE, toSubtitleError } from '@mx-player-max/subtitles'
 
 export { EngineErrorException, isEngineError } from './native/errors'
 export { NativeMediaPipeline } from './native/pipeline'
 export { CustomMediaPipeline } from './custom/pipeline'
+export { CoreSubtitleController } from './subtitles'
 export { CustomAudioController } from './custom/audio-controller'
 export { DemuxWorkerSession, createBrowserDemuxWorkerTransport } from './custom/demux-session'
 export { DEFAULT_CUSTOM_VIDEO_OPTIONS, resolveCustomVideoOptions, VideoFrameQueue } from './custom/frame-queue'
@@ -99,6 +107,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let activeRenderer: ManagedVideoRenderer | null = null
   let renderLoop: CustomRenderLoop | null = null
   let aiPipeline: AiPipeline | null = null
+  let subtitleController: CoreSubtitleController | null = null
   let customPipelineReady = false
   let customRendererRequired = false
   let epoch = 0
@@ -139,6 +148,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   }
 
   const disposePipeline = (): void => {
+    subtitleController?.close()
+    subtitleController = null
     renderLoop?.close()
     renderLoop = null
     aiPipeline?.close()
@@ -170,13 +181,13 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         if (!wasReady && currentSelection) emit('ready', { selection: currentSelection })
         break
       }
-      case 'playing': setState('playing'); break
-      case 'paused': if (currentState !== 'ended') setState('paused'); break
-      case 'seeking': setState('seeking'); break
-      case 'seeked': setState(activePipeline.pipeline.video.paused ? 'ready' : 'playing'); break
+      case 'playing': subtitleController?.play(); setState('playing'); break
+      case 'paused': subtitleController?.pause(); if (currentState !== 'ended') setState('paused'); break
+      case 'seeking': subtitleController?.seekStarted(); setState('seeking'); break
+      case 'seeked': subtitleController?.seekCompleted(); setState(activePipeline.pipeline.video.paused ? 'ready' : 'playing'); break
       case 'buffering': emit('buffering', { bufferedAhead: event.bufferedAhead }); break
       case 'timeupdate': emit('timeupdate', { currentTime: event.currentTime, duration: event.duration }); break
-      case 'ended': setState('ended'); break
+      case 'ended': subtitleController?.ended(); setState('ended'); break
       case 'error': emitError(event.error); break
       case 'loading': if (currentState !== 'closed') setState('loading'); break
     }
@@ -190,16 +201,16 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         publishCustomReady()
         break
       }
-      case 'playing': renderLoop?.start(); setState('playing'); break
-      case 'paused': renderLoop?.pause(); if (currentState !== 'ended') setState('paused'); break
-      case 'seeking': renderLoop?.stop(true); aiPipeline?.reset(activePipeline.pipeline.epoch); setState('seeking'); break
-      case 'seeked': if (event.resume === 'playing') renderLoop?.start(); setState(event.resume); break
+      case 'playing': renderLoop?.start(); subtitleController?.play(); setState('playing'); break
+      case 'paused': renderLoop?.pause(); subtitleController?.pause(); if (currentState !== 'ended') setState('paused'); break
+      case 'seeking': renderLoop?.stop(true); aiPipeline?.reset(activePipeline.pipeline.epoch); subtitleController?.seekStarted(); setState('seeking'); break
+      case 'seeked': if (event.resume === 'playing') renderLoop?.start(); subtitleController?.seekCompleted(); setState(event.resume); break
       case 'frameavailable': emit('frameavailable', { queuedFrames: event.queuedFrames, bufferedDuration: event.bufferedDuration }); break
       case 'audiostatechange': emit('audiostatechange', { state: event.stats.outputState, stats: event.stats }); break
       case 'audiounderrun': emit('audiounderrun', { count: event.stats.underruns, bufferedDuration: event.stats.bufferedDuration }); break
-      case 'clockupdate': emit('clockupdate', { clock: event.clock }); break
+      case 'clockupdate': subtitleController?.clockUpdate(); emit('clockupdate', { clock: event.clock }); break
       case 'buffering': emit('buffering', { bufferedAhead: event.bufferedAhead }); break
-      case 'ended': renderLoop?.stop(true); setState('ended'); break
+      case 'ended': renderLoop?.stop(true); subtitleController?.ended(); setState('ended'); break
       case 'error': emitError(event.error); break
     }
   }
@@ -235,6 +246,58 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     }
   }
 
+  const handleSubtitleEvent = (event: import('@mx-player-max/subtitles').SubtitleManagerEvent, loadEpoch: number): void => {
+    if (closed || loadEpoch !== epoch) return
+    switch (event.type) {
+      case 'trackchange': emit('subtitletrackchange', event); break
+      case 'cuechange': emit('subtitlecuechange', event); break
+      case 'statechange': emit('subtitlestatechange', event); break
+      case 'stylechange': emit('subtitlestylechange', event); break
+      case 'warning':
+        emit('subtitlewarning', event)
+        if (event.diagnostic.severity === 'error') {
+          emit('error', { error: { code: event.diagnostic.code, message: event.diagnostic.message, recoverable: true } })
+        }
+        break
+    }
+  }
+
+  const setupSubtitles = async (
+    source: SourceDescriptor,
+    media: MediaDescriptor,
+    loadEpoch: number,
+    resolvedTarget: ResolvedVideoTarget,
+    surface: HTMLVideoElement | HTMLCanvasElement | null,
+    rendererKind: CustomRendererKind | null,
+    subtitleOptions: MXPlayerOptions['subtitles'],
+  ): Promise<void> => {
+    let controller: CoreSubtitleController | null = null
+    try {
+      controller = new CoreSubtitleController({
+        source,
+        media,
+        target: resolvedTarget,
+        surface,
+        rendererKind,
+        ...(subtitleOptions === undefined ? {} : { subtitleOptions }),
+        ...(activePipeline?.kind === 'custom-video' ? {
+          getCustomClock: () => activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioClock : null,
+          getCustomPlaying: () => activePipeline?.kind === 'custom-video' && activePipeline.pipeline.audioClock.running,
+        } : {}),
+        onEvent: (event) => handleSubtitleEvent(event, loadEpoch),
+      })
+      subtitleController = controller
+      await controller.initialize()
+    } catch (cause) {
+      controller?.close()
+      if (subtitleController === controller) subtitleController = null
+      if (closed || loadEpoch !== epoch) return
+      const safeError = toSubtitleError(cause, ErrorCodes.SUBTITLE_OPERATION_FAILED, 'Subtitle initialization failed', true)
+      const code = safeError.code
+      emit('error', { error: { code, message: 'Subtitle initialization failed; playback continues', recoverable: true } })
+    }
+  }
+
   const engine: MediaEngine = {
     get state() { return currentState },
     get media() { return currentMedia },
@@ -257,6 +320,10 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     get rendererKind(): CustomRendererKind | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.kind ?? null : null },
     get rendererState(): RendererState | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.state ?? null : null },
     get rendererStats(): RendererStats | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.stats ?? null : null },
+    get subtitleTracks(): readonly SubtitleTrack[] { return subtitleController?.tracks ?? [] },
+    get selectedSubtitleTrack(): string | null { return subtitleController?.selectedTrackId ?? null },
+    get subtitleState(): SubtitleState { return subtitleController?.state ?? 'disabled' },
+    get subtitleStyle(): SubtitleCueStyle { return subtitleController?.style ?? { ...DEFAULT_SUBTITLE_STYLE } },
 
     on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
       let eventListeners = listeners.get(event)
@@ -347,6 +414,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
           emit('backendchange', { previous: previousSelection, current: playbackSelection.backend, reason: 'strategy-selection' })
           await nativePipeline.load(options.source, contentType, options.native)
           if (loadEpoch !== epoch || closed) throw loadAborted(intent)
+          if (!target) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Subtitle target is unavailable', false)
+          await setupSubtitles(options.source, media, loadEpoch, target, target.video, null, options.subtitles)
           if (options.autoplay === true) {
             try { await nativePipeline.play() } catch (cause) {
               const error = toEngineError(cause, ErrorCodes.NATIVE_AUTOPLAY_BLOCKED, 'Autoplay was blocked by the browser')
@@ -485,6 +554,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
             onError: (error) => handleRendererEvent({ type: 'error', kind: renderer.kind, error }, loadEpoch),
           })
         }
+        if (!target) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Subtitle target is unavailable', false)
+        await setupSubtitles(options.source, media, loadEpoch, target, customCanvas?.canvas ?? null, activeRenderer?.kind ?? null, options.subtitles)
         if (loadEpoch !== epoch || closed) throw loadAborted(intent)
         if (options.autoplay === true) await customPipeline.play()
       } catch (cause) {
@@ -523,6 +594,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       ensureOpen()
       if (!activePipeline) throw createEngineError(ErrorCodes.NATIVE_OPERATION_FAILED, 'No media is loaded', true)
       activePipeline.pipeline.setPlaybackRate(rate)
+      subtitleController?.rateChanged()
     },
 
     setVolume(volume: number): void {
@@ -550,6 +622,33 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       if (activePipeline?.kind !== 'custom-video' || !activeRenderer) throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'A Custom renderer is not active', true)
       activeRenderer.setTransform(transform)
     },
+    listSubtitleTracks(): readonly SubtitleTrack[] { return subtitleController?.listTracks() ?? [] },
+    addSubtitleTrack(source: ExternalSubtitleSourceDescriptor, options?: SubtitleTrackOptions): Promise<SubtitleTrack> {
+      if (!subtitleController) return Promise.reject(createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true))
+      return subtitleController.addTrack(source, options)
+    },
+    selectSubtitleTrack(trackId: string | null): Promise<void> {
+      if (!subtitleController) return Promise.reject(createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true))
+      return subtitleController.selectTrack(trackId)
+    },
+    removeSubtitleTrack(trackId: string): void {
+      if (!subtitleController) throw createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true)
+      subtitleController.removeTrack(trackId)
+    },
+    closeSubtitles(): void { subtitleController?.closeSubtitles() },
+    setSubtitleStyle(style: SubtitleCueStyle): void {
+      if (!subtitleController) throw createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true)
+      subtitleController.setStyle(style)
+    },
+    resetSubtitleStyle(): void {
+      if (!subtitleController) throw createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true)
+      subtitleController.resetStyle()
+    },
+    attachSubtitleOverlay(host?: HTMLElement): void {
+      if (!subtitleController) throw createEngineError(ErrorCodes.SUBTITLE_OVERLAY_UNAVAILABLE, 'Subtitle overlay is not available', true)
+      try { subtitleController.attachOverlay(host) } catch { throw createEngineError(ErrorCodes.SUBTITLE_OVERLAY_UNAVAILABLE, 'Subtitle overlay is not available', true) }
+    },
+    detachSubtitleOverlay(): void { subtitleController?.detachOverlay() },
 
     readVideoFrame(): Promise<DecodedVideoFrame | null> {
       try { ensureOpen() } catch (cause) { return Promise.reject(cause) }
@@ -562,7 +661,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     async requestFullscreen(): Promise<void> {
       ensureOpen()
       if (activePipeline?.kind !== 'native') throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen requires a native video element or a later custom renderer', true)
-      await activePipeline.pipeline.requestFullscreen()
+      await activePipeline.pipeline.requestFullscreen(subtitleController?.fullscreenHost ?? undefined)
     },
 
     async exitFullscreen(): Promise<void> {

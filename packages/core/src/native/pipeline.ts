@@ -199,10 +199,18 @@ export class NativeMediaPipeline {
     }
   }
 
-  async requestFullscreen(): Promise<void> {
+  async requestFullscreen(host?: HTMLElement): Promise<void> {
     this.ensureOpen()
-    if (!this.features.fullscreen) throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen is not supported by this video element', true)
-    try { await this.video.requestFullscreen() } catch (cause) {
+    const target = host ?? this.video.element
+    const document = target.ownerDocument ?? this.video.element.ownerDocument
+    const supported = host === undefined
+      ? this.features.fullscreen
+      : document === this.video.element.ownerDocument && document?.fullscreenEnabled === true && typeof target.requestFullscreen === 'function'
+    if (!supported || typeof target.requestFullscreen !== 'function') throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen is not supported by the playback host', true)
+    try {
+      if (host === undefined) await this.video.requestFullscreen()
+      else await Promise.resolve(target.requestFullscreen())
+    } catch (cause) {
       throw mapNativeDomError(cause, ErrorCodes.NATIVE_FULLSCREEN_BLOCKED, 'Fullscreen was blocked by the browser')
     }
   }

@@ -57,6 +57,21 @@ seek 提升 epoch，停止旧 pump，关闭 queue Frame，拒绝旧 reader，res
 
 `close()` 终止 Demux Worker、关闭 VideoDecoder、清空并 close 未交付 Frame、拒绝 reader/seek/Worker Promise、清除 operation timer 和监听器。已经由 `readVideoFrame()` 交付的 Frame 不会被 pipeline 再关闭。
 
+## Phase 8 subtitles
+
+Core 只组合字幕生命周期：为 Native 注入 `HTMLVideo.currentTime`，为 Custom 注入现有 AudioContext 主时钟或无音频墙钟；为内嵌字幕创建独立、受限的 Demux 会话；将轨道、cue、状态、样式和诊断事件转发到公共引擎边界。字幕不会进入 VideoDecoder、Renderer、AI stage、`VideoFrame` 或 `GPUTexture`。
+
+```ts
+const track = await engine.addSubtitleTrack(
+  { kind: 'url', url: 'https://media.example.com/subtitles/zh.ass' },
+  { id: 'zh-ass', language: 'zh', name: 'Chinese' },
+)
+await engine.selectSubtitleTrack(track.id)
+engine.setSubtitleStyle({ fontSize: 42, color: '#FFFFFF', outlineWidth: 3 })
+```
+
+选择轨道、seek、换源、remove 和 close 会提升或检查字幕 operation/epoch，旧异步加载和迟到 cue 不再更新 Overlay。`closeSubtitles()` 关闭本次媒体的字幕内核；重新启用需要重新 `load()`。菜单、字体选择器、拖拽位置编辑器和控制条属于 Phase 9。
+
 ## Phase 6 presentation
 
 ```text

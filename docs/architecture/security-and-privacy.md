@@ -48,7 +48,15 @@ Canvas width/height、DPR、crop、rotation、frame dimensions 和 texture limit
 
 ## 字幕安全
 
-SRT/ASS 文本按纯文本输出。只对白名单解析 ASS 样式和换行，禁止把 `Dialogue`、字体名或外挂字幕内容拼接成 HTML、CSS URL 或脚本。
+SRT/ASS 文本按纯文本输出。Overlay 只使用 `textContent`/等价安全文本节点，不调用 `innerHTML`、不解析实体，也不把 `Dialogue`、字体名或外挂字幕内容拼接成 HTML、SVG、脚本、CSS URL、动态 stylesheet 或 shader。
+
+字幕输入按不可信数据处理：默认限制 UTF-8 字节、行数、行长、cue 数、单 cue 文本、诊断数和解析时间；逐行扫描与内嵌 packet 批次数有硬上限。时间只接受非负安全整数微秒且 `start < end`。无效 cue 产生稳定诊断并继续或有界停止，不进入无限循环、指数回溯或无界分配。
+
+ASS 只对白名单 `\\N`/`\\n`/`\\h`、字体/字号、粗斜体/下划线、主色/描边色、描边、基础 alignment 和 `\\pos` 建模。动画、transform、move、fade、drawing、karaoke、复杂 blur/rotation 和 collision layout 不执行，统一显式降级。字体栈拒绝控制字符、声明分隔、函数/CSS URL 和 `!important`；颜色只接受固定十六进制模型。
+
+外挂 File 仅在浏览器本地读取，不上传。远程字幕仅直接请求 HTTPS，使用 `mode='cors'`、`credentials='omit'`、`redirect='error'`，并同时验证 Content-Length 与流式累计响应大小、超时和 AbortSignal。SDK 不代理远程字幕。
+
+轨道选择、seek、remove、换源和 close 使用 operation/epoch/AbortSignal 隔离；旧异步结果不得更新 Overlay 或事件。公共字幕事件不暴露 File、原始字幕全文、完整 URL、查询参数、响应正文、自定义 header、CodecPrivate 或 DOMException。`subtitlecuechange` 只包含 cue metadata；错误 message 来自固定安全文本。
 
 ## WASM 供应链
 

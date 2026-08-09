@@ -565,22 +565,192 @@ export interface PlatformScoreAdjustment {
   reasons: readonly string[]
 }
 
+export type SubtitleFormat = 'srt' | 'ass' | 'ssa'
+export type SubtitleSourceKind = 'embedded' | 'file' | 'url'
+export type SubtitleTrackState = 'idle' | 'loading' | 'ready' | 'selected' | 'disabled' | 'error'
+export type SubtitleState = 'disabled' | 'idle' | 'loading' | 'ready' | 'showing' | 'ended' | 'error' | 'closed'
+export type SubtitleDiagnosticSeverity = 'warning' | 'error'
+export type SubtitleAlignment =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'middle-left' | 'middle-center' | 'middle-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right'
+
+export const SubtitleErrorCodes = {
+  SUBTITLE_INPUT_INVALID: 'SUBTITLE_INPUT_INVALID',
+  SUBTITLE_INPUT_TOO_LARGE: 'SUBTITLE_INPUT_TOO_LARGE',
+  SUBTITLE_LINE_TOO_LONG: 'SUBTITLE_LINE_TOO_LONG',
+  SUBTITLE_CUE_LIMIT_EXCEEDED: 'SUBTITLE_CUE_LIMIT_EXCEEDED',
+  SUBTITLE_TIME_INVALID: 'SUBTITLE_TIME_INVALID',
+  SUBTITLE_PARSE_BUDGET_EXCEEDED: 'SUBTITLE_PARSE_BUDGET_EXCEEDED',
+  SUBTITLE_SRT_INVALID: 'SUBTITLE_SRT_INVALID',
+  SUBTITLE_ASS_INVALID: 'SUBTITLE_ASS_INVALID',
+  SUBTITLE_ASS_UNSUPPORTED_FEATURE: 'SUBTITLE_ASS_UNSUPPORTED_FEATURE',
+  SUBTITLE_FORMAT_UNSUPPORTED: 'SUBTITLE_FORMAT_UNSUPPORTED',
+  SUBTITLE_SOURCE_INVALID: 'SUBTITLE_SOURCE_INVALID',
+  SUBTITLE_SOURCE_CONFLICT: 'SUBTITLE_SOURCE_CONFLICT',
+  SUBTITLE_SOURCE_UNSUPPORTED: 'SUBTITLE_SOURCE_UNSUPPORTED',
+  SUBTITLE_SOURCE_TOO_LARGE: 'SUBTITLE_SOURCE_TOO_LARGE',
+  SUBTITLE_CORS_FAILED: 'SUBTITLE_CORS_FAILED',
+  SUBTITLE_NETWORK_FAILED: 'SUBTITLE_NETWORK_FAILED',
+  SUBTITLE_ABORTED: 'SUBTITLE_ABORTED',
+  SUBTITLE_PACKET_INVALID: 'SUBTITLE_PACKET_INVALID',
+  SUBTITLE_TRACK_ID_CONFLICT: 'SUBTITLE_TRACK_ID_CONFLICT',
+  SUBTITLE_TRACK_NOT_FOUND: 'SUBTITLE_TRACK_NOT_FOUND',
+  SUBTITLE_TRACK_REMOVE_FORBIDDEN: 'SUBTITLE_TRACK_REMOVE_FORBIDDEN',
+  SUBTITLE_OVERLAY_UNAVAILABLE: 'SUBTITLE_OVERLAY_UNAVAILABLE',
+  SUBTITLE_OVERLAY_INVALID: 'SUBTITLE_OVERLAY_INVALID',
+  SUBTITLE_STYLE_INVALID: 'SUBTITLE_STYLE_INVALID',
+  SUBTITLE_STORE_FAILED: 'SUBTITLE_STORE_FAILED',
+  SUBTITLE_OPERATION_FAILED: 'SUBTITLE_OPERATION_FAILED',
+  SUBTITLE_CLOSED: 'SUBTITLE_CLOSED',
+} as const
+
+export type SubtitleErrorCode = (typeof SubtitleErrorCodes)[keyof typeof SubtitleErrorCodes]
+
+export interface SubtitleCueStyle {
+  /** Validated CSS font-family stack. */
+  fontFamily?: string
+  /** CSS pixel size. */
+  fontSize?: number
+  /** Validated hexadecimal color. */
+  color?: string
+  /** Validated hexadecimal outline color. */
+  outlineColor?: string
+  /** CSS pixel outline width. */
+  outlineWidth?: number
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  alignment?: SubtitleAlignment
+  /** Horizontal percentage within the overlay, from 0 through 100. */
+  x?: number
+  /** Vertical percentage within the overlay, from 0 through 100. */
+  y?: number
+}
+
 export interface SubtitleCue {
+  cueId: string
+  trackId: string
   start: Micros
   end: Micros
   text: string
+  layer: number
   style?: SubtitleCueStyle
 }
 
-export interface SubtitleCueStyle {
-  fontFamily?: string
-  fontSize?: number
-  color?: string
-  outlineColor?: string
-  outlineWidth?: number
-  x?: number
-  y?: number
+export interface SubtitleCueMetadata {
+  cueId: string
+  start: Micros
+  end: Micros
+  layer: number
 }
+
+export interface SubtitleDiagnostic {
+  code: SubtitleErrorCode
+  severity: SubtitleDiagnosticSeverity
+  message: string
+  line?: number
+  cueId?: string
+}
+
+export type ExternalSubtitleSourceDescriptor =
+  | { kind: 'file'; file: File; format?: SubtitleFormat }
+  | { kind: 'url'; url: string; format?: SubtitleFormat }
+
+export type SubtitleSourceDescriptor =
+  | { kind: 'embedded'; trackId: number; format?: SubtitleFormat }
+  | ExternalSubtitleSourceDescriptor
+
+/** A safe source summary. It never contains a File object or complete URL. */
+export interface SubtitleTrackSource {
+  kind: SubtitleSourceKind
+  format: SubtitleFormat
+  embeddedTrackId?: number
+}
+
+export interface SubtitleTrack {
+  id: string
+  source: SubtitleTrackSource
+  format: SubtitleFormat
+  language: string | null
+  name: string
+  state: SubtitleTrackState
+  cueCount: number
+  diagnosticCount: number
+}
+
+export interface SubtitleTrackOptions {
+  id?: string
+  language?: string
+  name?: string
+}
+
+export interface SubtitleParserLimits {
+  maxInputBytes: number
+  maxLineLength: number
+  maxLines: number
+  maxCues: number
+  maxCueTextLength: number
+  maxDiagnostics: number
+  parseBudgetMs: number
+}
+
+export interface SubtitleParserLimitsInput {
+  maxInputBytes?: number
+  maxLineLength?: number
+  maxLines?: number
+  maxCues?: number
+  maxCueTextLength?: number
+  maxDiagnostics?: number
+  parseBudgetMs?: number
+}
+
+export interface SubtitleSourceLimits {
+  maxResponseBytes: number
+  maxResponseChunks: number
+  maxPacketBatches: number
+  operationTimeoutMs: number
+}
+
+export interface SubtitleSourceLimitsInput {
+  maxResponseBytes?: number
+  maxResponseChunks?: number
+  maxPacketBatches?: number
+  operationTimeoutMs?: number
+}
+
+export interface SubtitleParseResult {
+  cues: SubtitleCue[]
+  diagnostics: SubtitleDiagnostic[]
+}
+
+export type SubtitleClockSource = 'native-media' | 'audio-context' | 'wall-clock'
+
+export interface SubtitleClockSnapshot {
+  source: SubtitleClockSource
+  mediaTime: Micros
+  playbackRate: number
+  playing: boolean
+  ended: boolean
+  epoch: number
+}
+
+export interface SubtitleStyleStore {
+  load(scope: string): SubtitleCueStyle
+  save(scope: string, style: SubtitleCueStyle): void
+  clear?(scope: string): void
+}
+
+export interface SubtitleOptions {
+  enabled?: boolean
+  overlayHost?: HTMLElement
+  defaultTrackId?: string
+  parserLimits?: SubtitleParserLimitsInput
+  sourceLimits?: SubtitleSourceLimitsInput
+  styleStore?: SubtitleStyleStore
+}
+
+export type SubtitleTrackChangeReason = 'enumerated' | 'added' | 'selected' | 'disabled' | 'removed' | 'loaded' | 'failed'
 
 export interface EngineError {
   code: string
@@ -608,6 +778,11 @@ export interface EngineEventMap {
   rendererchange: { previous: CustomRendererKind | null; current: CustomRendererKind; reason: string }
   rendererstatechange: { kind: CustomRendererKind; previous: RendererState; current: RendererState; reason: string | null }
   rendererstats: { stats: RendererStats }
+  subtitletrackchange: { tracks: readonly SubtitleTrack[]; selectedTrackId: string | null; reason: SubtitleTrackChangeReason }
+  subtitlecuechange: { trackId: string | null; cues: readonly SubtitleCueMetadata[]; currentTime: Micros; epoch: number }
+  subtitlestatechange: { previous: SubtitleState; current: SubtitleState; trackId: string | null }
+  subtitlestylechange: { style: SubtitleCueStyle }
+  subtitlewarning: { trackId: string | null; diagnostic: SubtitleDiagnostic }
   error: { error: EngineError }
 }
 
@@ -726,6 +901,7 @@ export const ErrorCodes = {
   RENDERER_AI_PIPELINE_FAILED: 'RENDERER_AI_PIPELINE_FAILED',
   RENDERER_AI_BUDGET_EXCEEDED: 'RENDERER_AI_BUDGET_EXCEEDED',
   RENDERER_AI_DEVICE_LOST: 'RENDERER_AI_DEVICE_LOST',
+  ...SubtitleErrorCodes,
 } as const
 
 export type AiQualityTier = 'off' | 'low' | 'medium' | 'high' | 'ultra'
@@ -749,6 +925,7 @@ export interface MXPlayerOptions {
   native?: NativeMediaOptions
   customVideo?: CustomVideoOptions
   customAudio?: CustomAudioOptions
+  subtitles?: SubtitleOptions
 }
 
 export interface MediaEngine extends EngineEventSource {
@@ -763,6 +940,10 @@ export interface MediaEngine extends EngineEventSource {
   readonly rendererKind: CustomRendererKind | null
   readonly rendererState: RendererState | null
   readonly rendererStats: RendererStats | null
+  readonly subtitleTracks: readonly SubtitleTrack[]
+  readonly selectedSubtitleTrack: string | null
+  readonly subtitleState: SubtitleState
+  readonly subtitleStyle: SubtitleCueStyle
 
   load(options: MXPlayerOptions): Promise<void>
   play(): Promise<void>
@@ -773,6 +954,15 @@ export interface MediaEngine extends EngineEventSource {
   setMuted(muted: boolean): void
   setVideoFilter(filter: VideoFilterOptions): Promise<void>
   setVideoTransform(transform: VideoTransformOptions): void
+  listSubtitleTracks(): readonly SubtitleTrack[]
+  addSubtitleTrack(source: ExternalSubtitleSourceDescriptor, options?: SubtitleTrackOptions): Promise<SubtitleTrack>
+  selectSubtitleTrack(trackId: string | null): Promise<void>
+  removeSubtitleTrack(trackId: string): void
+  closeSubtitles(): void
+  setSubtitleStyle(style: SubtitleCueStyle): void
+  resetSubtitleStyle(): void
+  attachSubtitleOverlay(host?: HTMLElement): void
+  detachSubtitleOverlay(): void
   readVideoFrame(): Promise<DecodedVideoFrame | null>
   requestFullscreen(): Promise<void>
   exitFullscreen(): Promise<void>

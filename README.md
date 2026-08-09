@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-仓库当前处于架构与脚手架阶段。完整设计见：
+仓库已完成 Phase 1-8 的能力探测、Range/Demux、Native/Custom、Audio、Renderer、AI 与 SRT/ASS 字幕内核。完整设计见：
 
 - `docs/architecture/overview.md`
 - `docs/architecture/browser-strategy.md`
@@ -44,3 +44,8 @@ pnpm dev
 
 演示站使用 Docker 部署，生产容器必须配置 COOP/COEP，以便在条件允许时启用多线程 WASM。
 
+## 字幕内核
+
+Phase 8 提供内嵌与外挂 SRT、ASS/SSA 文本轨、轨道选择/关闭/移除、媒体时钟调度、安全 Overlay 和按媒体 origin 保存的样式。外挂 URL 只允许直接 HTTPS/CORS 请求，不经过代理；字幕文本始终作为纯文本渲染。
+
+PGS/VobSub、完整 libass、字幕菜单、字体选择器、拖拽编辑器和控制条不属于 Phase 8。

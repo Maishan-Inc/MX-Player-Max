@@ -62,3 +62,20 @@ player.setVideoTransform({ rotation: 90 })
 `auto` tries WebGPU, then WebGL2, then Canvas2D. An explicit renderer fails with a stable `RENDERER_*` code when unavailable. WebGPU device loss is rebuilt in place; failed rebuild and unrecoverable WebGL2 context loss fall back and emit `rendererchange`. Canvas2D remains watchable without WebGPU. Canvas output supports crop, 0/90/180/270 rotation, contain/cover/fill, DPR and the five bounded filters. A 16,384 backing-dimension limit and backend texture limits are enforced. Phase 6 Custom backends all report `hdrPreserved=false` because end-to-end display HDR cannot be confirmed; unknown color metadata remains unknown.
 
 `readVideoFrame()` ownership is unchanged: a resolved frame belongs to the caller and must be closed by the caller. The internal renderer loop consumes its own pull results and closes presented, dropped, stale and late frames exactly once. Runtime Native <-> Custom migration is load-time in Phase 6; `setVideoFilter()` on Native returns `RENDERER_BACKEND_UNAVAILABLE`, so reload with `customVideo.filter` to request a path change. `pause`, `resume`, playback rate, seek epoch and EOS continue to use the Phase 5 AudioContext/wall-clock contract; close removes rAF, canvas, renderer listeners, GPU/GL resources and pending work.
+
+## Phase 8 subtitle API
+
+```ts
+const track = await player.addSubtitleTrack(
+  { kind: 'file', file: subtitleFile, format: 'srt' },
+  { id: 'external-en', language: 'en' },
+)
+await player.selectSubtitleTrack(track.id)
+player.setSubtitleStyle({ fontSize: 40, y: 86, outlineWidth: 3 })
+
+player.on('subtitlecuechange', ({ cues, currentTime, epoch }) => {
+  // 事件只含 cue metadata，不含字幕全文。
+})
+```
+
+`subtitleTracks`、`selectedSubtitleTrack`、`subtitleState` 和 `subtitleStyle` 是只读代理。SDK 同时代理 `listSubtitleTracks()`、`addSubtitleTrack()`、`selectSubtitleTrack()`、`removeSubtitleTrack()`、`closeSubtitles()`、样式 API 和 Overlay attach/detach。Native 与 Custom 使用同一 API/事件语义；Phase 8 不创建菜单、设置面板、字体选择器、拖拽句柄或控制条。
