@@ -1,508 +1,127 @@
-# 分发与嵌入
+# 分发与嵌入架构
 
-本文档定义 SDK 如何被第三方网页使用，以及项目可以分发到哪些渠道。目标是达到 Video.js、Plyr、hls.js 那样的接入体验：开发者一行 `<script>` 或一句 `npm install` 就能用。
+## 1. 当前发布形态
 
-## 1. 当前 SDK 的差距
+Phase 9 的包采用 ESM + TypeScript declarations：
 
-先说现状。`packages/sdk/src/index.ts` 目前是：
+| 使用方式 | 安装包 | 样式 | 状态 |
+|---|---|---|---|
+| 引擎 API | `@mx-player-max/sdk` | 无 | 已实现 |
+| 原生 DOM 播放器 UI | `sdk` + `ui` | 显式导入 `@mx-player-max/ui/style.css` | 已实现 |
+| React | `@mx-player-max/react` | 显式导入 UI CSS | 已实现 |
+| Vue | `@mx-player-max/vue` | 显式导入 UI CSS | 已实现 |
+| UMD/IIFE script tag | 单文件全局变量 | link CSS | Phase 12 pending |
 
-```ts
-export class MXPlayer {
-  readonly engine: MediaEngine
-  readonly ready: Promise<void>
-  constructor(options: MXPlayerOptions) { ... }
-  play() / pause() / seek(time) / destroy()
-}
+当前没有 `mx-player.min.js`、`unpkg` 或 `jsdelivr` 全局脚本入口。npm 发布后可由支持 ESM 的 CDN 解析包入口，但 Phase 9 不把 CDN 转换结果当作仓库发布的 UMD 产物。
+
+## 2. 可选安装与 tree-shaking
+
+```text
+sdk -> core -> engine packages
+ui  -> sdk + types + named Lucide icons
+react/vue -> sdk + ui + types + framework peer
 ```
 
-对比主流播放器的接入要求，缺三样：
+引擎依赖图没有任何 UI 边。`@mx-player-max/ui` 的 JS 与 CSS 是独立 entry；消费者只安装 SDK 时不会得到 UI/Lucide 代码。UI manifest 将 `dist/style.css` 标为 side effect，防止 bundler 丢弃消费者显式导入的样式，同时 JS export 保持 tree-shakable。
 
-### 1.1 事件系统尚未实现（已在阶段 1 规划内）
+每个包发布前使用 `pnpm pack` 或递归 publish，让 pnpm 把 `workspace:*` 转换为真实版本。Demo 是 private app，不发布为 SDK 包。
 
-当前代码的 API 只有 4 个方法，**没有任何事件**。开发者无法知道：加载进度、可以播放了、播放中、暂停、时间更新、seek 完成、缓冲、错误、轨道变化、后端切换。
+## 3. 三种嵌入方式
 
-**没有事件系统的播放器无法被集成。** 开发者连"什么时候显示播放按钮"都不知道。
-
-这是**实现进度问题，不是规划遗漏**——`roadmap.md` 阶段 1 已明确包含事件契约。落地时需要在 `MediaEngine` 和 `MXPlayer` 上加 `on()` / `off()` / `once()`，或暴露标准的 `EventTarget`。
-
-### 1.2 缺 UMD/IIFE 构建（阻塞 script 标签接入）
-
-`packages/sdk/package.json` 当前只有：
-
-```json
-"exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } }
-```
-
-**只有 ESM，没有 UMD。** 这意味着开发者不能写：
-
-```html
-<script src="https://cdn.jsdelivr.net/npm/@mx-player-max/sdk"></script>
-<script>const player = new MXPlayer.MXPlayer({...})</script>
-```
-
-而这恰恰是 Video.js、Plyr、hls.js 最常见的接入方式——尤其在 WordPress、旧项目、无构建工具的页面里。ESM 虽然是现代标准，但 `<script type="module">` 无法在不支持的环境降级。
-
-### 1.3 UI 层尚未建立（已定方案，阶段 9）
-
-当前 SDK 是**纯引擎**，没有控制条、进度条、音量、全屏按钮。
-
-已决定采用**引擎 + 可选 UI 包**（`ADR-0004`）：
-
-```
-@mx-player-max/sdk      引擎，零 DOM 控件，无 CSS      ← 必需
-@mx-player-max/ui       控制条、菜单、字幕层、主题      ← 可选
-```
-
-纯引擎单独发布在本项目不成立。`hls.js` 能只做引擎，是因为它最终把数据喂给 `<video>`，浏览器自带的 `controls` 属性就提供了一套可用控件；而 WebCodecs 与 WASM 路径渲染到 `<canvas>`，`controls` 对 canvas 无效——**不提供 UI 包，开发者就完全没有 UI**。
-
-UI 包用框架无关的原生 DOM 实现，不依赖 React，这样 UMD 产物不必内联 React 运行时（约 45 KB gzip），而 UMD 的目标用户恰恰是不用 React 的页面。`@mx-player-max/react` 与 `@mx-player-max/vue` 是对 SDK + UI 的薄封装。
-
-## 2. 三种接入方式
-
-### 2.1 npm（构建工具用户）
-
-```bash
-npm install @mx-player-max/sdk
-```
+### 3.1 SDK only
 
 ```ts
 import { MXPlayer } from '@mx-player-max/sdk'
 
-const player = new MXPlayer({
-  target: '#player',
-  source: { kind: 'url', url: 'https://media.example.com/movie.mkv' },
-})
-
-player.on('ready', () => player.play())
-player.on('error', (e) => console.error(e.code, e.message))
+const player = new MXPlayer({ target: '#player', source })
+await player.ready
 ```
 
-Tree-shaking 友好，类型完整。这是 React/Vue/Svelte 项目的标准方式。
+Native 路径可以由宿主选择浏览器 controls；Custom canvas 没有浏览器 controls，宿主需自建界面或安装 UI 包。
 
-### 2.2 CDN ESM（现代浏览器，无构建）
+### 3.2 SDK + UI
 
-```html
-<div id="player"></div>
-<script type="module">
-  import { MXPlayer } from 'https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/+esm'
+```ts
+import { MXPlayer } from '@mx-player-max/sdk'
+import { attachPlayerUi } from '@mx-player-max/ui'
+import '@mx-player-max/ui/style.css'
 
-  const player = new MXPlayer({
-    target: '#player',
-    source: { kind: 'url', url: 'https://media.example.com/movie.mkv' },
-  })
-</script>
+const host = document.querySelector<HTMLElement>('#player')!
+const player = new MXPlayer({ target: host, source })
+const ui = attachPlayerUi(player, host)
 ```
 
-**必须锁定版本号。** 用 `@latest` 会在发新版时静默破坏线上页面。
+SDK 与 UI 必须共享同一个定位容器。SDK 拥有 video/canvas/subtitle overlay，UI 只拥有控制 root。容器进入 fullscreen 后所有层保持一致；宿主 theatre mode 通过 adapter 改变外层布局。
 
-### 2.3 UMD 全局变量（最大兼容，需新增构建产物）
+### 3.3 React/Vue
 
-```html
-<div id="player"></div>
-<script src="https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/dist/mx-player.min.js"></script>
-<script>
-  const player = new MXPlayerMax.MXPlayer({
-    target: '#player',
-    source: { kind: 'url', url: 'https://media.example.com/movie.mkv' },
-  })
-</script>
-```
+框架组件内部组合 SDK + UI，props identity 改变时分别 reload/update，卸载时 UI-first cleanup。CSS 仍由应用显式导入，便于替换主题或完全省略官方样式。
 
-这是目前**缺失**的产物。需要在构建流程加一步（Rollup/esbuild 打 IIFE 格式，全局名 `MXPlayerMax`）。
+## 4. 远程媒体 CORS 与 Range
 
-### 2.4 建议的 package.json exports
+Custom Range/Demux 路径的远程源必须：
 
-```json
-{
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "unpkg": "./dist/mx-player.min.js",
-  "jsdelivr": "./dist/mx-player.min.js",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "default": "./dist/index.js"
-    },
-    "./wasm/*": "./wasm/*"
-  },
-  "sideEffects": false
-}
-```
-
-`unpkg` 和 `jsdelivr` 字段让 CDN 在访问包根路径时自动返回 UMD 产物，开发者不用写完整路径。
-
-## 3. CORS 完整分析
-
-这是集成中最容易出问题的部分。**SDK 涉及三条独立的跨域链路**，任何一条配错都会失败，且错误信息往往误导。
-
-### 3.1 三条链路
-
-```text
-链路 1：宿主页面 → SDK JS/WASM 文件
-        example.com 的页面加载 cdn.jsdelivr.net 的脚本
-
-链路 2：宿主页面 → 媒体文件
-        example.com 的页面读取 media.example.com 的视频
-
-链路 3：宿主页面 → 字幕文件
-        example.com 的页面读取外挂字幕
-```
-
-三条链路的要求不同：
-
-| 链路 | 需要什么 | 谁负责配置 |
-|---|---|---|
-| SDK 文件 | CORS（CDN 已配好）+ COEP 页面需要 CORP | CDN / 我们 |
-| 媒体文件 | **CORS + Range 支持** | 开发者的媒体服务器 |
-| 字幕文件 | CORS | 开发者的字幕服务器 |
-
-### 3.2 媒体服务器必须返回的响应头
-
-这是开发者最常踩的坑。媒体服务器必须支持：
+- 使用 HTTP(S)，生产页面应使用 HTTPS；
+- 允许宿主 origin 的 CORS；
+- 支持 GET Range 并返回 `206 Partial Content`；
+- 暴露 `Content-Range`、`Content-Length`、`Accept-Ranges` 和可用的 ETag；
+- 返回稳定且与响应体一致的范围/总长度。
 
 ```http
-Access-Control-Allow-Origin: https://example.com
-Access-Control-Allow-Methods: GET, HEAD, OPTIONS
+Access-Control-Allow-Origin: https://app.example.com
 Access-Control-Allow-Headers: Range
-Access-Control-Expose-Headers: Content-Range, Content-Length, Accept-Ranges
+Access-Control-Expose-Headers: Content-Range, Content-Length, Accept-Ranges, ETag
 Accept-Ranges: bytes
 ```
 
-**`Access-Control-Expose-Headers` 是最常被遗漏的一项。**
+Native HTMLVideo 直接加载 URL，不能发送 `SourceDescriptor.headers`，因此 custom headers 会返回 `NATIVE_CUSTOM_HEADERS_UNSUPPORTED`。Range loader 自己控制 `Range`/`If-Range`；只把强 ETag 用作 `If-Range`，弱 ETag 只参与响应一致性比较。
 
-原因：跨域请求中，JS 默认只能读到 6 个"安全"响应头。`Content-Range` 不在其中。不 expose 的话，`fetch` 能拿到数据，但 `response.headers.get('Content-Range')` 返回 `null`——SDK 无法知道文件总长度，容器解析直接失败。
+SDK 不代理媒体、不上传本地文件，也不把 Demo/CDN 当作媒体代理。
 
-这个错误的表现是"视频加载不出来但网络面板显示 206 成功"，极难排查。
+## 5. 字幕与预览跨域
 
-### 3.3 Range 请求的验证
+外挂 URL 字幕由浏览器直接 HTTPS/CORS fetch，限制 redirect、字节、chunk 和 timeout。字幕事件与公共错误不会泄露全文或完整 URL/query。
 
-服务器必须正确响应 Range 请求：
+Native preview 使用隔离 media element 并默认 `crossOrigin="anonymous"`。若媒体源不允许 canvas 像素读取，预览安静返回 `null`，正常播放与 seek 不受影响。Custom preview 只调用宿主 provider；provider 结果必须是受限 PNG/JPEG/WebP Blob。公共 preview request/result 不包含 source、Frame、canvas 或 GPU 对象。
 
-```http
-请求：
-GET /movie.mkv HTTP/1.1
-Range: bytes=0-4095
+## 6. HTTPS 与安全上下文
 
-正确响应：
-HTTP/1.1 206 Partial Content
-Content-Range: bytes 0-4095/8589934592
-Content-Length: 4096
-Accept-Ranges: bytes
-```
+生产宿主应使用 HTTPS。混合内容会阻止 HTTPS 页面加载 HTTP 媒体。WebCodecs、WebGPU、Service Worker 和其他高级 API 受安全上下文或浏览器实现限制；`localhost` 通常被视为安全上下文。
 
-**如果服务器返回 `200 OK` 加完整文件**，说明它不支持 Range。此时：
-- 大文件会被整个下载（可能几十 GB）
-- seek 无法按需读取
-- 内存可能爆掉
+浏览器能力必须通过实际 API 探测，不能用品牌硬编码。能力不可用时策略选择经验证的 Native/Custom fallback；UI 只读取最终 snapshot capability。
 
-SDK 应该在探测阶段检测这一点，明确报错而不是尝试下载。
+## 7. COOP/COEP 与未来 WASM
 
-### 3.4 常见服务器配置
-
-**Nginx**
-
-```nginx
-location ~* \.(mp4|mkv|webm|m4v|mov)$ {
-    add_header Access-Control-Allow-Origin "https://example.com" always;
-    add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS" always;
-    add_header Access-Control-Allow-Headers "Range" always;
-    add_header Access-Control-Expose-Headers "Content-Range, Content-Length, Accept-Ranges" always;
-    add_header Accept-Ranges "bytes" always;
-
-    if ($request_method = OPTIONS) { return 204; }
-}
-```
-
-Nginx 默认支持 Range，不需要额外配置。
-
-**Cloudflare R2 / AWS S3**
-
-需要在 bucket 的 CORS 配置里加：
-
-```json
-[{
-  "AllowedOrigins": ["https://example.com"],
-  "AllowedMethods": ["GET", "HEAD"],
-  "AllowedHeaders": ["Range"],
-  "ExposeHeaders": ["Content-Range", "Content-Length", "Accept-Ranges"],
-  "MaxAgeSeconds": 3600
-}]
-```
-
-S3 和 R2 原生支持 Range。
-
-**Express / Node.js**
-
-```js
-app.use('/media', cors({
-  origin: 'https://example.com',
-  exposedHeaders: ['Content-Range', 'Content-Length', 'Accept-Ranges'],
-}))
-// 用 express.static 或 send 库，它们自带 Range 支持
-```
-
-### 3.5 SDK 应该提供的诊断
-
-集成失败时错误信息必须明确指向原因，而不是笼统的"加载失败"：
-
-| 现象 | 应报的错误码 | 提示 |
-|---|---|---|
-| fetch 被 CORS 阻止 | `SOURCE_CORS_BLOCKED` | 媒体服务器缺 `Access-Control-Allow-Origin` |
-| 拿不到 Content-Range | `SOURCE_RANGE_HEADER_HIDDEN` | 缺 `Access-Control-Expose-Headers` |
-| 返回 200 而非 206 | `SOURCE_RANGE_UNSUPPORTED` | 服务器不支持 Range 请求 |
-| 混合内容被拦 | `SOURCE_INSECURE_ORIGIN` | HTTPS 页面不能加载 HTTP 媒体 |
-
-这些错误码需要补充到 `packages/types/src/index.ts` 的错误码定义中。
-
-## 4. HTTP vs HTTPS
-
-### 4.1 混合内容阻止
-
-**HTTPS 页面无法加载 HTTP 资源。** 浏览器会直接阻止，不给任何绕过方式。
-
-```text
-https://example.com 的页面
-      ↓
-加载 http://media.example.com/movie.mp4   ← 被阻止
-加载 https://media.example.com/movie.mp4  ← 正常
-```
-
-这对本项目影响很大：媒体文件、SDK 脚本、WASM 文件全都必须是 HTTPS。开发者如果媒体服务器还在 HTTP，整个 SDK 不可用。
-
-### 4.2 安全上下文限制
-
-多个关键 API 只在**安全上下文**（HTTPS 或 localhost）可用：
-
-| API | HTTP 页面 | 影响 |
-|---|---|---|
-| `SharedArrayBuffer` | 不可用 | 多线程 WASM 失效 |
-| `crossOriginIsolated` | 恒为 false | 同上 |
-| WebCodecs | 不可用 | **自定义管线完全失效** |
-| WebGPU | 不可用 | 只能降级 WebGL2/Canvas2D |
-| Service Worker | 不可用 | 无法做缓存优化 |
-
-**WebCodecs 需要安全上下文**这一条最关键：HTTP 页面上 SDK 只剩 HTMLVideo 原生路径和 WASM 软解，MKV 播放性能会大幅下降。
-
-`localhost` 和 `127.0.0.1` 被视为安全上下文，所以本地开发不受影响。但开发者部署到 HTTP 生产环境会遇到"本地好好的，线上不行"。
-
-**文档必须明确要求 HTTPS。**
-
-## 5. 多线程 WASM 与跨源隔离
-
-### 5.1 要求
-
-多线程 WASM 需要 `SharedArrayBuffer`，而它需要页面处于跨源隔离状态。宿主页面必须返回：
+多线程 WASM 需要 `crossOriginIsolated`、`SharedArrayBuffer` 与宿主响应头：
 
 ```http
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-**SDK 无法通过 JS 设置这两个头。** 它们必须由宿主页面的服务器返回。这是开发者的责任，`integration.md` 已经说明了这点。
+SDK 无法从 JavaScript 设置这些头。启用 COEP 后，页面全部跨域资源也要提供 CORS 或 CORP。单线程路径必须是一等 fallback。
 
-### 5.2 COEP 的连锁反应
+Phase 9 没有进入 Phase 10 WASM Codec；本节只记录宿主分发约束，不表示 Codec 二进制已经可发布。
 
-这是最容易被低估的坑：**开启 `require-corp` 后，页面上所有跨域资源都必须显式允许被嵌入。**
+## 8. 发布渠道
 
-包括但不限于：
-- 第三方图片、字体、iframe
-- Google Analytics、广告脚本
-- **SDK 自己的 JS 和 WASM 文件**
+- npm：主渠道，使用 `pnpm publish -r --access public` 处理 workspace 版本。
+- ESM CDN：npm 发布后可供支持 ESM 的 CDN 使用；生产环境建议锁定精确版本并自测 headers。
+- GitHub Releases：后续用于离线包、哈希清单和经许可审查的二进制。
+- Docker/GHCR：只分发 Demo，不是 SDK 的安装前置。
+- 自托管：企业内网、离线审计和区域 CDN 的推荐方案。
 
-每个跨域资源都必须返回：
+UMD/IIFE、CJS、SRI 自动生成、`unpkg`/`jsdelivr` 默认字段属于 Phase 12 发布工作。
 
-```http
-Cross-Origin-Resource-Policy: cross-origin
-```
+## 9. 安全与诊断
 
-或者通过 CORS 加载（`crossorigin` 属性）。
+对外错误只能保留稳定 code、安全 message 和 recoverable。UI 进一步把播放错误压缩为 code/recoverable，不显示 URL query、subtitle text、response body、DOMException、stack 或宿主 callback message。
 
-**结果：很多开发者开了 COEP 后发现页面上别的东西全挂了，只能关掉。** 所以：
+发布审计必须验证：
 
-**SDK 绝不能把多线程当作必需能力。** 单线程路径必须是完全可用的一等公民，多线程只是性能优化。这一点 `ADR-0002` 已经定了，实现时必须严格遵守。
-
-### 5.3 我们的 CDN 产物必须支持 COEP 页面
-
-如果开发者的页面开了 COEP，从 jsDelivr 加载我们的 SDK 时，jsDelivr 必须返回 `Cross-Origin-Resource-Policy: cross-origin` 或支持 CORS。
-
-jsDelivr 和 unpkg 都默认返回 `Access-Control-Allow-Origin: *`，所以用 `<script crossorigin>` 加载即可：
-
-```html
-<script type="module" crossorigin>
-  import { MXPlayer } from 'https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/+esm'
-</script>
-```
-
-WASM 文件通过 `fetch` 加载时天然走 CORS，没问题。
-
-### 5.4 演示站的配置
-
-`apps/demo/nginx.conf` 已经正确配置了：
-
-```nginx
-add_header Cross-Origin-Opener-Policy "same-origin" always;
-add_header Cross-Origin-Embedder-Policy "require-corp" always;
-add_header Cross-Origin-Resource-Policy "cross-origin" always;
-```
-
-第三行让演示站自己的资源可以被其他 COEP 页面嵌入，是对的。
-
-## 6. WASM 分发
-
-### 6.1 三种托管方式
-
-```ts
-// 方式 1：默认（跟随 SDK 版本从 CDN 加载）
-new MXPlayer({ target, source })
-
-// 方式 2：自托管（企业内网、CDN 加速、离线部署）
-new MXPlayer({ target, source, wasmBaseUrl: '/assets/mx-wasm/' })
-
-// 方式 3：指定 CDN 版本
-new MXPlayer({
-  target, source,
-  wasmBaseUrl: 'https://cdn.jsdelivr.net/npm/@mx-player-max/decoder-wasm@0.1.0/wasm/'
-})
-```
-
-`MXPlayerOptions.wasmBaseUrl` 字段已存在于 `packages/types/src/index.ts`，方向正确。
-
-### 6.2 为什么必须支持自托管
-
-- 企业内网无法访问公共 CDN
-- 中国大陆访问 jsDelivr 不稳定
-- 需要走自己的 CDN 加速
-- 需要审计所有加载的二进制
-- 离线部署（Electron、内网系统）
-
-### 6.3 版本一致性
-
-WASM 文件必须与 SDK 版本严格对应。SDK 应在加载时校验 manifest 版本，不匹配则明确报错，而不是加载一个不兼容的解码器后崩溃。
-
-`WasmDecoderManifest` 已有 `version` 和 `sha256` 字段。加载器与哈希校验在阶段 7 就要为 AI 模型建立，WASM 二进制的接入在阶段 10。
-
-## 7. 分发渠道
-
-### 7.1 npm（主渠道，必需）
-
-```bash
-npm publish --access public
-```
-
-所有包已配置 `"publishConfig": { "access": "public" }`。
-
-`@mx-player-max/*` 是 scoped 包，免费账户下 scoped 包默认私有，**必须显式指定 `--access public`**，否则发布会失败或变成私有包。
-
-发布哪些包需要决策：
-
-| 包 | 是否发布 | 理由 |
-|---|---|---|
-| `sdk` | 是 | 主入口 |
-| `types` | 是 | 类型依赖 |
-| `core` / `strategy` / `capabilities` / `demux` / `decoder-*` / `renderers` / `audio` / `subtitles` / `platform` | 是 | sdk 的依赖链 |
-| `react` / `vue` | 是 | 框架适配 |
-| `decoder-wasm` | 是（含二进制） | WASM 产物 |
-| `demo` | 否 | 已标 private |
-
-**注意**：`workspace:*` 依赖在发布时必须被替换成真实版本号。pnpm 的 `pnpm publish` 会自动处理，但用 `npm publish` 不会——这会导致发布出去的包无法安装。CI 里必须用 `pnpm publish -r`。
-
-### 7.2 jsDelivr（自动，零配置）
-
-npm 发布后自动可用：
-
-```
-https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/+esm
-https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/dist/mx-player.min.js
-```
-
-`+esm` 后缀会自动转换 CommonJS 为 ESM 并处理依赖，对纯 ESM 包也能正常工作。
-
-全球 CDN，中国大陆有节点但稳定性一般。
-
-### 7.3 unpkg（自动，零配置）
-
-```
-https://unpkg.com/@mx-player-max/sdk@0.1.0/dist/mx-player.min.js
-```
-
-与 jsDelivr 平行，作为备选。会读 package.json 的 `unpkg` 字段。
-
-### 7.4 GitHub Releases
-
-放构建产物压缩包、WASM 二进制、SHA-256 清单、CHANGELOG。适合：
-- 离线部署包
-- WASM 二进制的独立版本流（`packages/decoder-wasm/wasm/README.md` 提到的独立发布流程）
-- 需要审计来源的企业用户
-
-### 7.5 Docker（演示站）
-
-`apps/demo/Dockerfile` 已存在。发布到 Docker Hub 或 GHCR：
-
-```bash
-docker pull ghcr.io/<org>/mx-player-max-demo:0.1.0
-```
-
-**Docker 镜像只是演示站，不是 SDK 分发渠道。** 文档要说清楚这点，避免开发者以为需要跑容器才能用 SDK。
-
-### 7.6 中国大陆访问
-
-jsDelivr 在大陆时快时慢。可以在文档提供备选：
-
-- 自托管（推荐生产环境）
-- npmmirror 镜像（`https://registry.npmmirror.com`，仅安装加速，不是 CDN）
-- 自建 CDN 分发
-
-不建议依赖任何单一公共 CDN 做生产部署。
-
-## 8. Subresource Integrity
-
-CDN 接入建议提供 SRI 哈希：
-
-```html
-<script
-  src="https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/dist/mx-player.min.js"
-  integrity="sha384-<hash>"
-  crossorigin="anonymous"
-></script>
-```
-
-防止 CDN 被入侵或中间人篡改。构建流程应自动生成 SRI 哈希并写入发布文档。
-
-`security-and-privacy.md` 已经要求 WASM 做 SHA-256 校验，JS 产物的 SRI 是同一思路的延伸。
-
-## 9. 与主流播放器的对比
-
-| | Video.js | Plyr | hls.js | Shaka Player | MX-Player-Max（目标） |
-|---|---|---|---|---|---|
-| 定位 | 引擎 + UI | UI 壳 | 流媒体引擎 | 流媒体引擎 | **全格式文件引擎** |
-| UI | 完整 + 皮肤 | 完整 | 无 | 无 | 可选包 |
-| 容器支持 | 浏览器原生 | 浏览器原生 | HLS | HLS/DASH | **MKV/TS/AVI + 原生** |
-| 自定义解码 | 无 | 无 | 无 | 无 | **WebCodecs + WASM** |
-| 逐帧访问 | 无 | 无 | 无 | 无 | **有** |
-| UMD 产物 | 有 | 有 | 有 | 有 | 阶段 12 |
-| 事件系统 | 有 | 有 | 有 | 有 | 阶段 1 |
-
-差异化优势清晰：**没有任何主流 Web 播放器支持 MKV 直接播放。** 这是本项目的核心价值。
-
-UMD 产物和事件系统是入场券而非加分项，两者都已进入阶段计划：事件契约在阶段 1，UMD 构建在阶段 12。
-
-## 10. 落地优先级
-
-按阻塞程度排序：
-
-| 优先级 | 事项 | 阻塞什么 | 阶段 |
-|---|---|---|---|
-| **P0** | 事件系统（`on`/`off`/`once`） | 任何集成 | 1 |
-| **P0** | CORS 错误码与诊断 | 集成排障 | 1–2 |
-| **P0** | UMD/IIFE 构建产物 | script 标签接入 | 12 |
-| **P1** | `exports` 补 `require` / `unpkg` / `jsdelivr` 字段 | CJS 用户、CDN 默认路径 | 12 |
-| **P1** | 文档明确 HTTPS 要求 | 生产部署失败 | 已完成 |
-| **P1** | CI 用 `pnpm publish -r` 处理 workspace 依赖 | 发布出去的包装不上 | 12 |
-| **P1** | `@mx-player-max/ui` 包 | 无 UI 开发者的接入体验 | 9 |
-| **P2** | SRI 哈希生成 | 安全加固 | 12 |
-| **P3** | Docker Hub / GHCR 镜像发布 | 演示站分发 | 12 |
-
-事件系统与 CORS 错误码在实现 `MediaEngine` 时一并完成成本最低，不必等到发布阶段。UI 包从 P2 提到 P1 并落在阶段 9——因为自定义解码路径渲染到 `<canvas>`，浏览器的 `controls` 属性无效，不提供 UI 包等于开发者必须从零写控件（见 `ADR-0004`）。
+- SDK/Core 等包无 UI 依赖；
+- UI 不跨入口 import 内部文件；
+- UI package 只含 dist 与 README，不含 tests/Demo/framework runtime；
+- `dist/style.css` 单独存在；
+- SDK 构建不包含 Lucide、`mxp-` class 或 UI controller；
+- Playwright 自动化与真实浏览器结果分表记录。

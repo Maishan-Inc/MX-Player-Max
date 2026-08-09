@@ -24,16 +24,21 @@ import type {
   SubtitleState,
   SubtitleTrack,
   SubtitleTrackOptions,
+  PlaybackSnapshot,
+  MediaPreviewImage,
+  MediaPreviewRequest,
 } from '@mx-player-max/types'
 
 export class MXPlayer {
   readonly engine: MediaEngine
-  readonly ready: Promise<void>
+  #ready: Promise<void>
 
   constructor(options: MXPlayerOptions) {
     this.engine = createMediaEngine()
-    this.ready = this.engine.load(options)
+    this.#ready = this.engine.load(options)
   }
+
+  get ready(): Promise<void> { return this.#ready }
 
   get state(): PlaybackState { return this.engine.state }
   get media(): MediaDescriptor | null { return this.engine.media }
@@ -50,6 +55,7 @@ export class MXPlayer {
   get selectedSubtitleTrack(): string | null { return this.engine.selectedSubtitleTrack }
   get subtitleState(): SubtitleState { return this.engine.subtitleState }
   get subtitleStyle(): SubtitleCueStyle { return this.engine.subtitleStyle }
+  get playback(): PlaybackSnapshot { return this.engine.playback }
 
   on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
     return this.engine.on(event, listener)
@@ -69,6 +75,11 @@ export class MXPlayer {
   setPlaybackRate(rate: number): void { this.engine.setPlaybackRate(rate) }
   setVolume(volume: number): void { this.engine.setVolume(volume) }
   setMuted(muted: boolean): void { this.engine.setMuted(muted) }
+  load(options: MXPlayerOptions): Promise<void> {
+    const ready = this.engine.load(options)
+    this.#ready = ready
+    return ready
+  }
   setVideoFilter(filter: VideoFilterOptions): Promise<void> { return this.engine.setVideoFilter(filter) }
   setVideoTransform(transform: VideoTransformOptions): void { this.engine.setVideoTransform(transform) }
   listSubtitleTracks(): readonly SubtitleTrack[] { return this.engine.listSubtitleTracks() }
@@ -81,6 +92,7 @@ export class MXPlayer {
   attachSubtitleOverlay(host?: HTMLElement): void { this.engine.attachSubtitleOverlay(host) }
   detachSubtitleOverlay(): void { this.engine.detachSubtitleOverlay() }
   readVideoFrame(): Promise<DecodedVideoFrame | null> { return this.engine.readVideoFrame() }
+  requestPreview(request: MediaPreviewRequest): Promise<MediaPreviewImage | null> { return this.engine.requestPreview(request) }
   requestFullscreen(): Promise<void> { return this.engine.requestFullscreen() }
   exitFullscreen(): Promise<void> { return this.engine.exitFullscreen() }
   requestPictureInPicture(): Promise<void> { return this.engine.requestPictureInPicture() }

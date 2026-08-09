@@ -93,7 +93,8 @@ export function createHttpHeaders(
     }
   }
   headers.set('Range', `bytes=${range.start}-${range.endExclusive - 1}`)
-  if (etag !== null) headers.set('If-Range', etag)
+  // If-Range requires a strong validator; weak ETags remain useful for response comparison only.
+  if (etag !== null && !etag.startsWith('W/')) headers.set('If-Range', etag)
   return headers
 }
 
@@ -150,4 +151,3 @@ export function parseHttpUrl(input: string | URL): URL {
 export function isAbortLike(value: unknown): boolean {
   return value instanceof DOMException && value.name === 'AbortError'
 }
-

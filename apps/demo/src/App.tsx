@@ -1,56 +1,147 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { gsap } from 'gsap'
+import { MXPlayer, type MXPlayerComponentHandle } from '@mx-player-max/react'
+import type { PlaybackIntent, SourceDescriptor } from '@mx-player-max/types'
+import type { TheaterModeAdapter } from '@mx-player-max/ui'
 
-const systems = [
-  ['01', 'Native path', 'Hardware-first playback for the formats your browser already understands.'],
-  ['02', 'Frame pipeline', 'WebCodecs and WASM become interchangeable frame producers.'],
-  ['03', 'Adaptive runtime', 'Codec, device, browser and power signals shape every decision.'],
-]
+const DEFAULT_MEDIA = '/flower.webm'
+
+class DemoTheaterMode implements TheaterModeAdapter {
+  #active = false
+  readonly #listeners = new Set<(active: boolean) => void>()
+
+  getState(): boolean { return this.#active }
+  setState(active: boolean): void {
+    if (active === this.#active) return
+    this.#active = active
+    for (const listener of this.#listeners) listener(active)
+  }
+  subscribe(listener: (active: boolean) => void): () => void {
+    this.#listeners.add(listener)
+    return (): void => { this.#listeners.delete(listener) }
+  }
+}
 
 export default function App() {
   const rootRef = useRef<HTMLElement>(null)
+  const playerRef = useRef<MXPlayerComponentHandle>(null)
+  const theaterMode = useMemo(() => new DemoTheaterMode(), [])
+  const [theater, setTheater] = useState(false)
+  const [url, setUrl] = useState(DEFAULT_MEDIA)
+  const [source, setSource] = useState<SourceDescriptor>(() => ({
+    kind: 'url',
+    url: new URL(DEFAULT_MEDIA, window.location.href).href,
+  }))
+  const [intent, setIntent] = useState<PlaybackIntent>('normal')
+  const [message, setMessage] = useState('Default CC0 sample')
+
+  useLayoutEffect(() => theaterMode.subscribe(setTheater), [theaterMode])
 
   useLayoutEffect(() => {
     const root = rootRef.current
     if (!root) return
     const context = gsap.context(() => {
-      gsap.fromTo('[data-reveal]', { y: 24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.85, stagger: 0.1, ease: 'power3.out' })
-      gsap.fromTo('[data-orbit]', { rotate: -8, scale: 0.94, opacity: 0 }, { rotate: 0, scale: 1, opacity: 1, duration: 1.4, ease: 'expo.out' })
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      gsap.fromTo('[data-demo-reveal]', { y: reduce ? 0 : 12, autoAlpha: reduce ? 1 : 0 }, { y: 0, autoAlpha: 1, duration: reduce ? 0 : 0.55, stagger: reduce ? 0 : 0.06, ease: 'power2.out', clearProps: 'transform,visibility,opacity' })
     }, root)
-    return () => context.revert()
+    return (): void => context.revert()
   }, [])
 
+  const playerOptions = useMemo(() => ({
+    source,
+    intent,
+    native: { preload: 'metadata' as const, crossOrigin: 'anonymous' as const },
+    subtitles: { enabled: true },
+  }), [source, intent])
+
+  const uiOptions = useMemo(() => ({
+    theme: 'dark' as const,
+    theaterMode,
+    features: { theater: true, nextEpisode: false, statistics: true, about: true, preview: true },
+  }), [theaterMode])
+
+  const loadUrl = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    try {
+      const parsed = new URL(url, window.location.href)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('protocol')
+      setSource({ kind: 'url', url: parsed.href })
+      setMessage(parsed.hostname)
+    } catch {
+      setMessage('Enter a valid HTTP or HTTPS media URL')
+    }
+  }
+
+  const loadFile = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    setSource({ kind: 'file', file })
+    setMessage(`${file.name} · ${formatBytes(file.size)}`)
+    event.target.value = ''
+  }
+
+  const loadSubtitle = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    try {
+      const track = await playerRef.current?.player?.addSubtitleTrack({ kind: 'file', file })
+      if (track) await playerRef.current?.player?.selectSubtitleTrack(track.id)
+      setMessage(`${file.name} subtitle attached`)
+    } catch {
+      setMessage('Subtitle could not be attached')
+    }
+  }
+
   return (
-    <main ref={rootRef} className="demo-shell">
-      <nav className="topbar" data-reveal>
-        <span className="wordmark">MX<span>/</span>MAX</span>
-        <span className="topbar-status"><i /> engine architecture preview</span>
-        <a href="https://github.com/" target="_blank" rel="noreferrer">GitHub ↗</a>
-      </nav>
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow" data-reveal>MEDIA ENGINE CORE / 001</p>
-          <h1 data-reveal>One runtime.<br /><em>Every frame.</em></h1>
-          <p className="hero-lede" data-reveal>MX-Player-Max chooses the right path before the first frame: native playback when it is best, custom frames when they matter.</p>
-          <div className="hero-actions" data-reveal>
-            <button type="button">Open playground</button>
-            <button type="button" className="quiet">Read the architecture</button>
+    <main ref={rootRef} className={theater ? 'demo-shell is-theater' : 'demo-shell'}>
+      <header className="topbar" data-demo-reveal>
+        <div className="brand-block"><span className="brand-mark">MX</span><span><strong>Player Max</strong><small>Playback workbench</small></span></div>
+        <div className="runtime-status"><i aria-hidden="true" /><span>Phase 9 optional UI</span></div>
+        <a href="https://github.com/" target="_blank" rel="noreferrer">Repository</a>
+      </header>
+
+      <section className="workbench" data-demo-reveal>
+        <div className="player-column">
+          <div className="player-stage" data-testid="player-stage">
+            <MXPlayer ref={playerRef} className="player-mount" playerOptions={playerOptions} uiOptions={uiOptions} />
           </div>
+          <div className="source-summary"><span>{source.kind === 'file' ? 'LOCAL FILE' : 'REMOTE URL'}</span><strong>{message}</strong><span>{intent.toUpperCase()}</span></div>
         </div>
-        <div className="signal-orbit" data-orbit aria-label="Playback strategy visualization">
-          <div className="orbit-ring ring-one" />
-          <div className="orbit-ring ring-two" />
-          <div className="orbit-core"><span>MX</span><small>FRAME<br />ADAPTER</small></div>
-          <span className="orbit-label label-native">HTMLVIDEO</span>
-          <span className="orbit-label label-codecs">WEBCODECS</span>
-          <span className="orbit-label label-wasm">WASM</span>
-        </div>
+
+        <aside className="control-rail" aria-label="Playback source controls">
+          <div className="rail-heading"><span>Source</span><strong>Open media</strong></div>
+          <form onSubmit={loadUrl} className="url-form">
+            <label htmlFor="media-url">Remote media URL</label>
+            <div className="field-row"><input id="media-url" value={url} onChange={(event) => setUrl(event.target.value)} spellCheck={false} /><button type="submit">Load</button></div>
+          </form>
+          <div className="file-actions">
+            <label className="file-action">Open local media<input type="file" accept="video/*,audio/*,.mkv,.webm,.mp4,.mov" onChange={loadFile} /></label>
+            <label className="file-action quiet">Attach subtitles<input type="file" accept=".srt,.ass,.ssa,text/plain" onChange={(event) => { void loadSubtitle(event) }} /></label>
+          </div>
+          <div className="mode-field">
+            <label htmlFor="playback-intent">Playback intent</label>
+            <select id="playback-intent" value={intent} onChange={(event) => setIntent(event.target.value as PlaybackIntent)}>
+              <option value="normal">Normal / Native first</option>
+              <option value="filters">Filters / Custom path</option>
+              <option value="frame-access">Frame access / Custom path</option>
+            </select>
+          </div>
+          <dl className="rail-notes">
+            <div><dt>Controls</dt><dd>SDK snapshot driven</dd></div>
+            <div><dt>Surface</dt><dd>Video or canvas</dd></div>
+            <div><dt>Styles</dt><dd>External CSS export</dd></div>
+          </dl>
+        </aside>
       </section>
-      <section className="system-grid">
-        {systems.map(([number, title, text]) => <article key={number} data-reveal><span>{number}</span><h2>{title}</h2><p>{text}</p></article>)}
-      </section>
-      <footer data-reveal><span>DESIGNED FOR THE WEB MEDIA STACK</span><span>DOCKER / NPM / ESM / WEBGPU</span></footer>
+
+      <footer data-demo-reveal><span>Native + WebCodecs + WebGPU/WebGL2/Canvas2D</span><span>Chrome · Firefox · macOS Safari verification tracked separately</span></footer>
     </main>
   )
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}

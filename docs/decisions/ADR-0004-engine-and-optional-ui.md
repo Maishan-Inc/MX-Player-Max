@@ -34,23 +34,26 @@ Web 播放器生态有两种成熟形态：
 
 ```js
 // 1. 纯引擎——自己画控件（hls.js 式）
-import { createPlayer } from '@mx-player-max/sdk'
-const player = createPlayer({ container })
+import { MXPlayer } from '@mx-player-max/sdk'
+const player = new MXPlayer({ target: container, source })
 
 // 2. 引擎 + 官方 UI（Video.js 式）
-import { createPlayer } from '@mx-player-max/sdk'
-import { attachUi } from '@mx-player-max/ui'
+import { MXPlayer } from '@mx-player-max/sdk'
+import { attachPlayerUi } from '@mx-player-max/ui'
 import '@mx-player-max/ui/style.css'
-attachUi(player, { theme: 'dark' })
+const player = new MXPlayer({ target: container, source })
+attachPlayerUi(player, container, { theme: 'dark' })
 
-// 3. UMD 一行接入（无构建工具）
+// 3. UMD 一行接入（Phase 12 未来形态，Phase 9 尚未发布）
 <script src="https://cdn.jsdelivr.net/npm/@mx-player-max/ui/dist/mx-player.min.js"></script>
 <script>MXPlayerMax.mount('#player', { src: '...' })</script>
 ```
 
+Phase 9 已交付前两种 ESM 形态。第三种是本 ADR 保留的分发目标，当前不能作为可用 API 或产物示例。
+
 UI 包用**框架无关的原生 DOM** 实现，不用 React。`@mx-player-max/react` 与 `@mx-player-max/vue` 是对 SDK + UI 的薄封装，不是 UI 的实现载体。原因：UI 若用 React 写，则 UMD 产物必须内联整个 React 运行时（约 45 KB gzip），而 UMD 的目标用户恰恰是无构建工具、不用 React 的页面。
 
-CSS 通过独立文件分发，不用 CSS-in-JS，不注入 `<style>`。开发者可以只引入 `style.css` 的一部分，或完全替换。所有类名带 `mxp-` 前缀，所有可调值走 CSS 自定义属性。
+CSS 通过独立文件分发，不用 CSS-in-JS，不注入 `<style>`。开发者可以显式引入 `style.css`、覆盖 token，或完全替换。所有类名带 `mxp-` 前缀，所有可调值走 CSS 自定义属性。
 
 ## 外观参考与边界
 
@@ -84,11 +87,11 @@ Pro 的 UI 与 MKV/WebCodecs 单一路径耦合；Max 的 UI 必须同时服务 
 负面：
 
 - 多一个包要维护、发版、写文档、做无障碍。
-- UI 与引擎的版本兼容需要约定（UI 的 peerDependency 锁 SDK 的 minor 范围）。
+- UI 与引擎的版本兼容需要通过公共契约版本和同步发布流程约束。
 - 原生 DOM 实现比 React 实现啰嗦，但这是 UMD 目标换来的必要代价。
 
 ## 相关
 
 - `docs/architecture/ui-package.md`——UI 包的组件结构、CSS 契约与主题变量。
-- `docs/architecture/distribution-and-embedding.md`——三种接入方式与 UMD 产物。
+- `docs/architecture/distribution-and-embedding.md`——当前 ESM 接入方式与 Phase 12 UMD 目标。
 - `ADR-0001`——双渲染路径，是 UI 不能假设承载元素类型的根因。

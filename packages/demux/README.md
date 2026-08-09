@@ -33,6 +33,8 @@ const result = await remote.read({ start: 0, endExclusive: 4096 })
 
 调用方不能覆盖 `Range`、`If-Range`、`Content-Length` 等受控请求头。`200 OK` 不会被当作 Range 成功。默认重试仅覆盖同源/明确网络失败和 `5xx`；CORS、重定向、4xx、协议错误与取消不重试。
 
+`If-Range` 只接受强 ETag。`W/` 开头的弱 ETag 仍可用于响应版本比较，但不会发送到 `If-Range`，避免违反 HTTP validator 语义。
+
 浏览器 Fetch 无法可靠区分跨源 CORS 拒绝与被安全边界隐藏的跨源 DNS/连接故障。实现将跨源 fetch 拒绝映射为 `RANGE_CORS_FAILED`，明确离线或同源失败映射为 `RANGE_NETWORK_FAILED`。
 
 ## 容器边界

@@ -9,10 +9,12 @@
     "build:demo": "pnpm --filter @mx-player-max/demo build",
     "typecheck": "pnpm -r --if-present build && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
+    "test:browser": "playwright test",
     "lint": "pnpm -r --if-present lint",
     "clean": "pnpm -r --if-present clean"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@webgpu/types": "0.1.64",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"

@@ -1,67 +1,123 @@
-# SDK 接入方式
+# SDK 与可选 UI 接入
 
-## npm
+## 1. 原生 DOM
 
 ```bash
-pnpm add @mx-player-max/sdk
+pnpm add @mx-player-max/sdk @mx-player-max/ui
 ```
 
 ```ts
 import { MXPlayer } from '@mx-player-max/sdk'
+import { attachPlayerUi } from '@mx-player-max/ui'
+import '@mx-player-max/ui/style.css'
 
+const host = document.querySelector<HTMLElement>('#player')!
 const player = new MXPlayer({
-  target: '#player',
-  source: { kind: 'url', url: 'https://media.example.com/movie.mkv' },
+  target: host,
+  source: { kind: 'url', url: 'https://media.example.com/movie.mp4' },
+  native: { crossOrigin: 'anonymous', preload: 'metadata' },
+  subtitles: { enabled: true },
+})
+const ui = attachPlayerUi(player, host, { theme: 'system' })
+
+await player.ready
+```
+
+宿主需要给容器稳定尺寸和定位上下文，例如 `position: relative; aspect-ratio: 16 / 9`。SDK 和 UI 必须共享该容器；UI 不固定到 Demo DOM。
+
+卸载：
+
+```ts
+ui.destroy()
+player.destroy()
+```
+
+## 2. 换源
+
+```ts
+await player.load({
+  target: host,
+  source: { kind: 'file', file },
+  intent: 'normal',
+  subtitles: { enabled: true },
 })
 
 await player.ready
 ```
 
-## jsDelivr ESM
+`ready` 始终指向当前 load。UI 继续挂载在原容器并从新的 `sessionEpoch` 自动重置 preview、seek、菜单和字幕编辑交互。
 
-```html
-<script type="module">
-  import { MXPlayer } from 'https://cdn.jsdelivr.net/npm/@mx-player-max/sdk@0.1.0/+esm'
+## 3. Custom 预览 provider
 
-  const player = new MXPlayer({
-    target: '#player',
-    source: { kind: 'url', url: 'https://media.example.com/movie.mkv' },
-    wasmBaseUrl: 'https://cdn.jsdelivr.net/npm/@mx-player-max/decoder-wasm@0.1.0/wasm/'
-  })
+Custom 路径没有内建缩略图 decoder。应用可提供已有 thumbnail service：
 
-  await player.ready
-</script>
+```ts
+const player = new MXPlayer({
+  target: host,
+  source,
+  intent: 'filters',
+  preview: {
+    provider: async ({ time, width, height, signal }) => {
+      const blob = await thumbnails.fetch({ time, width, height, signal })
+      return blob ? { blob, time, width, height } : null
+    },
+  },
+})
 ```
 
-## 多线程要求
+provider 不应读取 SDK/Core 私有 Frame、renderer 或 canvas。没有 provider 时 UI 隐藏预览图片，但 seek 正常工作。
 
-开发者网站需要自行返回 COOP/COEP 响应头，SDK 不能通过 JS 替宿主页面设置安全策略。未配置或浏览器不支持时，SDK 自动选择单线程 WASM；开发者无需更改 API。
+## 4. React
 
-## 远程 URL
+```tsx
+import { MXPlayer } from '@mx-player-max/react'
+import '@mx-player-max/ui/style.css'
 
-远程服务器必须允许当前页面来源的 CORS，并支持 GET Range。SDK 不代理媒体、不上传本地文件，也不把 CDN 当作媒体代理。
+<MXPlayer
+  className="player-host"
+  playerOptions={{ source, subtitles: { enabled: true } }}
+  uiOptions={{ theme: 'dark' }}
+/>
+```
 
-媒体服务器必须返回以下响应头，缺任何一项都会导致播放失败：
+生产组件应 memoize `playerOptions`/`uiOptions`。顶层 identity 改变会分别触发 `load()` 与 `update()`。
+
+## 5. Vue
+
+```vue
+<script setup lang="ts">
+import { MXPlayer } from '@mx-player-max/vue'
+import '@mx-player-max/ui/style.css'
+</script>
+
+<template>
+  <MXPlayer
+    class="player-host"
+    :player-options="playerOptions"
+    :ui-options="uiOptions"
+  />
+</template>
+```
+
+React/Vue 适配器自动按 UI -> SDK 顺序清理，但不会自动导入 CSS。
+
+## 6. 远程媒体
+
+Custom Range 路径要求服务器允许宿主 origin 的 CORS、GET Range 和 `206 Partial Content`，并暴露：
 
 ```http
-Access-Control-Allow-Origin: <宿主页面来源>
+Access-Control-Allow-Origin: https://app.example.com
 Access-Control-Allow-Headers: Range
-Access-Control-Expose-Headers: Content-Range, Content-Length, Accept-Ranges
+Access-Control-Expose-Headers: Content-Range, Content-Length, Accept-Ranges, ETag
 Accept-Ranges: bytes
 ```
 
-`Access-Control-Expose-Headers` 最容易遗漏。缺它时 `fetch` 能拿到 206 响应体，但 JS 读不到 `Content-Range`，SDK 无法得知文件总长度，容器解析失败——表现为「网络面板显示成功但视频加载不出来」。
+Native HTMLVideo 无法发送自定义 headers。带 `SourceDescriptor.headers` 的源若最终选择 Native，会返回 `NATIVE_CUSTOM_HEADERS_UNSUPPORTED`。
 
-## HTTPS 要求
+外挂字幕和 Native preview 也需要源站 CORS。preview 画布被污染或编码失败会静默降级，不会阻止播放。
 
-宿主页面必须是 HTTPS（或 `localhost`）。HTTP 页面下：
+## 7. HTTPS 与跨源隔离
 
-- WebCodecs 不可用（需要安全上下文）→ 自定义管线失效，MKV 等非原生容器只能走 WASM 软解
-- `SharedArrayBuffer` 不可用 → 多线程 WASM 失效
-- WebGPU 不可用 → 渲染降级
-- HTTPS 页面也无法加载 HTTP 媒体（混合内容阻止）
+生产宿主使用 HTTPS。WebCodecs/WebGPU 的实际可用性由 runtime probe 决定。多线程 WASM 后续还需要宿主设置 COOP/COEP；SDK 不能从 JS 设置响应头，Phase 9 也未进入 Phase 10 Codec 实现。
 
-`localhost` 属于安全上下文，因此本地开发正常、部署到 HTTP 生产环境失败是预期行为。
-
-完整的跨域链路分析、各类服务器配置示例和分发渠道见 `architecture/distribution-and-embedding.md`。
-
+完整 API 见 `docs/api/player-ui.md`，分发约束见 `docs/architecture/distribution-and-embedding.md`。

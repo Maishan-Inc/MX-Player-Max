@@ -335,4 +335,20 @@ describe('HttpRangeLoader', () => {
       (error: unknown) => (expectCode(error, ErrorCodes.RANGE_SOURCE_CHANGED), true),
     )
   })
+
+  it('does not send a weak ETag as an If-Range validator', async () => {
+    let call = 0
+    const loader = new HttpRangeLoader('https://media.test/file', {
+      fetch: async (_input, init) => {
+        call += 1
+        const requestHeaders = new Headers(init?.headers)
+        if (call === 2) expect(requestHeaders.get('If-Range')).toBeNull()
+        return exactResponse([call], { start: call - 1, endExclusive: call }, 2, { ETag: 'W/"v1"' })
+      },
+      retry: { maxRetries: 0, baseDelayMs: 0, maxDelayMs: 0 },
+    })
+
+    await loader.read({ start: 0, endExclusive: 1 })
+    await expect(loader.read({ start: 1, endExclusive: 2 })).resolves.toMatchObject({ etag: 'W/"v1"' })
+  })
 })

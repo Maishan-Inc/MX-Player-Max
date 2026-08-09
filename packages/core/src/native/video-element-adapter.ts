@@ -8,6 +8,7 @@ export interface VideoElementAdapter {
   readonly ended: boolean
   readonly readyState: number
   readonly buffered: TimeRanges
+  readonly played: TimeRanges
   playbackRate: number
   volume: number
   muted: boolean
@@ -49,6 +50,7 @@ export function createVideoElementAdapter(element: HTMLVideoElement): VideoEleme
     get ended() { return element.ended },
     get readyState() { return element.readyState },
     get buffered() { return element.buffered },
+    get played() { return element.played },
     get playbackRate() { return element.playbackRate },
     set playbackRate(value) { element.playbackRate = value },
     get volume() { return element.volume },

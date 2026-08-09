@@ -17,6 +17,7 @@ export class FakeVideo {
   duration = Number.NaN
   currentTime = 0
   bufferedRanges: FakeTimeRange[] = []
+  playedRanges: FakeTimeRange[] = []
   error: { code?: number } | null = null
   private sourceValue = ''
   contentType = ''
@@ -89,6 +90,15 @@ export class FakeVideo {
 
   get buffered(): TimeRanges {
     const ranges = this.bufferedRanges
+    return {
+      length: ranges.length,
+      start: (index: number) => ranges[index]?.start ?? 0,
+      end: (index: number) => ranges[index]?.end ?? 0,
+    } as TimeRanges
+  }
+
+  get played(): TimeRanges {
+    const ranges = this.playedRanges
     return {
       length: ranges.length,
       start: (index: number) => ranges[index]?.start ?? 0,

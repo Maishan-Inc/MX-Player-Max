@@ -104,6 +104,14 @@ async function probeNativeTracks(
     return pair({ status: 'supported', reasons: ['can-play-type'], contentType, canPlayType })
   }
   if (!canCreateDecodingQuery(query)) {
+    if (canPlayType === 'probably') {
+      return pair({
+        status: 'supported',
+        reasons: ['can-play-type-probably', 'decoding-info-config-incomplete'],
+        contentType,
+        canPlayType,
+      })
+    }
     return pair({ status: 'unknown', reasons: ['decoding-info-config-incomplete'], contentType, canPlayType })
   }
   try {

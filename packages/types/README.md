@@ -25,6 +25,8 @@
 - `SubtitleCue` / `SubtitleCueStyle` / `SubtitleTrack` / `SubtitleSourceDescriptor`：Phase 8 文本字幕、样式、来源和轨道公共契约；所有时间为整数微秒。
 - `SubtitleParserLimits` / `SubtitleSourceLimits` / `SubtitleClockSnapshot` / `SubtitleStyleStore`：解析预算、来源字节/流块/packet batch/超时预算、媒体时钟和可替换持久化边界。
 - `subtitletrackchange` / `subtitlecuechange` / `subtitlestatechange` / `subtitlestylechange` / `subtitlewarning`：不携带字幕全文、完整 URL 或 DOM 异常的字幕事件。
+- `PlaybackSnapshot` / `PlaybackTimeRange` / `PlaybackControlCapabilities`：Phase 9 Native/Custom 共用播放状态，时间统一为整数微秒，未知值为 `null`。
+- `MediaPreviewRequest` / provider/result/options：不暴露 source、Frame、canvas、renderer 或 GPU 的可取消预览边界。
 
 `CapabilitySupport` 有三种状态：`supported` 表示 API 明确支持，`unsupported` 表示 API 明确拒绝或不存在，`unknown` 表示配置不足或探测失败。调用方不得把 `unknown` 当成支持。
 
@@ -39,6 +41,8 @@ Phase 4 增加 `CUSTOM_*` 与 `WEBCODECS_*` 稳定错误码、`customVideoStats`
 Phase 5 增加 `customAudioStats`、`audioClock`、`audiostatechange`、`audiounderrun` 和 `clockupdate`。事件只发送统计、状态和整数微秒，不发送 `AudioData`、PCM、压缩 packet 或 URL。`AudioData` 在 `copyTo()` 后立即 close；PCM 仅由有界 ring/MessagePort/AudioWorklet 持有。
 
 Phase 8 增加稳定 `SUBTITLE_*` 错误码以及轨道枚举、外挂字幕、选择/关闭/移除、样式和 Overlay API；等价外挂来源返回 `SUBTITLE_SOURCE_CONFLICT`。`subtitlecuechange` 只发送 cue ID、时间、layer、媒体时间和 epoch，不发送字幕正文。`subtitlewarning` 只包含稳定 code、安全 message 和可选行号/cue ID，不暴露 File、完整 URL、查询参数、响应正文或原始 DOMException。
+
+Phase 9 增加 `playback`、`playbackchange`、presentation、preview 和 `PREVIEW_INPUT_INVALID`。`PlaybackSnapshot.lastError` 只保留 code/recoverable；范围数组只读且归一化。preview provider 只接收 time/duration/dimensions/sessionEpoch/AbortSignal，结果只允许受预算的 PNG/JPEG/WebP Blob。
 
 ## VideoFrame 所有权
 

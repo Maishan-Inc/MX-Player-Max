@@ -10,7 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@mx-player-max/react": "workspace:*",
     "@mx-player-max/sdk": "workspace:*",
+    "@mx-player-max/types": "workspace:*",
+    "@mx-player-max/ui": "workspace:*",
     "gsap": "^3.13.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
@@ -23,4 +26,3 @@
     "vite": "^7.0.0"
   }
 }
-

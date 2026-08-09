@@ -36,6 +36,12 @@ import type {
   SubtitleState,
   SubtitleTrack,
   SubtitleTrackOptions,
+  PlaybackSnapshot,
+  PlaybackChangeReason,
+  MediaPreviewImage,
+  MediaPreviewRequest,
+  MediaPreviewProvider,
+  PresentationMode,
 } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
 import { CustomMediaPipeline, type CustomMediaPipelineOptions } from './custom/pipeline'
@@ -58,6 +64,10 @@ import {
 import type { CustomRenderableFrame } from './custom/render-loop'
 import { CoreSubtitleController } from './subtitles'
 import { DEFAULT_SUBTITLE_STYLE, toSubtitleError } from '@mx-player-max/subtitles'
+import { createPlaybackSnapshot, updatePlaybackSnapshot } from './playback/snapshot'
+import { normalizePlaybackRanges, type RawPlaybackRange } from './playback/ranges'
+import { PreviewManager } from './playback/preview-manager'
+import { NativePreviewController } from './native/preview'
 
 export { EngineErrorException, isEngineError } from './native/errors'
 export { NativeMediaPipeline } from './native/pipeline'
@@ -112,6 +122,15 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let customRendererRequired = false
   let epoch = 0
   let closed = false
+  let playbackSnapshot: PlaybackSnapshot = createPlaybackSnapshot(0)
+  let previewManager: PreviewManager | NativePreviewController | null = null
+  let customPreviewProvider: MediaPreviewProvider | undefined
+  let customPlayingIntent = false
+  let customPlayedRanges: RawPlaybackRange[] = []
+  let customLastTime: number | null = null
+  let customSeeking = false
+  let customBuffering = false
+  let detachPresentationObserver: (() => void) | null = null
   const listeners = new Map<EngineEventName, Set<(payload: unknown) => void>>()
 
   const emit = <K extends EngineEventName>(event: K, payload: EngineEventMap[K]): void => {
@@ -125,6 +144,13 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     const previous = currentState
     currentState = next
     emit('statechange', { previous, current: next })
+    commitPlayback({ state: next }, 'state')
+  }
+
+  const commitPlayback = (input: Parameters<typeof updatePlaybackSnapshot>[1], reason: PlaybackChangeReason): void => {
+    const next = updatePlaybackSnapshot(playbackSnapshot, { ...input, sessionEpoch: epoch })
+    playbackSnapshot = next
+    emit('playbackchange', { snapshot: next, reason })
   }
 
   const ensureOpen = (): void => {
@@ -148,6 +174,11 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   }
 
   const disposePipeline = (): void => {
+    detachPresentationObserver?.()
+    detachPresentationObserver = null
+    previewManager?.close()
+    previewManager = null
+    customPreviewProvider = undefined
     subtitleController?.close()
     subtitleController = null
     renderLoop?.close()
@@ -163,12 +194,122 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     disposeCustomCanvas()
     disposeTarget()
     target = null
+    customPlayingIntent = false
+    customPlayedRanges = []
+    customLastTime = null
+    customSeeking = false
+    customBuffering = false
   }
 
   const emitError = (error: EngineError): void => {
     if (closed) return
     setState('error')
+    commitPlayback({ lastError: error, buffering: false, seeking: false }, 'error')
     emit('error', { error })
+  }
+
+  const syncNativePlayback = (reason: PlaybackChangeReason = 'time'): void => {
+    if (activePipeline?.kind !== 'native') return
+    const video = activePipeline.pipeline.video
+    const duration = secondsToMicrosValue(video.duration)
+    const currentTime = secondsToMicrosValue(video.currentTime)
+    const played = normalizePlaybackRanges(video.played, duration)
+    const buffered = normalizePlaybackRanges(video.buffered, duration)
+    const features = activePipeline.pipeline.features
+    const targetElement = target?.target
+    const fullscreen = features.fullscreen || Boolean(targetElement && typeof targetElement.requestFullscreen === 'function')
+    const buffering = playbackSnapshot.buffering && !video.paused && !video.ended && !video.seeking
+    commitPlayback({
+      state: currentState,
+      paused: video.paused,
+      currentTime,
+      duration,
+      played,
+      buffered,
+      bufferedAhead: computeSnapshotBufferedAhead(buffered, currentTime),
+      volume: video.volume,
+      muted: video.muted,
+      playbackRate: video.playbackRate,
+      seeking: video.seeking || currentState === 'seeking',
+      buffering,
+      capabilities: {
+        seek: true,
+        volume: true,
+        playbackRate: true,
+        fullscreen,
+        pictureInPicture: features.pictureInPicture,
+        preview: previewManager?.available === true,
+      },
+    }, reason)
+  }
+
+  const syncCustomPlayback = (reason: PlaybackChangeReason = 'time'): void => {
+    if (activePipeline?.kind !== 'custom-video') return
+    const pipeline = activePipeline.pipeline
+    const clock = pipeline.audioClock
+    const duration = currentMedia?.duration ?? null
+    const currentTime = toMicrosValue(clock.mediaTime)
+    if (currentTime !== null && customPlayingIntent) appendPlayedRange(customPlayedRanges, currentTime)
+    const videoBuffered = pipeline.stats.bufferedDuration
+    const audioBuffered = pipeline.audioStats?.bufferedDuration ?? 0
+    const horizon = Math.max(0, videoBuffered, audioBuffered)
+    const buffered = currentTime === null || horizon <= 0
+      ? []
+      : normalizePlaybackRanges([{ start: currentTime, end: duration === null ? currentTime + horizon : Math.min(duration, currentTime + horizon) }], duration)
+    const targetElement = target?.target
+    commitPlayback({
+      state: currentState,
+      paused: !customPlayingIntent,
+      currentTime,
+      duration,
+      played: normalizePlaybackRanges(customPlayedRanges, duration),
+      buffered,
+      bufferedAhead: horizon,
+      volume: pipeline.volume,
+      muted: pipeline.muted,
+      playbackRate: pipeline.playbackRate,
+      seeking: customSeeking,
+      buffering: customBuffering,
+      capabilities: {
+        seek: true,
+        volume: true,
+        playbackRate: true,
+        fullscreen: Boolean(targetElement && typeof targetElement.requestFullscreen === 'function'),
+        pictureInPicture: false,
+        preview: previewManager?.available === true,
+      },
+    }, reason)
+    customLastTime = currentTime
+  }
+
+  const syncPlayback = (reason: PlaybackChangeReason = 'time'): void => {
+    if (activePipeline?.kind === 'native') syncNativePlayback(reason)
+    else if (activePipeline?.kind === 'custom-video') syncCustomPlayback(reason)
+    else commitPlayback({ state: currentState }, reason)
+  }
+
+  const observePresentation = (loadEpoch: number): void => {
+    detachPresentationObserver?.()
+    const currentTarget = target
+    const doc = currentTarget?.target.ownerDocument
+    if (!currentTarget || !doc || typeof doc.addEventListener !== 'function' || typeof doc.removeEventListener !== 'function') {
+      detachPresentationObserver = null
+      return
+    }
+    const update = (): void => {
+      if (closed || loadEpoch !== epoch || target !== currentTarget) return
+      const pipElement = (doc as Document & { pictureInPictureElement?: Element | null }).pictureInPictureElement ?? null
+      const fullscreenElement = doc.fullscreenElement
+      const mode: PresentationMode = pipElement !== null
+        ? 'picture-in-picture'
+        : fullscreenElement !== null
+          ? 'fullscreen'
+          : 'inline'
+      commitPlayback({ presentationMode: mode }, 'presentation')
+      syncPlayback('capabilities')
+    }
+    doc.addEventListener('fullscreenchange', update)
+    detachPresentationObserver = (): void => doc.removeEventListener('fullscreenchange', update)
   }
 
   const handleNativeEvent = (event: NativePipelineEvent, loadEpoch: number): void => {
@@ -179,17 +320,20 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         const wasReady = currentState === 'ready'
         setState('ready')
         if (!wasReady && currentSelection) emit('ready', { selection: currentSelection })
+        syncNativePlayback('load')
         break
       }
-      case 'playing': subtitleController?.play(); setState('playing'); break
-      case 'paused': subtitleController?.pause(); if (currentState !== 'ended') setState('paused'); break
-      case 'seeking': subtitleController?.seekStarted(); setState('seeking'); break
-      case 'seeked': subtitleController?.seekCompleted(); setState(activePipeline.pipeline.video.paused ? 'ready' : 'playing'); break
-      case 'buffering': emit('buffering', { bufferedAhead: event.bufferedAhead }); break
-      case 'timeupdate': emit('timeupdate', { currentTime: event.currentTime, duration: event.duration }); break
-      case 'ended': subtitleController?.ended(); setState('ended'); break
+      case 'playing': subtitleController?.play(); setState('playing'); commitPlayback({ buffering: false, paused: false }, 'state'); syncNativePlayback('state'); break
+      case 'paused': subtitleController?.pause(); if (currentState !== 'ended') setState('paused'); commitPlayback({ buffering: false, paused: true }, 'state'); syncNativePlayback('state'); break
+      case 'seeking': subtitleController?.seekStarted(); setState('seeking'); commitPlayback({ seeking: true }, 'state'); syncNativePlayback('state'); break
+      case 'seeked': subtitleController?.seekCompleted(); setState(activePipeline.pipeline.video.paused ? 'ready' : 'playing'); commitPlayback({ seeking: false, buffering: false }, 'state'); syncNativePlayback('state'); break
+      case 'buffering': commitPlayback({ buffering: !activePipeline.pipeline.video.paused && !activePipeline.pipeline.video.ended, bufferedAhead: event.bufferedAhead }, 'buffer'); emit('buffering', { bufferedAhead: event.bufferedAhead }); syncNativePlayback('buffer'); break
+      case 'timeupdate': emit('timeupdate', { currentTime: event.currentTime, duration: event.duration }); syncNativePlayback('time'); break
+      case 'propertychange': syncNativePlayback(event.property === 'rate' ? 'rate' : 'volume'); break
+      case 'presentationchange': commitPlayback({ presentationMode: event.mode }, 'presentation'); syncNativePlayback('presentation'); break
+      case 'ended': subtitleController?.ended(); setState('ended'); commitPlayback({ buffering: false, seeking: false, paused: true }, 'state'); syncNativePlayback('state'); break
       case 'error': emitError(event.error); break
-      case 'loading': if (currentState !== 'closed') setState('loading'); break
+      case 'loading': if (currentState !== 'closed') setState('loading'); syncNativePlayback('state'); break
     }
   }
 
@@ -201,16 +345,16 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         publishCustomReady()
         break
       }
-      case 'playing': renderLoop?.start(); subtitleController?.play(); setState('playing'); break
-      case 'paused': renderLoop?.pause(); subtitleController?.pause(); if (currentState !== 'ended') setState('paused'); break
-      case 'seeking': renderLoop?.stop(true); aiPipeline?.reset(activePipeline.pipeline.epoch); subtitleController?.seekStarted(); setState('seeking'); break
-      case 'seeked': if (event.resume === 'playing') renderLoop?.start(); subtitleController?.seekCompleted(); setState(event.resume); break
-      case 'frameavailable': emit('frameavailable', { queuedFrames: event.queuedFrames, bufferedDuration: event.bufferedDuration }); break
+      case 'playing': customPlayingIntent = true; customBuffering = false; customSeeking = false; renderLoop?.start(); subtitleController?.play(); setState('playing'); syncCustomPlayback('state'); break
+      case 'paused': customPlayingIntent = false; customBuffering = false; renderLoop?.pause(); subtitleController?.pause(); if (currentState !== 'ended') setState('paused'); syncCustomPlayback('state'); break
+      case 'seeking': customSeeking = true; customBuffering = false; renderLoop?.stop(true); aiPipeline?.reset(activePipeline.pipeline.epoch); subtitleController?.seekStarted(); setState('seeking'); syncCustomPlayback('state'); break
+      case 'seeked': customSeeking = false; customBuffering = false; if (event.resume === 'playing') { customPlayingIntent = true; renderLoop?.start() } else customPlayingIntent = false; subtitleController?.seekCompleted(); setState(event.resume); syncCustomPlayback('state'); break
+      case 'frameavailable': emit('frameavailable', { queuedFrames: event.queuedFrames, bufferedDuration: event.bufferedDuration }); syncCustomPlayback('buffer'); break
       case 'audiostatechange': emit('audiostatechange', { state: event.stats.outputState, stats: event.stats }); break
       case 'audiounderrun': emit('audiounderrun', { count: event.stats.underruns, bufferedDuration: event.stats.bufferedDuration }); break
-      case 'clockupdate': subtitleController?.clockUpdate(); emit('clockupdate', { clock: event.clock }); break
-      case 'buffering': emit('buffering', { bufferedAhead: event.bufferedAhead }); break
-      case 'ended': renderLoop?.stop(true); subtitleController?.ended(); setState('ended'); break
+      case 'clockupdate': subtitleController?.clockUpdate(); emit('clockupdate', { clock: event.clock }); syncCustomPlayback('time'); break
+      case 'buffering': customBuffering = customPlayingIntent; emit('buffering', { bufferedAhead: event.bufferedAhead }); syncCustomPlayback('buffer'); break
+      case 'ended': customPlayingIntent = false; customBuffering = false; customSeeking = false; renderLoop?.stop(true); subtitleController?.ended(); setState('ended'); syncCustomPlayback('state'); break
       case 'error': emitError(event.error); break
     }
   }
@@ -220,6 +364,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     const wasReady = currentState === 'ready'
     setState('ready')
     if (!wasReady && currentSelection) emit('ready', { selection: currentSelection })
+    syncCustomPlayback('load')
   }
 
   const handleRendererEvent = (event: RendererEvent, loadEpoch: number): void => {
@@ -324,6 +469,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     get selectedSubtitleTrack(): string | null { return subtitleController?.selectedTrackId ?? null },
     get subtitleState(): SubtitleState { return subtitleController?.state ?? 'disabled' },
     get subtitleStyle(): SubtitleCueStyle { return subtitleController?.style ?? { ...DEFAULT_SUBTITLE_STYLE } },
+    get playback(): PlaybackSnapshot { return playbackSnapshot },
 
     on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
       let eventListeners = listeners.get(event)
@@ -357,6 +503,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       currentSelection = null
       customPipelineReady = false
       customRendererRequired = false
+      playbackSnapshot = createPlaybackSnapshot(loadEpoch)
+      commitPlayback({ state: 'loading', lastError: null }, 'load')
       setState('loading')
       const requestedIntent = options.intent ?? 'normal'
       const filterEnabled = options.customVideo?.filter !== undefined && options.customVideo.filter.kind !== 'none'
@@ -364,6 +512,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
 
       try {
         target = resolveVideoTarget(options.target)
+        observePresentation(loadEpoch)
         validateSource(options.source)
         if ((intent === 'normal' || intent === 'low-power')
           && options.source.kind === 'url'
@@ -414,6 +563,15 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
           emit('backendchange', { previous: previousSelection, current: playbackSelection.backend, reason: 'strategy-selection' })
           await nativePipeline.load(options.source, contentType, options.native)
           if (loadEpoch !== epoch || closed) throw loadAborted(intent)
+          previewManager = new NativePreviewController({
+            source: options.source,
+            contentType,
+            ...(options.native === undefined ? {} : { native: options.native }),
+            epoch: loadEpoch,
+            duration: media.duration,
+            ownerDocument: target.target.ownerDocument ?? null,
+          })
+          syncNativePlayback('capabilities')
           if (!target) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Subtitle target is unavailable', false)
           await setupSubtitles(options.source, media, loadEpoch, target, target.video, null, options.subtitles)
           if (options.autoplay === true) {
@@ -459,6 +617,12 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         }
         currentMedia = media
         currentSelection = playbackSelection
+        customPreviewProvider = options.preview?.provider
+        previewManager = new PreviewManager({
+          epoch: loadEpoch,
+          duration: media.duration,
+          ...(customPreviewProvider === undefined ? {} : { provider: customPreviewProvider }),
+        })
         if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier === 'off') {
           emit('error', {
             error: {
@@ -595,18 +759,21 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       if (!activePipeline) throw createEngineError(ErrorCodes.NATIVE_OPERATION_FAILED, 'No media is loaded', true)
       activePipeline.pipeline.setPlaybackRate(rate)
       subtitleController?.rateChanged()
+      syncPlayback('rate')
     },
 
     setVolume(volume: number): void {
       ensureOpen()
       if (!activePipeline) throw createEngineError(ErrorCodes.NATIVE_OPERATION_FAILED, 'No media is loaded', true)
       activePipeline.pipeline.setVolume(volume)
+      syncPlayback('volume')
     },
 
     setMuted(muted: boolean): void {
       ensureOpen()
       if (!activePipeline) throw createEngineError(ErrorCodes.NATIVE_OPERATION_FAILED, 'No media is loaded', true)
       activePipeline.pipeline.setMuted(muted)
+      syncPlayback('volume')
     },
 
     async setVideoFilter(filter: VideoFilterOptions): Promise<void> {
@@ -658,28 +825,49 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       return activePipeline.pipeline.readVideoFrame()
     },
 
+    requestPreview(request: MediaPreviewRequest): Promise<MediaPreviewImage | null> {
+      try { ensureOpen() } catch (cause) { return Promise.reject(cause) }
+      if (!previewManager) return Promise.resolve(null)
+      return previewManager.request(request)
+    },
+
     async requestFullscreen(): Promise<void> {
       ensureOpen()
-      if (activePipeline?.kind !== 'native') throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen requires a native video element or a later custom renderer', true)
-      await activePipeline.pipeline.requestFullscreen(subtitleController?.fullscreenHost ?? undefined)
+      if (!target) throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen requires an active playback target', true)
+      if (activePipeline?.kind === 'native') {
+        await activePipeline.pipeline.requestFullscreen(target.container ?? subtitleController?.fullscreenHost ?? undefined)
+      } else {
+        const element = target.target
+        const fullscreenEnabled = element.ownerDocument?.fullscreenEnabled === true
+        if (!fullscreenEnabled || typeof element.requestFullscreen !== 'function') throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen is not supported by the playback host', true)
+        try { await Promise.resolve(element.requestFullscreen()) } catch (cause) { throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_BLOCKED, 'Fullscreen was blocked by the browser', true, cause) }
+      }
+      commitPlayback({ presentationMode: 'fullscreen' }, 'presentation')
     },
 
     async exitFullscreen(): Promise<void> {
       ensureOpen()
-      if (activePipeline?.kind !== 'native') throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen requires a native video element or a later custom renderer', true)
-      await activePipeline.pipeline.exitFullscreen()
+      if (activePipeline?.kind === 'native') await activePipeline.pipeline.exitFullscreen()
+      else {
+        const doc = target?.target.ownerDocument ?? (typeof document === 'undefined' ? null : document)
+        if (!doc || typeof doc.exitFullscreen !== 'function') throw createEngineError(ErrorCodes.NATIVE_FULLSCREEN_UNSUPPORTED, 'Fullscreen is not supported by this document', true)
+        await Promise.resolve(doc.exitFullscreen())
+      }
+      commitPlayback({ presentationMode: 'inline' }, 'presentation')
     },
 
     async requestPictureInPicture(): Promise<void> {
       ensureOpen()
       if (activePipeline?.kind !== 'native') throw createEngineError(ErrorCodes.NATIVE_PIP_UNSUPPORTED, 'Picture-in-Picture requires a native video element or a later custom renderer', true)
       await activePipeline.pipeline.requestPictureInPicture()
+      commitPlayback({ presentationMode: 'picture-in-picture' }, 'presentation')
     },
 
     async exitPictureInPicture(): Promise<void> {
       ensureOpen()
       if (activePipeline?.kind !== 'native') throw createEngineError(ErrorCodes.NATIVE_PIP_UNSUPPORTED, 'Picture-in-Picture requires a native video element or a later custom renderer', true)
       await activePipeline.pipeline.exitPictureInPicture()
+      commitPlayback({ presentationMode: 'inline' }, 'presentation')
     },
 
     close(): void {
@@ -744,6 +932,43 @@ function createCustomCanvasTarget(resolved: ResolvedVideoTarget | null): Resolve
 function isCanvasTarget(value: HTMLElement): value is HTMLCanvasElement {
   if (typeof HTMLCanvasElement !== 'undefined' && value instanceof HTMLCanvasElement) return true
   return String((value as { tagName?: unknown }).tagName ?? '').toLowerCase() === 'canvas'
+}
+
+function toMicrosValue(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return null
+  const micros = Math.round(value)
+  return Number.isSafeInteger(micros) && micros >= 0 ? micros : null
+}
+
+function secondsToMicrosValue(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) return null
+  return toMicrosValue(value * 1_000_000)
+}
+
+function computeSnapshotBufferedAhead(
+  ranges: readonly { start: number; end: number }[],
+  currentTime: number | null,
+): number {
+  if (currentTime === null) return 0
+  for (const range of ranges) if (currentTime >= range.start && currentTime <= range.end) return Math.max(0, range.end - currentTime)
+  return 0
+}
+
+function appendPlayedRange(ranges: RawPlaybackRange[], currentTime: number): void {
+  const previous = ranges[ranges.length - 1]
+  if (!previous) {
+    ranges.push({ start: currentTime, end: currentTime })
+    return
+  }
+  const lower = Math.min(previous.end, currentTime)
+  const upper = Math.max(previous.end, currentTime)
+  if (upper - lower <= 2_000_000) {
+    previous.end = upper
+    previous.start = Math.min(previous.start, lower)
+  } else {
+    ranges.push({ start: currentTime, end: currentTime })
+  }
+  if (ranges.length > 96) ranges.splice(0, ranges.length - 96)
 }
 
 function mapLoadError(cause: unknown, intent: MXPlayerOptions['intent']): EngineErrorException {

@@ -1,5 +1,9 @@
 # MX-Player-Max 文档
 
+## 公共 API
+
+- `api/player-ui.md`：Phase 9 播放快照、预览、UI 生命周期、选项、CSS 与 React/Vue 适配器。
+
 ## 架构
 
 - `architecture/overview.md`：整体分层、生命周期和数据流。
@@ -30,6 +34,8 @@
 - `development/execution-plan.md`：每个阶段的任务、测试、退出条件和 Git 工作方式。
 - `development/testing.md`：单元、浏览器、媒体样本和性能测试方案。
 - `development/phase-1-acceptance.md`：Phase 1 自动化结果、浏览器矩阵和剩余验收项。
+- `development/phase-8-acceptance.md`：Phase 8 字幕内核自动化与真实浏览器待验证项。
+- `development/phase-9-acceptance.md`：Phase 9 UI、适配器、Demo、截图、发布边界和真实浏览器矩阵。
 
 ## 决策记录
 

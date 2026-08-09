@@ -4,6 +4,10 @@
 
 ### Added
 
+- Phase 9 独立可选的 `@mx-player-max/ui`：原生 DOM + TypeScript 控制条、进度/缓冲/连续 seek、160x90 可取消预览、状态层、单一浮层状态机、自动隐藏、快捷键、ARIA、字幕轨道与样式编辑，以及独立 `style.css`。
+- Native/Custom 共用的 `PlaybackSnapshot`、播放范围、能力、展示模式、安全错误摘要、`playbackchange` 事件和受预算/epoch/AbortSignal 保护的公共预览契约。
+- React/Vue SDK + UI 薄组件、播放器 workbench Demo，以及 Chromium desktop/mobile、Firefox 和 Playwright WebKit 的交互与截图自动化。
+- UI 生命周期支持创建、重复 attach、重新挂载、全量配置更新和幂等销毁；所有异步 UI 操作检查生命周期与媒体 session epoch。
 - Phase 8 SRT/ASS/SSA 字幕内核：有界纯文本解析、内嵌 packet 与 File/HTTPS 来源、稳定轨道生命周期/epoch、Native/Custom 媒体时钟调度、安全 DOM Overlay 和按 origin/local-file 作用域的样式存储。
 - `SubtitleCue`/style/source/track/clock/store 公共契约、稳定 `SUBTITLE_*` 错误码、字幕事件，以及 Core/SDK 轨道、选择、外挂字幕、样式与 Overlay API。
 - ASS Script Info、V4/V4+ Styles、Events Format/Dialogue 映射、白名单基础样式/位置和未支持 libass 特效的显式降级诊断；新增解析、安全、来源、轨道、时钟、Overlay、Core 和 SDK 自动化测试。
@@ -39,6 +43,10 @@
 
 ### Changed
 
+- `MXPlayer.ready` 现在始终返回当前 load promise，并新增可重复 `load()`、`playback` 与 `requestPreview()` SDK 代理。
+- Native 与 Custom 都从同一公共快照驱动 UI；Custom 仅在宿主提供预览 provider 时报告 preview capability，Native 预览使用与活动播放元素隔离的有界媒体元素和 canvas。
+- 原生能力探测在 MediaCapabilities 配置不完整但 `canPlayType()` 明确返回 `probably` 时保留 Native 支持；`maybe` 仍为 `unknown`。
+- `HttpRangeLoader` 只把强 ETag 写入 `If-Range`，弱 ETag 仍可用于响应一致性比较。
 - A non-`none` load-time filter promotes normal/low-power playback to the Custom `filters` intent; strategy reasons now record renderer selection/fallback chain, and WebGPU candidates require a usable texture limit.
 - Custom readiness now waits for decoder/audio and Renderer/output target initialization. Caller canvas/container/video ownership is preserved, and renderer teardown is included in source replacement/seek/close lifecycle.
 - `readVideoFrame()` remains an immediate pull ownership boundary; only a frame explicitly passed to `render(frame)` transfers ownership to the Renderer.

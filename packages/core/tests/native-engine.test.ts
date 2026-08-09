@@ -47,6 +47,39 @@ describe('MediaEngine native load orchestration', () => {
     expect(engine.state).toBe('closed')
   })
 
+  it('publishes native element seconds as microsecond playback snapshots', async () => {
+    const video = new FakeVideo()
+    const engine = createMediaEngine()
+    await engine.load({ target: video as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File } })
+    video.currentTime = 1.25
+    video.duration = 12.5
+    video.playedRanges = [{ start: 0, end: 1.25 }]
+    video.bufferedRanges = [{ start: 0, end: 4 }]
+
+    video.dispatch('timeupdate')
+    video.dispatch('progress')
+
+    expect(engine.playback).toMatchObject({
+      currentTime: 1_250_000,
+      duration: 12_500_000,
+      played: [{ start: 0, end: 1_250_000 }],
+      buffered: [{ start: 0, end: 4_000_000 }],
+      bufferedAhead: 2_750_000,
+    })
+    engine.close()
+  })
+
+  it('tracks native Picture-in-Picture presentation events in the public snapshot', async () => {
+    const video = new FakeVideo()
+    const engine = createMediaEngine()
+    await engine.load({ target: video as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File } })
+    video.dispatch('enterpictureinpicture')
+    expect(engine.playback.presentationMode).toBe('picture-in-picture')
+    video.dispatch('leavepictureinpicture')
+    expect(engine.playback.presentationMode).toBe('inline')
+    engine.close()
+  })
+
   it('does not silently ignore custom remote headers', async () => {
     const engine = createMediaEngine()
     await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'url', url: 'https://example.test/video.mp4', headers: { Authorization: 'secret' } } })).rejects.toMatchObject({ code: ErrorCodes.NATIVE_CUSTOM_HEADERS_UNSUPPORTED })

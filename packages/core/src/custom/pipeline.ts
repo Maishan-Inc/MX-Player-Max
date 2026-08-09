@@ -174,6 +174,11 @@ export class CustomMediaPipeline {
 
   get videoTrack(): TrackInfo { return this.#videoTrack }
   get epoch(): number { return this.#epoch }
+  get playbackRate(): number { return this.#playbackRate }
+  get volume(): number { return this.#volume }
+  get muted(): boolean { return this.#muted }
+  get seeking(): boolean { return this.#seeking }
+  get playing(): boolean { return this.#playing }
   get audioTrack(): TrackInfo | null { return this.#audio.track }
   get audioStats(): CustomAudioStats | null { return this.#audio.stats }
   get audioClock(): AudioClockSnapshot { return this.#audio.clock }

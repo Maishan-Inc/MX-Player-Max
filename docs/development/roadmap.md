@@ -60,7 +60,7 @@
 
 ## 阶段 12：SDK、演示站与发布
 
-完成 SDK/React/Vue API，增加 UMD 产物和发布元数据，演示站消费官方 UI 包，npm 发布、jsDelivr 入口、Docker 多线程演示和版本化 WASM manifest。
+稳定并发布现有 SDK/UI/React/Vue API，增加 UMD/IIFE 产物与发布元数据，完成 npm/jsDelivr 入口、SRI、Docker 多线程演示和版本化 WASM manifest。Phase 9 已完成框架适配器与官方 UI Demo，Phase 12 不重复实现控制逻辑。
 
 ## 阶段 13：质量与扩展
 

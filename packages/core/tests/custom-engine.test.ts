@@ -126,6 +126,41 @@ afterEach(() => {
 })
 
 describe('MediaEngine custom video integration', () => {
+  it('reports custom preview capability only when a provider is configured', async () => {
+    const createCustomPipeline = (options: CustomMediaPipelineOptions): CustomMediaPipeline => (
+      new FakeCustomPipeline(options) as unknown as CustomMediaPipeline
+    )
+    const withoutProvider = createMediaEngine({ createCustomPipeline })
+    await withoutProvider.load({
+      target: new FakeVideo() as unknown as HTMLElement,
+      source: { kind: 'file', file: new Blob(['x']) as File },
+      intent: 'frame-access',
+    })
+    expect(withoutProvider.playback.capabilities.preview).toBe(false)
+    withoutProvider.close()
+
+    const withProvider = createMediaEngine({ createCustomPipeline })
+    await withProvider.load({
+      target: new FakeVideo() as unknown as HTMLElement,
+      source: { kind: 'file', file: new Blob(['x']) as File },
+      intent: 'frame-access',
+      preview: {
+        provider: async (request) => ({
+          blob: new Blob(['preview'], { type: 'image/webp' }),
+          time: request.time,
+          width: request.width,
+          height: request.height,
+        }),
+      },
+    })
+    expect(withProvider.playback.capabilities.preview).toBe(true)
+    await expect(withProvider.requestPreview({ time: 0 })).resolves.toMatchObject({
+      width: 160,
+      height: 90,
+    })
+    withProvider.close()
+  })
+
   it.each<PlaybackIntent>(['frame-access', 'filters', 'editing', 'ai-enhance'])('initializes WebCodecs for %s intent', async (intent) => {
     let custom!: FakeCustomPipeline
     const engine = createMediaEngine({ createCustomPipeline: (options) => {

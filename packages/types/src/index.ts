@@ -761,6 +761,92 @@ export interface EngineError {
 
 export type PlaybackState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 'seeking' | 'ended' | 'error' | 'closed'
 
+export interface PlaybackTimeRange {
+  readonly start: Micros
+  readonly end: Micros
+}
+
+export type PresentationMode = 'inline' | 'fullscreen' | 'picture-in-picture'
+
+export interface PlaybackControlCapabilities {
+  readonly seek: boolean
+  readonly volume: boolean
+  readonly playbackRate: boolean
+  readonly fullscreen: boolean
+  readonly pictureInPicture: boolean
+  readonly preview: boolean
+}
+
+export interface PlaybackErrorSummary {
+  readonly code: string
+  readonly recoverable: boolean
+}
+
+export interface PlaybackSnapshot {
+  readonly sessionEpoch: number
+  readonly state: PlaybackState
+  readonly paused: boolean
+  readonly currentTime: Micros | null
+  readonly duration: Micros | null
+  readonly played: readonly PlaybackTimeRange[]
+  readonly buffered: readonly PlaybackTimeRange[]
+  readonly bufferedAhead: Micros
+  readonly volume: number
+  readonly muted: boolean
+  readonly playbackRate: number
+  readonly seeking: boolean
+  readonly buffering: boolean
+  readonly presentationMode: PresentationMode
+  readonly capabilities: PlaybackControlCapabilities
+  readonly lastError: PlaybackErrorSummary | null
+}
+
+export type PlaybackChangeReason =
+  | 'load'
+  | 'state'
+  | 'time'
+  | 'buffer'
+  | 'volume'
+  | 'rate'
+  | 'presentation'
+  | 'capabilities'
+  | 'error'
+
+export interface MediaPreviewRequest {
+  readonly time: Micros
+  readonly width?: number
+  readonly height?: number
+  readonly signal?: AbortSignal
+}
+
+export interface MediaPreviewProviderRequest {
+  readonly time: Micros
+  readonly width: number
+  readonly height: number
+  readonly duration: Micros | null
+  readonly sessionEpoch: number
+  readonly signal: AbortSignal
+}
+
+export interface MediaPreviewProviderResult {
+  readonly blob: Blob
+  readonly time: Micros
+  readonly width: number
+  readonly height: number
+}
+
+export type MediaPreviewProvider = (
+  request: MediaPreviewProviderRequest,
+) => Promise<MediaPreviewProviderResult | null>
+
+export interface MediaPreviewImage extends MediaPreviewProviderResult {
+  readonly sessionEpoch: number
+}
+
+export interface MediaPreviewOptions {
+  readonly provider?: MediaPreviewProvider
+}
+
 /** Stable event payloads shared by core, SDK, and optional UI adapters. */
 export interface EngineEventMap {
   ready: { selection: PlaybackSelection }
@@ -783,6 +869,7 @@ export interface EngineEventMap {
   subtitlestatechange: { previous: SubtitleState; current: SubtitleState; trackId: string | null }
   subtitlestylechange: { style: SubtitleCueStyle }
   subtitlewarning: { trackId: string | null; diagnostic: SubtitleDiagnostic }
+  playbackchange: { snapshot: PlaybackSnapshot; reason: PlaybackChangeReason }
   error: { error: EngineError }
 }
 
@@ -901,6 +988,7 @@ export const ErrorCodes = {
   RENDERER_AI_PIPELINE_FAILED: 'RENDERER_AI_PIPELINE_FAILED',
   RENDERER_AI_BUDGET_EXCEEDED: 'RENDERER_AI_BUDGET_EXCEEDED',
   RENDERER_AI_DEVICE_LOST: 'RENDERER_AI_DEVICE_LOST',
+  PREVIEW_INPUT_INVALID: 'PREVIEW_INPUT_INVALID',
   ...SubtitleErrorCodes,
 } as const
 
@@ -926,6 +1014,7 @@ export interface MXPlayerOptions {
   customVideo?: CustomVideoOptions
   customAudio?: CustomAudioOptions
   subtitles?: SubtitleOptions
+  preview?: MediaPreviewOptions
 }
 
 export interface MediaEngine extends EngineEventSource {
@@ -944,6 +1033,7 @@ export interface MediaEngine extends EngineEventSource {
   readonly selectedSubtitleTrack: string | null
   readonly subtitleState: SubtitleState
   readonly subtitleStyle: SubtitleCueStyle
+  readonly playback: PlaybackSnapshot
 
   load(options: MXPlayerOptions): Promise<void>
   play(): Promise<void>
@@ -964,6 +1054,7 @@ export interface MediaEngine extends EngineEventSource {
   attachSubtitleOverlay(host?: HTMLElement): void
   detachSubtitleOverlay(): void
   readVideoFrame(): Promise<DecodedVideoFrame | null>
+  requestPreview(request: MediaPreviewRequest): Promise<MediaPreviewImage | null>
   requestFullscreen(): Promise<void>
   exitFullscreen(): Promise<void>
   requestPictureInPicture(): Promise<void>

@@ -22,6 +22,8 @@ const report = await probeMediaCapabilities(media, { snapshot })
 
 配置不足或 API 抛错返回 `unknown`，不猜测支持。缺少音轨的视频文件只验证现有轨道。
 
+如果 MediaCapabilities 查询所需的 bitrate/framerate 等字段不完整，但 `canPlayType()` 对规范化 content type 明确返回 `probably`，Native 结果可保守记为 `supported`，原因同时记录 `can-play-type-probably` 与 `decoding-info-config-incomplete`。`maybe` 仍为 `unknown`，不会被提升。
+
 ## 零副作用边界
 
 探测不会设置媒体 `src`、调用 `fetch`、创建 VideoDecoder/AudioDecoder 实例、请求 GPU device 或加载 WASM 资源。WASM SIMD/Threads 使用小型内联模块执行 `WebAssembly.validate()`；Threads 还必须同时满足 `crossOriginIsolated` 与 `SharedArrayBuffer`。

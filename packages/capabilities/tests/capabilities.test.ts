@@ -344,7 +344,7 @@ describe('probeMediaCapabilities', () => {
     expect(report.webCodecs.video.reasons).toEqual(['config-probe-failed'])
   })
 
-  it('does not call MediaCapabilities with an incomplete video configuration', async () => {
+  it('uses a probably canPlayType result when MediaCapabilities input is incomplete', async () => {
     const media = createMedia()
     const video = media.tracks.find((track) => track.kind === 'video')
     if (video) delete video.bitrate
@@ -358,6 +358,26 @@ describe('probeMediaCapabilities', () => {
     const cache = new MemoryCache()
     const snapshot = await detectCapabilities({ adapter, cache, sdkVersion: 'test-incomplete-native' })
     const report = await probeMediaCapabilities(media, { adapter, cache, snapshot, sdkVersion: 'test-incomplete-native' })
+
+    expect(report.native.playable).toBe('supported')
+    expect(report.native.video.reasons).toEqual(['can-play-type-probably', 'decoding-info-config-incomplete'])
+    expect(decodingInfo).not.toHaveBeenCalled()
+  })
+
+  it('keeps a maybe canPlayType result unknown when MediaCapabilities input is incomplete', async () => {
+    const media = createMedia()
+    const video = media.tracks.find((track) => track.kind === 'video')
+    if (video) delete video.bitrate
+    const decodingInfo = vi.fn(async () => ({ supported: true, smooth: true, powerEfficient: true }))
+    const adapter = createAdapter({
+      hasHtmlVideo: () => true,
+      hasMediaCapabilities: () => true,
+      canPlayType: () => 'maybe',
+      decodingInfo,
+    })
+    const cache = new MemoryCache()
+    const snapshot = await detectCapabilities({ adapter, cache, sdkVersion: 'test-incomplete-native-maybe' })
+    const report = await probeMediaCapabilities(media, { adapter, cache, snapshot, sdkVersion: 'test-incomplete-native-maybe' })
 
     expect(report.native.playable).toBe('unknown')
     expect(report.native.video.reasons).toEqual(['decoding-info-config-incomplete'])

@@ -19,6 +19,8 @@ export type NativePipelineEvent =
   | { type: 'seeked' }
   | { type: 'buffering'; bufferedAhead: number }
   | { type: 'timeupdate'; currentTime: number; duration: number | null }
+  | { type: 'propertychange'; property: 'volume' | 'rate' }
+  | { type: 'presentationchange'; mode: 'inline' | 'picture-in-picture' }
   | { type: 'ended' }
   | { type: 'error'; error: EngineError }
   | { type: 'loading' }
@@ -288,6 +290,10 @@ export class NativeMediaPipeline {
       if (currentTime !== null) this.callbacks.onEvent({ type: 'timeupdate', currentTime, duration: toMicros(this.video.duration) })
       return
     }
+    if (type === 'volumechange') { this.callbacks.onEvent({ type: 'propertychange', property: 'volume' }); return }
+    if (type === 'ratechange') { this.callbacks.onEvent({ type: 'propertychange', property: 'rate' }); return }
+    if (type === 'enterpictureinpicture') { this.callbacks.onEvent({ type: 'presentationchange', mode: 'picture-in-picture' }); return }
+    if (type === 'leavepictureinpicture') { this.callbacks.onEvent({ type: 'presentationchange', mode: 'inline' }); return }
     if (type === 'ended') { this.callbacks.onEvent({ type: 'ended' }); return }
     if (type === 'emptied') { this.callbacks.onEvent({ type: 'loading' }); return }
     if (type === 'error') {

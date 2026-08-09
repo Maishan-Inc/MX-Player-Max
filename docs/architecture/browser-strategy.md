@@ -125,3 +125,26 @@ return backendLoader.start(selected)
 | macOS Safari 桌面 | 同上 | AudioDecoder 可用时 AudioContext，否则实际所选媒体墙钟路径 | WebKit fullscreen/字体/ResizeObserver 待真实 smoke | HTTPS + CORS |
 
 `textContent`、Fetch CORS、ResizeObserver 和 Fullscreen API 的真实布局/安全表现仍需在最新两个稳定大版本执行。Vitest fake DOM 只验证代码契约，不作为三浏览器通过证据。PGS/VobSub、系统原生 TextTrack 菜单和完整 libass 不在 Phase 8 兼容声明内。
+
+## 10. Phase 9 UI 兼容说明
+
+UI 不读取 browser、decoder 或 renderer 名称。Core 把 Native HTMLVideo 与 Custom clock/queue/presentation 归一化为同一个 `PlaybackSnapshot`，UI 只按 capability 控制显示和禁用状态。
+
+| 能力 | Native `<video>` | Custom `<canvas>` | 不支持时 |
+|---|---|---|---|
+| 播放/暂停/seek/音量/倍速 | SDK 公共命令 | 同一 SDK 命令 | 按 snapshot capability 禁用 |
+| played/buffered | HTMLMediaElement ranges 归一化 | clock progress + bounded horizon | 未知值显示安全占位 |
+| fullscreen | 共享宿主容器 | 共享宿主容器 | 控件禁用 |
+| PiP | 经验证的原生 video PiP | Phase 9 不支持 | 控件禁用 |
+| preview | 隔离 media element/canvas | 可选宿主 provider | 图片安静隐藏，seek 保持可用 |
+| subtitles | Phase 8 video clock + overlay | Phase 8 AudioContext/墙钟 + overlay | 轨道/状态 API 决定界面 |
+
+Playwright 配置运行 Chromium desktop/mobile、Firefox 与 WebKit 的 DOM/CSS/交互断言，并提交 Chromium desktop/mobile baseline。它们不等价于真实 latest-two-stable 或 macOS Safari 验证。
+
+| 环境 | 自动化 | 真实浏览器状态 |
+|---|---|---|
+| Chromium desktop/mobile | Playwright behavior + screenshot | Chrome/Chromium 最新两个稳定大版本 pending |
+| Firefox desktop | Playwright behavior/layout | Firefox 最新两个稳定大版本 pending |
+| Playwright WebKit | behavior/layout | macOS Safari 最新两个稳定大版本 pending；不得用 WebKit run 替代 |
+
+真实环境仍需验证实际 Codec/媒体画面、CORS canvas preview、PiP/fullscreen、font fallback、DPR/resize、触摸/键盘和长时间资源清理。精确命令、截图与 pending 项记录在 `development/phase-9-acceptance.md`。

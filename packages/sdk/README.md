@@ -15,6 +15,30 @@ await player.ready
 await player.play()
 ```
 
+## Phase 9 playback and UI contract
+
+`playback` 是 Native 与 Custom 共用的只读 `PlaybackSnapshot`，时间统一为整数微秒。它包含 state、paused、current/duration、played/buffered 范围、bufferedAhead、音量/静音/倍速、seeking/buffering、展示模式、控制能力和已脱敏错误摘要。
+
+```ts
+player.on('playbackchange', ({ snapshot, reason }) => {
+  renderControls(snapshot, reason)
+})
+
+await player.load({ ...nextOptions, target: '#player' })
+await player.ready // 始终指向当前 load
+
+const image = await player.requestPreview({
+  time: 30_000_000,
+  width: 160,
+  height: 90,
+  signal: abortController.signal,
+})
+```
+
+`requestPreview()` 返回安全的编码图片 `Blob` 或 `null`，不返回 source、媒体私有数据、`VideoFrame`、canvas 或 GPU 资源。Native 预览与活动元素隔离；Custom 只有在 `MXPlayerOptions.preview.provider` 存在时才报告能力。请求受尺寸、字节、超时、latest-wins、AbortSignal 和 session epoch 限制。
+
+可选播放器界面位于独立的 `@mx-player-max/ui`，SDK 不依赖它。完整契约见 `docs/api/player-ui.md`。
+
 `MXPlayer` 同步代理 core 的 `state`、`media`、`selection`、`nativeFeatures`、事件 `on/off/once`、seek/倍速/音量/静音、全屏和原生 Picture-in-Picture。NativeMediaPipeline 的错误使用稳定 `ENGINE_*`/`NATIVE_*` 码；autoplay 仍受用户手势策略限制。
 
 Phase 5 还代理只读 `customAudioStats` 与 `audioClock`，以及 `audiostatechange`、`audiounderrun`、`clockupdate`。这些事件只含统计/状态/微秒时间，不含 `AudioData`、PCM 或压缩数据。`customAudio` 选项沿 `MXPlayerOptions` 传入 core。
@@ -78,4 +102,4 @@ player.on('subtitlecuechange', ({ cues, currentTime, epoch }) => {
 })
 ```
 
-`subtitleTracks`、`selectedSubtitleTrack`、`subtitleState` 和 `subtitleStyle` 是只读代理。SDK 同时代理 `listSubtitleTracks()`、`addSubtitleTrack()`、`selectSubtitleTrack()`、`removeSubtitleTrack()`、`closeSubtitles()`、样式 API 和 Overlay attach/detach。Native 与 Custom 使用同一 API/事件语义；Phase 8 不创建菜单、设置面板、字体选择器、拖拽句柄或控制条。
+`subtitleTracks`、`selectedSubtitleTrack`、`subtitleState` 和 `subtitleStyle` 是只读代理。SDK 同时代理 `listSubtitleTracks()`、`addSubtitleTrack()`、`selectSubtitleTrack()`、`removeSubtitleTrack()`、`closeSubtitles()`、样式 API 和 Overlay attach/detach。Native 与 Custom 使用同一 API/事件语义；SDK 本身不创建菜单或控制条，Phase 9 的可选 UI 通过这些公共代理提供字幕界面。

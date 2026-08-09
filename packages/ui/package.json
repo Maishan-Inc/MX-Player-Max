@@ -1,0 +1,37 @@
+{
+  "name": "@mx-player-max/ui",
+  "version": "0.1.0",
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": [
+    "./dist/style.css"
+  ],
+  "dependencies": {
+    "@mx-player-max/sdk": "workspace:*",
+    "@mx-player-max/types": "workspace:*",
+    "lucide": "1.30.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests --exclude tests/playwright/**"
+  },
+  "devDependencies": {
+    "happy-dom": "^18.0.1"
+  }
+}

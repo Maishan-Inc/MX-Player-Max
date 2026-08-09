@@ -72,6 +72,12 @@ engine.setSubtitleStyle({ fontSize: 42, color: '#FFFFFF', outlineWidth: 3 })
 
 选择轨道、seek、换源、remove 和 close 会提升或检查字幕 operation/epoch，旧异步加载和迟到 cue 不再更新 Overlay。`closeSubtitles()` 关闭本次媒体的字幕内核；重新启用需要重新 `load()`。菜单、字体选择器、拖拽位置编辑器和控制条属于 Phase 9。
 
+## Phase 9 playback and preview
+
+Core 将 Native video state 与 Custom AudioContext/MediaWallClock、queue horizon 和 presentation observer 投影为相同的 `PlaybackSnapshot`。所有时间是安全整数微秒，played/buffered 范围排序、裁剪、合并相邻/重叠段并受数量上限保护。`buffering` 与主 state 正交，error 只发布 code/recoverable 摘要。
+
+Native preview 使用隔离 muted media element 和有界 canvas，不 seek/pause/read 活动 video。Custom 通过可选 provider 生成安全 Blob；没有 provider 时 capability 为 false。共享 manager 校验尺寸、像素、MIME、字节、timeout、AbortSignal、latest-wins 与 load epoch，失败返回 `null`。fullscreen 以共享 target container 为边界，Custom PiP 明确不支持。
+
 ## Phase 6 presentation
 
 ```text

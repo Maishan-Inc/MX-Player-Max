@@ -1,6 +1,2 @@
-import type { MXPlayerOptions } from '@mx-player-max/types'
-
-export interface MXPlayerReactProps extends Omit<MXPlayerOptions, 'target'> {
-  className?: string
-}
-
+export { MXPlayer } from './component'
+export type { MXPlayerComponentHandle, MXPlayerReactProps } from './component'
