@@ -1,6 +1,6 @@
 # Phase 10: WASM Decoder Manager Design
 
-状态：已批准设计，等待实现计划。
+状态：已批准；Manager + Plugin Factory 实现完成，真实 Codec 与 Core 接入不在本设计范围。
 
 ## 1. 目标与范围
 

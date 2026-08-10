@@ -4,6 +4,7 @@
 
 ### Added
 
+- Phase 10 `@mx-player-max/decoder-wasm` Manager 契约：严格且不可变的 manifest/review 校验、Codec/轨道受限的插件 Registry、审核后的策略声明、能力驱动的 threaded/SIMD/single 变体选择、HTTP(S) URL 边界、内存/Cache Storage、SHA-256 验证、并发去重、Abort 和原子回退；本阶段不包含真实 WASM 二进制或 Core 解码接入。
 - Phase 9 独立可选的 `@mx-player-max/ui`：原生 DOM + TypeScript 控制条、进度/缓冲/连续 seek、160x90 可取消预览、状态层、单一浮层状态机、自动隐藏、快捷键、ARIA、字幕轨道与样式编辑，以及独立 `style.css`。
 - Native/Custom 共用的 `PlaybackSnapshot`、播放范围、能力、展示模式、安全错误摘要、`playbackchange` 事件和受预算/epoch/AbortSignal 保护的公共预览契约。
 - React/Vue SDK + UI 薄组件、播放器 workbench Demo，以及 Chromium desktop/mobile、Firefox 和 Playwright WebKit 的交互与截图自动化。

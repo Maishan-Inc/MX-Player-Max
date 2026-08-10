@@ -54,6 +54,9 @@
 
 建立 Codec 插件注册、单线程/SIMD/多线程选择、WASM 哈希校验、懒加载、缓存和失败回退。先接入 libvpx、dav1d、libde265、OpenH264，再接入 VVdeC 和 FFmpeg 兜底。
 
+当前状态：Manager + Plugin Factory 已完成并通过 fake runtime/plugin 自动化验收；仓库仍不
+包含上述真实 Codec 二进制，Core 接入和发布审查继续作为后续门禁。
+
 ## 阶段 11：浏览器平台优化
 
 实现 Chromium/WebKit/Gecko 可插拔优化和 Issue 黑名单。平台策略只能改变候选评分，不得创建不存在的能力。

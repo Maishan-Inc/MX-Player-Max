@@ -3,6 +3,7 @@
 ## 公共 API
 
 - `api/player-ui.md`：Phase 9 播放快照、预览、UI 生命周期、选项、CSS 与 React/Vue 适配器。
+- `../packages/decoder-wasm/README.md`：Phase 10 WASM Manager、插件契约、加载规则与稳定错误。
 
 ## 架构
 
@@ -36,6 +37,7 @@
 - `development/phase-1-acceptance.md`：Phase 1 自动化结果、浏览器矩阵和剩余验收项。
 - `development/phase-8-acceptance.md`：Phase 8 字幕内核自动化与真实浏览器待验证项。
 - `development/phase-9-acceptance.md`：Phase 9 UI、适配器、Demo、截图、发布边界和真实浏览器矩阵。
+- `development/phase-10-acceptance.md`：Phase 10 WASM Manager、manifest、变体选择、哈希/缓存和发布边界。
 
 ## 决策记录
 

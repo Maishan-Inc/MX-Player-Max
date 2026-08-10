@@ -427,7 +427,12 @@ Demuxer 与 Codec 配置解析必须输出：
 - 内存上限与初始化成本量级。
 - 许可证、专利与发行限制。
 
-契约由 `packages/decoder-wasm/src/index.ts` 的 `WasmDecoderManifest` 承载，当前已有 codec / version / variants / sha256 / license 字段，profile 范围与色彩能力字段需补充。
+契约由 `packages/decoder-wasm` 公共入口的 `WasmDecoderManifest` 承载，包含 codec、版本、
+变体 URL、每个变体的 SHA-256/可选体积、视频/音频能力、profile/level、输出像素格式、
+位深、上游、编译器、编译 flags、许可证、专利风险和 review 状态。`WasmDecoderRegistry`
+按插件优先级提供显式 `WasmDecoderDeclaration`；运行时不会因为浏览器具有 WASM API
+就虚构一个 Codec 插件。Manager 默认只把 review 已批准的插件声明给策略层，并在
+Registry 调用插件 `supports()` 前强制核对 manifest Codec 和视频/音频轨道能力。
 
 ## 11. WASM 构建矩阵
 
@@ -442,6 +447,12 @@ codec/
 对外只有一个 SDK 版本。运行时先选择 Codec 插件，再选择 `threaded`、`simd` 或 `single`。不支持多线程时只下载单线程产物，不同变体不并行下载。
 
 manifest 必须记录每个变体的真实体积与 SHA-256，运行时下载后校验哈希，失败则停止加载该变体并尝试安全回退。
+
+Phase 10 Manager 的回退顺序为：隔离且具备 Threads 时尝试 `threaded`，具备 SIMD 时
+尝试 `simd`，最后尝试 `single`。非隔离页面不会请求 threaded。哈希不匹配、模块编译
+或插件初始化失败都只影响当前插件/变体；所有候选失败时返回带有插件、变体和稳定错误
+码的聚合错误。若所有已批准候选都没有能力兼容的构建产物，则直接返回
+`WASM_VARIANT_UNAVAILABLE`，不把“未尝试”误报成执行失败。
 
 ## 12. 许可证与供应链
 

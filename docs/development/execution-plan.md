@@ -29,7 +29,7 @@ Phase 6  WebGPU/WebGL2/Canvas2D 渲染器（实现完成，浏览器验收待执
 Phase 7  AI 后处理（插帧与超分）
 Phase 8  SRT/ASS 字幕内核
 Phase 9  UI 包（控制条、字幕菜单、主题）
-Phase 10 WASM Decoder Manager
+Phase 10 WASM Decoder Manager          Manager/Plugin Factory 已实现；真实 Codec/Core 接入待后续
 Phase 11 浏览器平台优化
 Phase 12 SDK、演示站与发布
 Phase 13 质量、安全和性能固化
@@ -309,6 +309,11 @@ Phase 13 质量、安全和性能固化
 
 目标：在 WebCodecs 不支持或不适合时提供模块化软件解码。
 
+状态：Manager + Plugin Factory 子阶段实现完成；严格 manifest/review、Registry、能力驱动
+变体选择、URL/哈希/缓存、并发去重、取消、失败记忆和原子回退已交付。真实 Codec 二进制、
+具体帧/PCM ABI、Worker 适配和 Core Custom Pipeline 接入仍待后续子阶段，不能据此宣称
+任何真实 Codec 已可播放或发布。
+
 ### 任务
 
 1. 建立 Codec Decoder Registry 和 manifest。
@@ -320,7 +325,7 @@ Phase 13 质量、安全和性能固化
 
 ### 退出条件
 
-- 非隔离页面自动使用单线程。
+- 非隔离页面绝不请求 threaded；有 SIMD 时优先 SIMD，否则使用 single。
 - 隔离页面优先使用多线程，初始化失败自动回退。
 - 未选中的 Codec 不下载对应 WASM。
 - 所有发布二进制完成许可证审查。

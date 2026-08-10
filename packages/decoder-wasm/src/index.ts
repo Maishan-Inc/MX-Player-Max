@@ -1,23 +1,35 @@
-import type { CapabilitySnapshot, TrackInfo } from '@mx-player-max/types'
-
-export type WasmVariant = 'threaded' | 'simd' | 'single'
-
-export interface WasmDecoderManifest {
-  codec: string
-  version: string
-  variants: Partial<Record<WasmVariant, string>>
-  sha256: Partial<Record<WasmVariant, string>>
-  license: string
-}
-
-export interface WasmDecoderManager {
-  load(codec: string, track: TrackInfo, capabilities: CapabilitySnapshot): Promise<WasmDecoderInstance>
-}
-
-export interface WasmDecoderInstance {
-  variant: WasmVariant
-  decode(packet: Uint8Array, timestamp: number, key: boolean): void
-  flush(): Promise<void>
-  close(): void
-}
-
+export type {
+  WasmAssetLoadOptions,
+  WasmDecoderAssetCache,
+  WasmDecoderCreateContext,
+  WasmDecoderDeclarationOptions,
+  WasmDecoderInstance,
+  WasmDecoderLoadOptions,
+  WasmDecoderManager,
+  WasmDecoderManagerOptions,
+  WasmDecoderManifest,
+  WasmDecoderPacket,
+  WasmDecoderPlugin,
+  WasmDecoderPluginDescriptor,
+  WasmDecoderRegistryLike,
+  WasmDecoderReview,
+  WasmDecoderRuntime,
+  WasmVariant,
+  VerifiedWasmAssetLoaderLike,
+  VerifiedWasmAssetLoaderOptions,
+  VerifiedWasmAsset,
+} from './contracts'
+export { WasmDecoderError, createWasmError, isWasmAbort, isWasmDecoderError } from './errors'
+export type { WasmDecoderAttempt } from './errors'
+export { createCacheStorageWasmCache, createMemoryWasmCache, createWasmCacheKey } from './cache'
+export {
+  VerifiedWasmAssetLoader,
+  createVerifiedWasmAssetLoader,
+  digestWasmSha256,
+  loadVerifiedWasmAsset,
+  resolveWasmAssetUrl,
+} from './loader'
+export { isWasmDecoderManifest, normalizeWasmCodec, validateWasmDecoderManifest } from './manifest'
+export { listWasmManifestVariants, selectWasmVariants } from './variants'
+export { WasmDecoderRegistry, createWasmDecoderRegistry } from './registry'
+export { DefaultWasmDecoderManager, createWasmDecoderManager } from './manager'

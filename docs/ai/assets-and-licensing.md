@@ -4,7 +4,9 @@
 
 ### 复用现有 WASM Manifest 模式
 
-`packages/decoder-wasm/src/index.ts:5-12` 已定义 `WasmDecoderManifest`。AI 模型镜像其形状，使加载器、缓存策略与许可证审查完全一致：
+`@mx-player-max/decoder-wasm` 公共入口已定义严格的 `WasmDecoderManifest`。AI 模型采用
+相同的版本、变体、哈希、来源与审查模式；两类资产的具体能力字段不同，但 URL、缓存、
+完整性和发布门禁保持一致：
 
 ```typescript
 export type ModelPrecision = 'f32' | 'f16'

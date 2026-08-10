@@ -14,6 +14,11 @@ Codec Plugin
 threaded / simd / single 变体
 ```
 
+Phase 10 的 `@mx-player-max/decoder-wasm` Manager 只在策略已经选择 WASM 后运行。它
+通过 Registry 找到匹配的 Codec 插件，校验 manifest 的来源/构建/许可证/专利字段，
+再按能力快照产生变体顺序。Manager 不判断浏览器名称，也不把 WebAssembly API 的存在
+当成某个 Codec 已经可解码。
+
 开发者不需要手动选择线程版本。SDK 在进入 WASM Decoder 后判断 `crossOriginIsolated`、`SharedArrayBuffer`、WASM Threads、SIMD 和 Worker 能力。多线程初始化失败自动回退单线程。
 
 ## 2. 懒加载和缓存
@@ -24,6 +29,16 @@ threaded / simd / single 变体
 - 单线程与多线程变体不能同时下载。
 - 失败结果按会话缓存，避免重复初始化坏二进制。
 - Worker、AudioWorklet 和 WASM 资源必须提供可诊断的加载错误。
+
+Manager 的缓存键包含插件 ID、Codec、版本、变体、解析后的 URL 和 SHA-256。缓存命中
+仍会重新计算 SHA-256；损坏缓存会标记失败并沿变体顺序安全回退。相同键的并发加载共享
+一个请求，不同变体不会并行下载。取消使用 `WASM_ABORTED`，Manager 关闭后新加载使用
+`WASM_CLOSED`。
+
+资源 URL 只允许 HTTP(S)，不得携带用户名或密码；相对路径必须留在配置的 base path
+内。请求拒绝自动重定向，注入 fetcher 返回的已重定向响应也必须被 Loader 拒绝。
+Manager 默认只向策略层输出 review 已批准插件的声明，避免策略先选择一个随后必然被
+发布门禁拒绝的 WASM 后端。
 
 ## 3. 发布渠道
 
@@ -53,4 +68,3 @@ Cross-Origin-Embedder-Policy: require-corp
 ## 5. Docker 安全
 
 生产容器应配置 CSP、`X-Content-Type-Options: nosniff`、严格 HTTPS、只读文件系统和非 root Nginx。WASM 必须返回 `application/wasm`，Worker 必须返回正确 JavaScript MIME。
-
