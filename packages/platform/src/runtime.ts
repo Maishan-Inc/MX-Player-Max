@@ -8,7 +8,6 @@ interface ExtendedVideoElement extends HTMLVideoElement {
   mozPaintedFrames?: number
   mozFrameDelay?: number
 }
-
 export function createDefaultPlatformRuntimeAdapter(): PlatformRuntimeAdapter {
   const video = createVideoElement()
   return {
@@ -73,4 +72,3 @@ function safeBoolean(read: () => boolean): boolean {
     return false
   }
 }
-

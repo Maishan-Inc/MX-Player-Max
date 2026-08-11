@@ -35,4 +35,3 @@ This plan executes the approved Phase 11 scope in
 - `docs/architecture/browser-strategy.md`
 - `docs/development/phase-11-acceptance.md`
 - `README.md`, `docs/README.md`, `CHANGELOG.md`
-

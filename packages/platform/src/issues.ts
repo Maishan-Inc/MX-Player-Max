@@ -115,4 +115,3 @@ function parseIsoDate(value: string): Date | null {
 function startOfUtcDay(value: Date): Date {
   return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()))
 }
-

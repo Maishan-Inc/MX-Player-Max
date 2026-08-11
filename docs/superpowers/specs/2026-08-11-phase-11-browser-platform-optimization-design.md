@@ -80,4 +80,3 @@ WebCodecs 选择记录与 reset。Firefox H.264 回归夹具位于
 阶段验收运行 `pnpm typecheck`、`pnpm test`、`pnpm build`、`pnpm test:browser` 和
 `git diff --check`。Playwright WebKit 不能替代物理 macOS Safari；真实 latest-two-stable
 Codec/平台矩阵继续作为 Phase 13 的环境验收门禁。
-

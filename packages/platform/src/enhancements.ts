@@ -28,7 +28,6 @@ export function detectPlatformEnhancements(
     diagnosticFrameCounters: playbackQuality || geckoFrameCounters,
   }
 }
-
 function safeCanPlayType(runtime: PlatformRuntimeAdapter, contentType: string): boolean {
   try {
     const result = runtime.canPlayType(contentType)
@@ -45,4 +44,3 @@ function safeBoolean(read: () => boolean): boolean {
     return false
   }
 }
-

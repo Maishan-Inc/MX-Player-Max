@@ -138,4 +138,3 @@ function isHls(media: MediaDescriptor): boolean {
   const mimeType = media.mimeType?.toLowerCase()
   return mimeType === 'application/vnd.apple.mpegurl' || mimeType === 'application/x-mpegurl'
 }
-
