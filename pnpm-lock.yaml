@@ -79,6 +79,9 @@ importers:
         specifier: workspace:*
         version: link:../ui
     devDependencies:
+      esbuild:
+        specifier: ^0.28.0
+        version: 0.28.1
       happy-dom:
         specifier: ^18.0.1
         version: 18.0.1

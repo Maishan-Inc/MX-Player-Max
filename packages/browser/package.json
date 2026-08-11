@@ -27,11 +27,12 @@
     "@mx-player-max/ui": "workspace:*"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs",
+    "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs && node esbuild.config.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "devDependencies": {
+    "esbuild": "^0.28.0",
     "happy-dom": "^18.0.1"
   }
 }
