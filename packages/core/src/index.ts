@@ -24,6 +24,7 @@ import type {
   NativeMediaFeatures,
   NativePlaybackStats,
   PlaybackSelection,
+  BackendCandidate,
   PlaybackState,
   SourceDescriptor,
   CustomRendererKind,
@@ -38,6 +39,7 @@ import type {
   SubtitleTrackOptions,
   PlaybackSnapshot,
   PlaybackDecisionTrace,
+  StrategyEvaluation,
   PlaybackChangeReason,
   MediaPreviewImage,
   MediaPreviewRequest,
@@ -69,6 +71,19 @@ import { createPlaybackSnapshot, updatePlaybackSnapshot } from './playback/snaps
 import { normalizePlaybackRanges, type RawPlaybackRange } from './playback/ranges'
 import { PreviewManager } from './playback/preview-manager'
 import { NativePreviewController } from './native/preview'
+import {
+  runCandidateAttempts,
+  type CandidateAttemptContext,
+  type CandidateAttemptScope,
+} from './playback/candidate-controller'
+import {
+  beginDecisionAttempt,
+  closeDecisionTrace,
+  createDecisionTrace,
+  failDecisionAttempt,
+  failDecisionTrace,
+  selectDecisionAttempt,
+} from './playback/decision-trace'
 
 export { EngineErrorException, isEngineError } from './native/errors'
 export { NativeMediaPipeline } from './native/pipeline'
@@ -141,6 +156,11 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     for (const listener of [...eventListeners]) listener(payload)
   }
 
+  const publishDecisionTrace = (trace: PlaybackDecisionTrace): void => {
+    currentDecisionTrace = trace
+    emit('decisionchange', { trace })
+  }
+
   const setState = (next: PlaybackState): void => {
     if (currentState === next) return
     const previous = currentState
@@ -201,6 +221,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     customLastTime = null
     customSeeking = false
     customBuffering = false
+    customPipelineReady = false
+    customRendererRequired = false
   }
 
   const emitError = (error: EngineError): void => {
@@ -450,23 +472,23 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     get media() { return currentMedia },
     get selection() { return currentSelection },
     get nativeFeatures(): NativeMediaFeatures | null {
-      return activePipeline?.kind === 'native' ? activePipeline.pipeline.features : null
+      return currentSelection !== null && activePipeline?.kind === 'native' ? activePipeline.pipeline.features : null
     },
     get nativeStats(): NativePlaybackStats | null {
-      return activePipeline?.kind === 'native' ? activePipeline.pipeline.stats : null
+      return currentSelection !== null && activePipeline?.kind === 'native' ? activePipeline.pipeline.stats : null
     },
     get customVideoStats(): CustomVideoStats | null {
-      return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.stats : null
+      return currentSelection !== null && activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.stats : null
     },
     get customAudioStats(): CustomAudioStats | null {
-      return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioStats : null
+      return currentSelection !== null && activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioStats : null
     },
     get audioClock(): AudioClockSnapshot | null {
-      return activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioClock : null
+      return currentSelection !== null && activePipeline?.kind === 'custom-video' ? activePipeline.pipeline.audioClock : null
     },
-    get rendererKind(): CustomRendererKind | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.kind ?? null : null },
-    get rendererState(): RendererState | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.state ?? null : null },
-    get rendererStats(): RendererStats | null { return activePipeline?.kind === 'custom-video' ? activeRenderer?.stats ?? null : null },
+    get rendererKind(): CustomRendererKind | null { return currentSelection !== null && activePipeline?.kind === 'custom-video' ? activeRenderer?.kind ?? null : null },
+    get rendererState(): RendererState | null { return currentSelection !== null && activePipeline?.kind === 'custom-video' ? activeRenderer?.state ?? null : null },
+    get rendererStats(): RendererStats | null { return currentSelection !== null && activePipeline?.kind === 'custom-video' ? activeRenderer?.stats ?? null : null },
     get subtitleTracks(): readonly SubtitleTrack[] { return subtitleController?.tracks ?? [] },
     get selectedSubtitleTrack(): string | null { return subtitleController?.selectedTrackId ?? null },
     get subtitleState(): SubtitleState { return subtitleController?.state ?? 'disabled' },
@@ -504,6 +526,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       disposePipeline()
       currentMedia = null
       currentSelection = null
+      currentDecisionTrace = null
       customPipelineReady = false
       customRendererRequired = false
       playbackSnapshot = createPlaybackSnapshot(loadEpoch)
@@ -515,14 +538,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
 
       try {
         target = resolveVideoTarget(options.target)
-        observePresentation(loadEpoch)
         validateSource(options.source)
-        if ((intent === 'normal' || intent === 'low-power')
-          && options.source.kind === 'url'
-          && options.source.headers
-          && Object.keys(options.source.headers).length > 0) {
-          throw createEngineError(ErrorCodes.NATIVE_CUSTOM_HEADERS_UNSUPPORTED, 'Custom headers cannot be sent by an HTML video element', false)
-        }
         const reader = createRangeLoader(options.source)
         probeReader = reader
         let containerSelection: Awaited<ReturnType<typeof probeContainer>> | null = null
@@ -536,49 +552,53 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         }
         if (loadEpoch !== epoch || closed) throw loadAborted(intent)
         const media = containerSelection.metadata.media
+        currentMedia = media
         const capabilities = await detectCapabilities()
         const report = await probeMediaCapabilities(media, { snapshot: capabilities })
         const context = createCapabilityContext(capabilities, report)
         emit('capabilities', { context })
         const policy = createPlatformPolicy(capabilities)
         const strategy = createStrategyEngine(policy)
-        const playbackSelection = strategy.select(media, intent, context)
+        const evaluation = typeof strategy.evaluate === 'function'
+          ? strategy.evaluate(media, intent, context)
+          : legacyStrategyEvaluation(strategy.select(media, intent, context))
+        publishDecisionTrace(createDecisionTrace(evaluation, media, intent, loadEpoch, Date.now()))
+        if (evaluation.rankedCandidates.length === 0) {
+          throw createEngineError(ErrorCodes.STRATEGY_NO_VIABLE_BACKEND, 'No verified playback candidate is available', false)
+        }
 
-        if (playbackSelection.backend.kind === 'html-video') {
-          if (playbackSelection.intent !== 'normal' && playbackSelection.intent !== 'low-power') {
-            throw createEngineError(ErrorCodes.NATIVE_BACKEND_UNAVAILABLE, 'The native backend cannot provide frame access', true)
-          }
-          if (options.source.kind === 'url' && options.source.headers && Object.keys(options.source.headers).length > 0) {
-            throw createEngineError(ErrorCodes.NATIVE_CUSTOM_HEADERS_UNSUPPORTED, 'Custom headers cannot be sent by an HTML video element', false)
-          }
-          const contentType = report.native.video.contentType ?? report.native.audio.contentType
-          if (report.native.playable !== 'supported' || !contentType) {
-            throw createEngineError(ErrorCodes.NATIVE_NOT_SUPPORTED, 'The media is not supported by the native video path', false)
-          }
-          if (!target.video) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Native playback requires a video element or container target', false)
-          currentMedia = media
-          currentSelection = playbackSelection
-          const nativePipeline = new NativeMediaPipeline(target.video, {
-            isActive: () => !closed && loadEpoch === epoch,
-            onEvent: (event) => handleNativeEvent(event, loadEpoch),
-          })
-          activePipeline = { kind: 'native', pipeline: nativePipeline }
-          emit('backendchange', { previous: previousSelection, current: playbackSelection.backend, reason: 'strategy-selection' })
-          await nativePipeline.load(options.source, contentType, options.native)
-          if (loadEpoch !== epoch || closed) throw loadAborted(intent)
-          previewManager = new NativePreviewController({
-            source: options.source,
-            contentType,
-            ...(options.native === undefined ? {} : { native: options.native }),
-            epoch: loadEpoch,
-            duration: media.duration,
-            ownerDocument: target.target.ownerDocument ?? null,
-          })
-          syncNativePlayback('capabilities')
-          if (!target) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Subtitle target is unavailable', false)
+        const result = await runCandidateAttempts<{
+          readonly selection: PlaybackSelection
+          activate(): void
+        }>({
+          candidates: evaluation.rankedCandidates,
+          isSessionActive: () => !closed && loadEpoch === epoch,
+          createInactiveError: () => loadAborted(intent),
+          getErrorCode: (cause, candidate) => candidateErrorCode(cause, candidate),
+          isRecoverable: (cause) => isCandidateInitializationRecoverable(cause),
+          onAttempt: (attempt) => {
+            const candidate = evaluation.rankedCandidates[attempt.index]
+            const trace = currentDecisionTrace
+            if (!candidate || !trace || trace.sessionEpoch !== loadEpoch) return
+            const next = attempt.status === 'initializing'
+              ? beginDecisionAttempt(trace, candidate, attempt.index, Date.now())
+              : attempt.status === 'failed'
+                ? failDecisionAttempt(trace, candidate, attempt.index, attempt.errorCode ?? ErrorCodes.CUSTOM_OPERATION_FAILED, Date.now())
+                : selectDecisionAttempt(trace, candidate, attempt.index, Date.now())
+            publishDecisionTrace(next)
+          },
+          createScope: (candidate, attemptContext): CandidateAttemptScope<{
+            readonly selection: PlaybackSelection
+            activate(): void
+          }> => createCandidateScope(candidate, attemptContext),
+        })
+
+        result.value.activate()
+        if (!target) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Subtitle target is unavailable', false)
+        if (activePipeline?.kind === 'native') {
           await setupSubtitles(options.source, media, loadEpoch, target, target.video, null, options.subtitles)
           if (options.autoplay === true) {
-            try { await nativePipeline.play() } catch (cause) {
+            try { await activePipeline.pipeline.play() } catch (cause) {
               const error = toEngineError(cause, ErrorCodes.NATIVE_AUTOPLAY_BLOCKED, 'Autoplay was blocked by the browser')
               if (error.code === ErrorCodes.NATIVE_OPERATION_FAILED) {
                 throw createEngineError(ErrorCodes.NATIVE_AUTOPLAY_BLOCKED, 'Autoplay was blocked by the browser', true, cause)
@@ -586,148 +606,191 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
               throw error
             }
           }
-          return
+        } else if (activePipeline?.kind === 'custom-video') {
+          await setupSubtitles(options.source, media, loadEpoch, target, customCanvas?.canvas ?? null, activeRenderer?.kind ?? null, options.subtitles)
+          if (loadEpoch !== epoch || closed) throw loadAborted(intent)
+          if (options.autoplay === true) await activePipeline.pipeline.play()
         }
+        return
 
-        if (playbackSelection.backend.kind !== 'webcodecs') {
-          throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The selected custom backend is not available in Phase 4', true)
-        }
-        const shouldCreateRenderer = dependencies.createRenderer !== undefined || dependencies.createCustomPipeline === undefined
-        if ((intent === 'normal' || intent === 'low-power') && !shouldCreateRenderer) {
-          const code = capabilities.webCodecsVideo && report.webCodecs.video.status === 'supported'
-            ? ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE
-            : ErrorCodes.NATIVE_BACKEND_UNAVAILABLE
-          throw createEngineError(code, 'Phase 4 WebCodecs does not provide complete audio/video playback', true)
-        }
-        if (!capabilities.webCodecsVideo || report.webCodecs.video.status !== 'supported' || !report.query.video) {
-          // A normal/low-power request must never silently turn into a partial
-          // custom path when WebCodecs cannot provide the selected video track.
-          // Preserve the native-path contract for that case; explicit custom
-          // intents still expose the precise WebCodecs capability error.
-          const code = intent === 'normal' || intent === 'low-power'
-            ? ErrorCodes.NATIVE_BACKEND_UNAVAILABLE
-            : ErrorCodes.WEBCODECS_NOT_SUPPORTED
-          throw createEngineError(code, 'The selected video configuration is not supported by the requested playback path', false)
-        }
-        const hasAudioTrack = media.tracks.some((track) => track.kind === 'audio')
-        if (hasAudioTrack && (!capabilities.webCodecsAudio || report.webCodecs.audio.status !== 'supported' || !report.query.audio)) {
-          throw createEngineError(ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE, 'The selected audio configuration is not supported by WebCodecs', false)
-        }
-        releaseUnusedOwnedVideo()
-        customRendererRequired = shouldCreateRenderer
-        if (shouldCreateRenderer) {
-          customCanvas = createCustomCanvasTarget(target)
-        }
-        currentMedia = media
-        currentSelection = playbackSelection
-        customPreviewProvider = options.preview?.provider
-        previewManager = new PreviewManager({
-          epoch: loadEpoch,
-          duration: media.duration,
-          ...(customPreviewProvider === undefined ? {} : { provider: customPreviewProvider }),
-        })
-        if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier === 'off') {
-          emit('error', {
-            error: {
-              code: ErrorCodes.RENDERER_AI_UNSUPPORTED,
-              message: 'AI post-processing is unavailable; continuing with the verified custom passthrough path',
-              recoverable: true,
-            },
-          })
-        }
-        const pipelineOptions: CustomMediaPipelineOptions = {
-          source: options.source,
-          media,
-          capabilityReport: report,
-          capabilities,
-          ...(options.customVideo === undefined ? {} : { customVideo: options.customVideo }),
-          ...(options.customAudio === undefined ? {} : { customAudio: options.customAudio }),
-          callbacks: {
-            isActive: () => !closed && loadEpoch === epoch,
-            onEvent: (event) => handleCustomEvent(event, loadEpoch),
-          },
-        }
-        const customPipeline = dependencies.createCustomPipeline?.(pipelineOptions) ?? new CustomMediaPipeline(pipelineOptions)
-        activePipeline = { kind: 'custom-video', pipeline: customPipeline }
-        emit('backendchange', { previous: previousSelection, current: playbackSelection.backend, reason: 'strategy-selection' })
-        await customPipeline.initialize()
-        if (shouldCreateRenderer && customCanvas) {
-          const rendererOptions: RendererFactoryOptions = {
-            capabilities,
-            ...(options.customVideo?.renderer === undefined ? {} : { preference: options.customVideo.renderer }),
-            ...(options.customVideo?.filter === undefined ? {} : { filter: options.customVideo.filter }),
-            ...(options.customVideo?.render === undefined ? {} : { transform: options.customVideo.render }),
-            ...(options.customVideo?.preserveHdr === undefined ? {} : { preserveHdr: options.customVideo.preserveHdr }),
-            onEvent: (event) => handleRendererEvent(event, loadEpoch),
+        function createCandidateScope(
+          candidate: Readonly<BackendCandidate>,
+          attemptContext: CandidateAttemptContext,
+        ): CandidateAttemptScope<{ readonly selection: PlaybackSelection; activate(): void }> {
+          const playbackSelection = selectionForCandidate(candidate, intent, capabilities, report, evaluation.selection)
+          const bufferedEvents: Array<() => void> = []
+          let committed = false
+          let activated = false
+          const dispatch = (callback: () => void): void => {
+            if (activated) callback()
+            else if (attemptContext.isActive() || committed) bufferedEvents.push(callback)
           }
-          activeRenderer = dependencies.createRenderer?.(rendererOptions)
-            ?? createRenderer(options.customVideo?.renderer ?? 'auto', rendererOptions)
-          await activeRenderer.attach(customCanvas.canvas)
-          const renderer = activeRenderer
-          const rendererDevice = renderer.kind === 'webgpu' ? renderer.device : null
-          if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier !== 'off'
-            && renderer.kind === 'webgpu' && rendererDevice && 'decodedFrameSource' in customPipeline) {
-            let rifeModel: ReturnType<typeof parseMxai> | undefined
-            let rt4kSrModel: ReturnType<typeof parseMxai> | undefined
-            if (options.aiModelBaseUrl !== undefined) {
-              try {
-                const asset = await loadAiModelAsset(RIFE_V425_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
-                rifeModel = parseMxai(asset.bytes)
-              } catch (error) {
-                emit('error', { error: { code: aiModelErrorCode(error), message: `RIFE model load failed: ${String(error)}`, recoverable: true } })
-              }
-              try {
-                const asset = await loadAiModelAsset(RT4KSR_X2_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
-                rt4kSrModel = parseMxai(asset.bytes)
-              } catch (error) {
-                emit('error', { error: { code: aiModelErrorCode(error), message: `RT4KSR model load failed: ${String(error)}`, recoverable: true } })
-              }
-            }
-            const aiOptions: AiPipelineOptions = {
-              upstream: customPipeline.decodedFrameSource,
-              initialTier: playbackSelection.aiPlan?.proposedTier ?? 'low',
-              ...(options.aiPostProcess?.maxTier === undefined ? {} : { maxTier: options.aiPostProcess.maxTier }),
-              ...(options.aiPostProcess?.interpolation === 'off' ? {} : { interpolation: new WebGpuInterpolationStage({ device: rendererDevice, ...(rifeModel === undefined ? {} : { model: rifeModel }) }) }),
-              ...(options.aiPostProcess?.superResolution === 'off' ? {} : { superResolution: new WebGpuSuperResolutionStage({ device: rendererDevice, ...(rt4kSrModel === undefined ? {} : { model: rt4kSrModel }) }) }),
-              onEvent: (event) => handleAiEvent(event, loadEpoch),
-            }
-            aiPipeline = new AiPipeline(aiOptions)
-          }
-          publishCustomReady()
-          renderLoop = new CustomRenderLoop({
-            readVideoFrame: () => customPipeline.readVideoFrame(),
-            ...(aiPipeline === null ? {} : {
-              readRenderableFrame: async (): Promise<CustomRenderableFrame | null> => {
-                const clock = customPipeline.audioClock
-                const processed = await aiPipeline?.frameAt(clock.mediaTime, clock.epoch)
-                if (!processed) return null
-                const detached = customPipeline.consumeFramesThrough(processed.timestamp)
-                if (processed.location === 'cpu') {
-                  const delivered = detached.find((value) => value.frame === processed.frame)
-                  for (const value of detached) if (value !== delivered) safeCloseVideoFrame(value.frame)
-                  if (!delivered) {
-                    safeCloseVideoFrame(processed.frame)
-                    return null
-                  }
-                  return { kind: 'video', frame: delivered }
+          return {
+            async initialize(): Promise<void> {
+              if (!target) target = resolveVideoTarget(options.target)
+              if (candidate.kind === 'html-video') {
+                if (intent !== 'normal' && intent !== 'low-power') {
+                  throw createEngineError(ErrorCodes.NATIVE_BACKEND_UNAVAILABLE, 'The native backend cannot provide frame access', true)
                 }
-                for (const value of detached) safeCloseVideoFrame(value.frame)
-                return { kind: 'gpu', frame: { ...processed, epoch: clock.epoch } }
-              },
-            }),
-            getClock: () => customPipeline.audioClock,
-            renderer,
-            isActive: () => !closed && loadEpoch === epoch && activePipeline?.kind === 'custom-video',
-            onError: (error) => handleRendererEvent({ type: 'error', kind: renderer.kind, error }, loadEpoch),
-          })
+                if (options.source.kind === 'url' && options.source.headers && Object.keys(options.source.headers).length > 0) {
+                  throw createEngineError(ErrorCodes.NATIVE_CUSTOM_HEADERS_UNSUPPORTED, 'Custom headers cannot be sent by an HTML video element', true)
+                }
+                const contentType = report.native.video.contentType ?? report.native.audio.contentType
+                if (report.native.playable !== 'supported' || !contentType) {
+                  throw createEngineError(ErrorCodes.NATIVE_NOT_SUPPORTED, 'The media is not supported by the native video path', true)
+                }
+                if (!target.video) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Native playback requires a video element or container target', false)
+                const nativePipeline = new NativeMediaPipeline(target.video, {
+                  isActive: () => !closed && loadEpoch === epoch && (attemptContext.isActive() || committed),
+                  onEvent: (event) => dispatch(() => handleNativeEvent(event, loadEpoch)),
+                })
+                activePipeline = { kind: 'native', pipeline: nativePipeline }
+                await nativePipeline.load(options.source, contentType, options.native)
+                if (!attemptContext.isActive()) throw loadAborted(intent)
+                previewManager = new NativePreviewController({
+                  source: options.source,
+                  contentType,
+                  ...(options.native === undefined ? {} : { native: options.native }),
+                  epoch: loadEpoch,
+                  duration: media.duration,
+                  ownerDocument: target.target.ownerDocument ?? null,
+                })
+                return
+              }
+
+              if (candidate.kind !== 'webcodecs') {
+                throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, `The ${candidate.kind} backend has no Core adapter`, true)
+              }
+              const shouldCreateRenderer = dependencies.createRenderer !== undefined || dependencies.createCustomPipeline === undefined
+              if ((intent === 'normal' || intent === 'low-power') && !shouldCreateRenderer) {
+                throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The selected WebCodecs path cannot provide complete playback without a renderer', true)
+              }
+              if (!capabilities.webCodecsVideo || report.webCodecs.video.status !== 'supported' || !report.query.video) {
+                throw createEngineError(ErrorCodes.WEBCODECS_NOT_SUPPORTED, 'The selected video configuration is not supported by WebCodecs', true)
+              }
+              const hasAudioTrack = media.tracks.some((track) => track.kind === 'audio')
+              if (hasAudioTrack && (!capabilities.webCodecsAudio || report.webCodecs.audio.status !== 'supported' || !report.query.audio)) {
+                throw createEngineError(ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE, 'The selected audio configuration is not supported by WebCodecs', true)
+              }
+              releaseUnusedOwnedVideo()
+              customRendererRequired = shouldCreateRenderer
+              if (shouldCreateRenderer) customCanvas = createCustomCanvasTarget(target)
+              customPreviewProvider = options.preview?.provider
+              previewManager = new PreviewManager({
+                epoch: loadEpoch,
+                duration: media.duration,
+                ...(customPreviewProvider === undefined ? {} : { provider: customPreviewProvider }),
+              })
+              if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier === 'off') {
+                dispatch(() => emit('error', { error: { code: ErrorCodes.RENDERER_AI_UNSUPPORTED, message: 'AI post-processing is unavailable; continuing with passthrough', recoverable: true } }))
+              }
+              const pipelineOptions: CustomMediaPipelineOptions = {
+                source: options.source,
+                media,
+                capabilityReport: report,
+                capabilities,
+                ...(options.customVideo === undefined ? {} : { customVideo: options.customVideo }),
+                ...(options.customAudio === undefined ? {} : { customAudio: options.customAudio }),
+                callbacks: {
+                  isActive: () => !closed && loadEpoch === epoch && (attemptContext.isActive() || committed),
+                  onEvent: (event) => dispatch(() => handleCustomEvent(event, loadEpoch)),
+                },
+              }
+              const customPipeline = dependencies.createCustomPipeline?.(pipelineOptions) ?? new CustomMediaPipeline(pipelineOptions)
+              activePipeline = { kind: 'custom-video', pipeline: customPipeline }
+              await customPipeline.initialize()
+              if (shouldCreateRenderer && customCanvas) {
+                const rendererOptions: RendererFactoryOptions = {
+                  capabilities,
+                  ...(options.customVideo?.renderer === undefined ? {} : { preference: options.customVideo.renderer }),
+                  ...(options.customVideo?.filter === undefined ? {} : { filter: options.customVideo.filter }),
+                  ...(options.customVideo?.render === undefined ? {} : { transform: options.customVideo.render }),
+                  ...(options.customVideo?.preserveHdr === undefined ? {} : { preserveHdr: options.customVideo.preserveHdr }),
+                  onEvent: (event) => dispatch(() => handleRendererEvent(event, loadEpoch)),
+                }
+                activeRenderer = dependencies.createRenderer?.(rendererOptions)
+                  ?? createRenderer(options.customVideo?.renderer ?? 'auto', rendererOptions)
+                await activeRenderer.attach(customCanvas.canvas)
+                const renderer = activeRenderer
+                const rendererDevice = renderer.kind === 'webgpu' ? renderer.device : null
+                if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier !== 'off'
+                  && renderer.kind === 'webgpu' && rendererDevice && 'decodedFrameSource' in customPipeline) {
+                  let rifeModel: ReturnType<typeof parseMxai> | undefined
+                  let rt4kSrModel: ReturnType<typeof parseMxai> | undefined
+                  if (options.aiModelBaseUrl !== undefined) {
+                    try {
+                      const asset = await loadAiModelAsset(RIFE_V425_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
+                      rifeModel = parseMxai(asset.bytes)
+                    } catch (error) {
+                      dispatch(() => emit('error', { error: { code: aiModelErrorCode(error), message: 'RIFE model load failed', recoverable: true } }))
+                    }
+                    try {
+                      const asset = await loadAiModelAsset(RT4KSR_X2_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
+                      rt4kSrModel = parseMxai(asset.bytes)
+                    } catch (error) {
+                      dispatch(() => emit('error', { error: { code: aiModelErrorCode(error), message: 'RT4KSR model load failed', recoverable: true } }))
+                    }
+                  }
+                  const aiOptions: AiPipelineOptions = {
+                    upstream: customPipeline.decodedFrameSource,
+                    initialTier: playbackSelection.aiPlan?.proposedTier ?? 'low',
+                    ...(options.aiPostProcess?.maxTier === undefined ? {} : { maxTier: options.aiPostProcess.maxTier }),
+                    ...(options.aiPostProcess?.interpolation === 'off' ? {} : { interpolation: new WebGpuInterpolationStage({ device: rendererDevice, ...(rifeModel === undefined ? {} : { model: rifeModel }) }) }),
+                    ...(options.aiPostProcess?.superResolution === 'off' ? {} : { superResolution: new WebGpuSuperResolutionStage({ device: rendererDevice, ...(rt4kSrModel === undefined ? {} : { model: rt4kSrModel }) }) }),
+                    onEvent: (event) => dispatch(() => handleAiEvent(event, loadEpoch)),
+                  }
+                  aiPipeline = new AiPipeline(aiOptions)
+                }
+                renderLoop = new CustomRenderLoop({
+                  readVideoFrame: () => customPipeline.readVideoFrame(),
+                  ...(aiPipeline === null ? {} : {
+                    readRenderableFrame: async (): Promise<CustomRenderableFrame | null> => {
+                      const clock = customPipeline.audioClock
+                      const processed = await aiPipeline?.frameAt(clock.mediaTime, clock.epoch)
+                      if (!processed) return null
+                      const detached = customPipeline.consumeFramesThrough(processed.timestamp)
+                      if (processed.location === 'cpu') {
+                        const delivered = detached.find((value) => value.frame === processed.frame)
+                        for (const value of detached) if (value !== delivered) safeCloseVideoFrame(value.frame)
+                        if (!delivered) { safeCloseVideoFrame(processed.frame); return null }
+                        return { kind: 'video', frame: delivered }
+                      }
+                      for (const value of detached) safeCloseVideoFrame(value.frame)
+                      return { kind: 'gpu', frame: { ...processed, epoch: clock.epoch } }
+                    },
+                  }),
+                  getClock: () => customPipeline.audioClock,
+                  renderer,
+                  isActive: () => !closed && loadEpoch === epoch && activePipeline?.kind === 'custom-video',
+                  onError: (error) => dispatch(() => handleRendererEvent({ type: 'error', kind: renderer.kind, error }, loadEpoch)),
+                })
+              }
+            },
+            commit() {
+              currentSelection = playbackSelection
+              committed = true
+              return {
+                selection: playbackSelection,
+                activate(): void {
+                  if (activated) return
+                  activated = true
+                  observePresentation(loadEpoch)
+                  emit('backendchange', { previous: previousSelection, current: playbackSelection.backend, reason: 'strategy-selection' })
+                  for (const event of bufferedEvents.splice(0)) event()
+                  if (activePipeline?.kind === 'custom-video') publishCustomReady()
+                },
+              }
+            },
+            dispose(): void { disposePipeline() },
+          }
         }
-        if (!target) throw createEngineError(ErrorCodes.ENGINE_INVALID_TARGET, 'Subtitle target is unavailable', false)
-        await setupSubtitles(options.source, media, loadEpoch, target, customCanvas?.canvas ?? null, activeRenderer?.kind ?? null, options.subtitles)
-        if (loadEpoch !== epoch || closed) throw loadAborted(intent)
-        if (options.autoplay === true) await customPipeline.play()
       } catch (cause) {
         if (loadEpoch !== epoch || closed) throw loadAborted(intent, cause)
         const error = mapLoadError(cause, intent)
+        const traceAtFailure = currentDecisionTrace as PlaybackDecisionTrace | null
+        if (traceAtFailure?.sessionEpoch === loadEpoch && traceAtFailure.status !== 'selected') {
+          publishDecisionTrace(failDecisionTrace(traceAtFailure, error.code, Date.now()))
+        }
         if (error.code === ErrorCodes.NATIVE_AUTOPLAY_BLOCKED || error.code === ErrorCodes.AUDIO_AUTOPLAY_BLOCKED) {
           if (currentState !== 'ready') setState('ready')
           emit('error', { error })
@@ -877,6 +940,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       if (closed) return
       closed = true
       ++epoch
+      if (currentDecisionTrace) publishDecisionTrace(closeDecisionTrace(currentDecisionTrace, Date.now()))
       disposePipeline()
       currentMedia = null
       currentSelection = null
@@ -972,6 +1036,62 @@ function appendPlayedRange(ranges: RawPlaybackRange[], currentTime: number): voi
     ranges.push({ start: currentTime, end: currentTime })
   }
   if (ranges.length > 96) ranges.splice(0, ranges.length - 96)
+}
+
+function legacyStrategyEvaluation(selection: PlaybackSelection): StrategyEvaluation {
+  const candidate = cloneBackendCandidate(selection.backend)
+  return {
+    baseCandidates: [cloneBackendCandidate(candidate)],
+    adjustments: [],
+    rankedCandidates: [candidate],
+    selection,
+  }
+}
+
+function selectionForCandidate(
+  candidate: Readonly<BackendCandidate>,
+  intent: PlaybackSelection['intent'],
+  capabilities: PlaybackSelection['capabilities'],
+  mediaCapabilities: PlaybackSelection['mediaCapabilities'],
+  template: PlaybackSelection | null,
+): PlaybackSelection {
+  const selection: PlaybackSelection = {
+    backend: cloneBackendCandidate(candidate),
+    intent,
+    capabilities,
+    mediaCapabilities,
+  }
+  if (template?.aiPlan) {
+    selection.aiPlan = {
+      interpolation: template.aiPlan.interpolation,
+      superResolution: template.aiPlan.superResolution,
+      proposedTier: template.aiPlan.proposedTier,
+      reasons: [...template.aiPlan.reasons],
+    }
+  }
+  return selection
+}
+
+function cloneBackendCandidate(candidate: Readonly<BackendCandidate>): BackendCandidate {
+  return {
+    ...candidate,
+    reasons: [...candidate.reasons],
+    requires: [...candidate.requires],
+  }
+}
+
+function candidateErrorCode(cause: unknown, candidate: Readonly<BackendCandidate>): string {
+  if (isEngineError(cause)) return cause.code
+  return candidate.kind === 'html-video' ? ErrorCodes.NATIVE_OPERATION_FAILED : ErrorCodes.CUSTOM_OPERATION_FAILED
+}
+
+function isCandidateInitializationRecoverable(cause: unknown): boolean {
+  if (!isEngineError(cause)) return true
+  return cause.code !== ErrorCodes.ENGINE_CLOSED
+    && cause.code !== ErrorCodes.ENGINE_INVALID_TARGET
+    && cause.code !== ErrorCodes.NATIVE_SOURCE_INVALID
+    && cause.code !== ErrorCodes.NATIVE_ABORTED
+    && cause.code !== ErrorCodes.WEBCODECS_ABORTED
 }
 
 function mapLoadError(cause: unknown, intent: MXPlayerOptions['intent']): EngineErrorException {

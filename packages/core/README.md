@@ -4,7 +4,7 @@
 
 ## Phase 3 NativeMediaPipeline
 
-`createMediaEngine()` 先复用 `@mx-player-max/demux` 的 RangeLoader 与 ContainerAdapter 读取有限 Probe，再调用 `@mx-player-max/capabilities` 和既有 `@mx-player-max/strategy`。只有最终候选为 `html-video` 且意图为 `normal`/`low-power` 时，才创建 NativeMediaPipeline。
+`createMediaEngine()` 先复用 `@mx-player-max/demux` 的 RangeLoader 与 ContainerAdapter 读取有限 Probe，再调用 `@mx-player-max/capabilities` 和既有 `@mx-player-max/strategy`。Strategy 一次返回完整排序，Core 为每个候选创建独立 attempt scope；只有完成初始化的候选才提交 selection、事件和公共统计。
 
 ```ts
 const engine = createMediaEngine()
@@ -17,11 +17,23 @@ await engine.play()
 await engine.seek(30_000_000) // Micros: 30 seconds
 ```
 
-远程源必须是 HTTP(S)，并由源站提供 CORS 与 Range。远程 URL 直接赋给 `<video>`，默认 `crossOrigin="anonymous"`、`preload="metadata"`、`playsInline=true`；`SourceDescriptor.headers` 无法由 HTMLVideo 发送，因此会显式返回 `NATIVE_CUSTOM_HEADERS_UNSUPPORTED`。MIME/Codec 来自容器 Probe 与已验证的 `MediaCapabilityReport.native.*.contentType`，绝不从扩展名猜测。
+远程源必须是 HTTP(S)，并由源站提供 CORS 与 Range。远程 URL 直接赋给 `<video>`，默认 `crossOrigin="anonymous"`、`preload="metadata"`、`playsInline=true`；`SourceDescriptor.headers` 无法由 HTMLVideo 发送，因此 Native attempt 记录 `NATIVE_CUSTOM_HEADERS_UNSUPPORTED`，有 Custom 候选时继续原子回退。所有候选用尽后返回 `STRATEGY_ALL_CANDIDATES_FAILED`，具体稳定错误码位于去敏 `failures[]`。MIME/Codec 来自容器 Probe 与已验证的 `MediaCapabilityReport.native.*.contentType`，绝不从扩展名猜测。
 
 NativeMediaPipeline 只消费和管理 HTMLVideoElement 及其原生音频，不输出 `VideoFrame`，也不实现 WebCodecs、WASM、MSE、HLS、DASH、AudioWorklet 或自定义 Renderer。`requestVideoFrameCallback` 仅用于呈现/丢帧/媒体时间统计。
 
 `close()` 会移除事件监听、取消帧回调、停止播放、撤销引擎拥有的 File Object URL，并移除引擎创建的 video；调用方提供的 video 节点不会被删除。所有异步回调都带 load epoch 检查，旧源不会继续发事件。
+
+## Phase 12 atomic candidate initialization
+
+每个 attempt 使用唯一 token，并缓冲 pipeline/renderer/AI 事件。成功 commit 后先发布冻结的
+`PlaybackDecisionTrace` selected 快照，再激活 `backendchange`、ready 和运行事件。失败 attempt
+按相反所有权顺序关闭 pipeline、renderer、preview、canvas/video surface 和订阅，然后从零创建
+下一候选。source/Range/container/target、显式取消、epoch 失效和 close 不进入下一候选；autoplay
+用户手势限制发生在候选已成功提交之后，也不会触发后端切换。
+
+当前 Core 真实初始化 Native 与 WebCodecs Custom。尚未接入 Core adapter 的 WASM/MSE 候选只
+记录稳定 unavailable 失败，不下载二进制或伪装为可播放。Decision Trace 不包含 URL、header、
+Codec private data、Frame、PCM、字幕正文或原始异常。
 
 ## Phase 4/5 CustomMediaPipeline
 

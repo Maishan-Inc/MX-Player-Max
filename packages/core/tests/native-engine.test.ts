@@ -82,8 +82,11 @@ describe('MediaEngine native load orchestration', () => {
 
   it('does not silently ignore custom remote headers', async () => {
     const engine = createMediaEngine()
-    await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'url', url: 'https://example.test/video.mp4', headers: { Authorization: 'secret' } } })).rejects.toMatchObject({ code: ErrorCodes.NATIVE_CUSTOM_HEADERS_UNSUPPORTED })
-    expect(mocks.createRangeLoader).not.toHaveBeenCalled()
+    await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'url', url: 'https://example.test/video.mp4', headers: { Authorization: 'secret' } } })).rejects.toMatchObject({
+      code: ErrorCodes.STRATEGY_ALL_CANDIDATES_FAILED,
+      failures: [{ candidateId: 'native-html-video', errorCode: ErrorCodes.NATIVE_CUSTOM_HEADERS_UNSUPPORTED }],
+    })
+    expect(mocks.createRangeLoader).toHaveBeenCalledOnce()
   })
 
   it('rejects unsafe URL protocols and every operation after close', async () => {
@@ -105,13 +108,16 @@ describe('MediaEngine native load orchestration', () => {
     expect(mocks.closeReader).toHaveBeenCalledOnce()
   })
 
-  it('rejects non-native final selections without initializing another backend', async () => {
+  it('reports a sanitized aggregate when the only selected backend cannot initialize', async () => {
     mocks.createStrategyEngine.mockReturnValueOnce({ select: vi.fn(() => ({
       backend: { id: 'webcodecs-custom', kind: 'webcodecs', videoCodec: 'avc1.640028', audioCodec: 'mp4a.40.2', renderer: 'canvas2d', score: 100, reasons: [], requires: [] },
       intent: 'normal', capabilities: createSnapshot(), mediaCapabilities: createReport(),
     })) })
     const engine = createMediaEngine()
-    await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File } })).rejects.toMatchObject({ code: ErrorCodes.NATIVE_BACKEND_UNAVAILABLE })
+    await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File } })).rejects.toMatchObject({
+      code: ErrorCodes.STRATEGY_ALL_CANDIDATES_FAILED,
+      failures: [{ candidateId: 'webcodecs-custom', errorCode: ErrorCodes.WEBCODECS_NOT_SUPPORTED }],
+    })
     expect(engine.nativeFeatures).toBeNull()
   })
 

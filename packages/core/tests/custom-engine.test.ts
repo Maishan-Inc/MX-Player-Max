@@ -236,7 +236,10 @@ describe('MediaEngine custom video integration', () => {
     const createCustomPipeline = vi.fn()
     const engine = createMediaEngine({ createCustomPipeline })
     await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' }))
-      .rejects.toMatchObject({ code: ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE })
+      .rejects.toMatchObject({
+        code: ErrorCodes.STRATEGY_ALL_CANDIDATES_FAILED,
+        failures: [{ candidateId: 'webcodecs-custom', errorCode: ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE }],
+      })
     expect(createCustomPipeline).not.toHaveBeenCalled()
     engine.close()
   })
@@ -367,7 +370,10 @@ describe('MediaEngine custom video integration', () => {
     const createCustomPipeline = vi.fn()
     for (const intent of ['normal', 'low-power'] as const) {
       const engine = createMediaEngine({ createCustomPipeline })
-      await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent })).rejects.toMatchObject({ code: ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE })
+      await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent })).rejects.toMatchObject({
+        code: ErrorCodes.STRATEGY_ALL_CANDIDATES_FAILED,
+        failures: [{ candidateId: 'webcodecs-custom', errorCode: ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE }],
+      })
       expect(createCustomPipeline).not.toHaveBeenCalled()
       engine.close()
     }
