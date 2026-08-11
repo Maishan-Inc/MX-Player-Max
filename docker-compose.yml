@@ -1,9 +1,9 @@
 services:
   demo:
+    image: mx-player-max-demo:phase-12-local
     build:
       context: .
       dockerfile: apps/demo/Dockerfile
     ports:
       - "4173:80"
     restart: unless-stopped
-
