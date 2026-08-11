@@ -25,6 +25,7 @@ Phase 12 把现有媒体引擎、官方 UI 和框架适配器整理为可验证�
 - 产出 ESM、IIFE、压缩 IIFE、声明文件和独立 UI CSS。
 - 统一公开包的发布元数据、条件导出和 tarball 内容。
 - 增加安全、有界、可序列化的播放决策 trace。
+- 补齐 Core 候选初始化控制器和 epoch 安全的原子回退。
 - 将 Demo 扩展为真实播放与诊断工作台。
 - 生成版本化资源 manifest、SHA-256/SHA-384 摘要和 SRI 数据。
 - 增加 pack、临时消费者、Docker 和浏览器自动化验证。
@@ -38,6 +39,8 @@ Phase 12 把现有媒体引擎、官方 UI 和框架适配器整理为可验证�
 - 不重复实现 Phase 9 已完成的控制条、字幕菜单或 React/Vue 控制逻辑。
 - 不把 UI 合入 SDK，也不让 Core、SDK 或 UI 反向依赖 Demo 或 browser 聚合包。
 - 不以 Playwright WebKit 结果代替物理 macOS Safari 验证。
+- 不借原子回退名义实现尚不存在的 MSE、真实 WASM Codec 或新播放后端；控制器只初始化
+  当前 Core 已具备的后端适配器。
 
 ## 3. 包与依赖架构
 
@@ -132,7 +135,34 @@ Trace 不包含：
 
 Core 保存当前会话的不可变 trace，`MediaEngine` 和 SDK 暴露 `decisionTrace` getter，并通过 `decisionchange` 事件发布新快照。所有异步写入必须检查 epoch，旧会话不得覆盖当前 trace。
 
-## 6. Demo 运行与界面
+## 6. 候选初始化与原子回退
+
+现有 Strategy 已能按分数返回完整候选列表，但 Core 只调用 `select()` 初始化第一项。Phase 12
+在 Core 组合层增加候选初始化控制器，Strategy 仍只负责生成、验证和排序，不创建后端实例。
+
+初始化流程为：
+
+1. Strategy 返回不可变的完整排序与评分信息。
+2. Core 按顺序为每个候选创建全新的 candidate scope。
+3. candidate scope 独占该次尝试创建的 pipeline、renderer、canvas、preview、subtitle 绑定和事件清理函数。
+4. 只有候选完成必需初始化后，Core 才原子提交 `currentSelection`、活动资源和
+   `backendchange`。
+5. 可回退错误先完整销毁 candidate scope，再记录稳定错误码并尝试下一候选。
+6. 候选用尽时返回聚合错误；聚合数据只含候选 ID、后端类型和稳定错误码。
+
+以下错误不进入下一候选：源校验失败、Range/CORS/容器探测失败、无效 target、显式取消、
+epoch 失效和 engine close。Autoplay 用户手势限制发生在后端已成功初始化之后，保留现有 ready
+加可恢复错误语义，也不触发解码后端回退。
+
+每次失败清理必须撤销 HTMLVideo source/listener、Custom canvas 替换、renderer/device、
+decoder、AudioWorklet、preview、subtitle overlay 和候选事件订阅。旧候选的异步事件必须由
+candidate attempt token 与 session epoch 双重拒绝，不能污染下一个候选或新 load。
+
+当前阶段只允许回退到 Core 已真实实现的 Native 和 WebCodecs Custom 后端。WASM candidate
+若没有对应 Core adapter，必须在初始化前以稳定的 `CUSTOM_BACKEND_UNAVAILABLE` 记录为失败，
+不得下载二进制或伪装为可播放。该控制器为后续真实 WASM adapter 保留同一接口。
+
+## 7. Demo 运行与界面
 
 Demo 保留 Phase 9 已有播放器和来源控制，在其上增加四个只读诊断面板：
 
@@ -147,7 +177,7 @@ GSAP 仅处理页面入场、面板切换和状态数字变化。播放器在 Re
 
 诊断面板使用与现有 workbench 相容但职责独立的布局，不复制 MX-Player-Pro 页面结构。窄屏可折叠为单列，但 Phase 12 不扩大移动端播放兼容范围。
 
-## 7. 发布元数据
+## 8. 发布元数据
 
 所有公开包统一检查并补齐：
 
@@ -163,7 +193,7 @@ GSAP 仅处理页面入场、面板切换和状态数字变化。播放器在 Re
 
 pnpm workspace 依赖在 tarball 中必须被改写为真实版本范围。验证脚本要检查打包后的 `package.json`，禁止发布仍含 `workspace:*` 的依赖描述。
 
-## 8. 资源 Manifest、哈希与 SRI
+## 9. 资源 Manifest、哈希与 SRI
 
 构建后生成版本化发布 manifest，记录：
 
@@ -177,7 +207,7 @@ pnpm workspace 依赖在 tarball 中必须被改写为真实版本范围。验�
 
 资源 URL 解析必须支持显式 `assetBaseUrl`、`wasmBaseUrl` 和 `aiModelBaseUrl`。默认值只能相对于当前 ESM 模块或 IIFE 脚本位置计算，不能依赖 Demo origin。
 
-## 9. Docker 与静态服务
+## 10. Docker 与静态服务
 
 Docker Demo 继续启用：
 
@@ -188,7 +218,7 @@ Docker Demo 继续启用：
 
 媒体样本必须支持 GET Range、`206 Partial Content`、`Content-Range` 和稳定 `Content-Length`。HTML 导航文件不得使用 immutable 缓存。Docker 验证必须检查隔离状态、静态资源响应头、Range 响应和不存在资源的稳定 404。
 
-## 10. 错误处理
+## 11. 错误处理
 
 Browser 组合层增加稳定错误码，用于区分：
 
@@ -198,11 +228,13 @@ Browser 组合层增加稳定错误码，用于区分：
 - 资源 manifest 无效或版本不匹配；
 - 必需 bundle 资源缺失。
 
-组合层不吞掉 SDK 的媒体错误码，也不自行改变后端候选。后端失败仍由 Core 按候选顺序原子回退。诊断面板只显示稳定错误码和安全消息，不显示原始远程响应或异常堆栈。
+组合层不吞掉 SDK 的媒体错误码，也不自行改变后端候选。候选级可恢复失败由新的 Core 初始化
+控制器按排序原子回退；源、容器、取消和 epoch 错误直接终止。诊断面板只显示稳定错误码和
+安全消息，不显示原始远程响应或异常堆栈。
 
 所有 `destroy()`、失败清理和重复关闭路径必须幂等。构建或发布验证失败必须阻止产物上传；可选发布阶段失败不得修改已验证的本地产物。
 
-## 11. 构建与 Release Workflow
+## 12. 构建与 Release Workflow
 
 引入 esbuild 作为 browser bundle 工具；TypeScript 继续负责声明文件与包级 ESM 构建。bundle 配置必须固定全局名、target、sourcemap 和 banner，不依赖 Demo 的 Vite 配置。
 
@@ -216,7 +248,7 @@ Release workflow 分为：
 
 本阶段实现并验证前四段及第五段的门禁配置，但不触发 Publish。
 
-## 12. 测试与验收
+## 13. 测试与验收
 
 ### 12.1 单元与包测试
 
@@ -224,6 +256,10 @@ Release workflow 分为：
 - IIFE 全局形状、ESM 导出和 CSS 文件存在性。
 - Decision trace 的候选顺序、调整、失败、最终选择和 epoch 隔离。
 - Trace 去敏和不可变性。
+- 第一候选初始化失败后完整清理并成功提交第二候选。
+- 不可回退错误、取消、close 和新 load 不会尝试下一候选。
+- 失败候选的延迟事件不会修改当前 selection、trace、surface 或 playback snapshot。
+- 候选全部失败时返回去敏聚合错误，且没有残留 video source、canvas、renderer 或订阅。
 - Manifest schema、哈希、SRI 和 publishable 过滤。
 - 每个公开包的 exports、files、sideEffects 和 workspace 版本改写。
 
@@ -257,13 +293,14 @@ Docker 构建与 HTTP smoke
 git diff --check
 ```
 
-## 13. 完成标准
+## 14. 完成标准
 
 Phase 12 完成时：
 
 - SDK、UI、React、Vue 和 browser 包公共 API 有文档与稳定导出；
 - 无构建工具页面可以通过固定版本 IIFE 创建带控件播放器；
 - Demo 能解释媒体探测、候选评分、后端选择和运行降级；
+- Native/WebCodecs 已实现候选遵循排序初始化，候选失败后原子清理并回退；
 - npm tarball、jsDelivr 路径、SRI、manifest 和自托管资源都有可复现验证；
 - Docker Demo 在隔离和 Range 条件下可运行；
 - 发布 workflow 默认不会意外发布，生产发布需要显式授权；
