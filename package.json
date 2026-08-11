@@ -14,6 +14,8 @@
     "verify:packages": "node scripts/release/verify-packages.mjs",
     "release:manifest": "node scripts/release/generate-manifest.mjs",
     "test:release": "node --test scripts/release/tests/*.test.mjs",
+    "release:pack": "node scripts/release/pack-workspace.mjs",
+    "release:smoke": "node scripts/release/consumer-smoke.mjs",
     "lint": "pnpm -r --if-present lint",
     "clean": "pnpm -r --if-present clean"
   },
