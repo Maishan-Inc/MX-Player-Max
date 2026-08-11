@@ -67,6 +67,22 @@ importers:
         specifier: workspace:*
         version: link:../types
 
+  packages/browser:
+    dependencies:
+      '@mx-player-max/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@mx-player-max/types':
+        specifier: workspace:*
+        version: link:../types
+      '@mx-player-max/ui':
+        specifier: workspace:*
+        version: link:../ui
+    devDependencies:
+      happy-dom:
+        specifier: ^18.0.1
+        version: 18.0.1
+
   packages/capabilities:
     dependencies:
       '@mx-player-max/types':
