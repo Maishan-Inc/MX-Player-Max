@@ -4,6 +4,8 @@
 
 ### Added
 
+- Phase 12 Demo 公开 API 诊断工作台：Probe、Decision、Runtime、Subtitles 四面板及 empty/loading/ready/failed 状态，只消费 SDK getter/event；source/intent 切换清理旧 epoch，未知能力保留 pending verification，GSAP 与 reduced-motion 不阻塞播放器生命周期。
+
 - Phase 11 `@mx-player-max/platform`：可注入 Chromium/WebKit/Gecko 增强探测，覆盖 Worker MediaSource、WebGPU external texture、原生 HLS/HEVC、HDR display、ManagedMediaSource、AirPlay/PiP、fastSeek、标准播放质量和仅诊断使用的 Firefox 帧计数。
 - 可审计 `PlatformIssueRule`：浏览器/半开版本范围、HTTPS Issue、失效日期、回归样本、负向评分和候选匹配；内建 Firefox Bugzilla #1918769 H.264 WebCodecs configure 风险规则，不改写能力支持状态。
 - `PlatformDiagnostics` 显式记录 WebCodecs 硬件偏好/实际选择，并在标准 API 无法确认时保留 `unknown`，不从 `powerEfficient` 或配置支持结果推断硬解。

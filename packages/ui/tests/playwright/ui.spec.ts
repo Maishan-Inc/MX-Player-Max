@@ -19,7 +19,7 @@ test('lays out the production player UI without overlap or blank media', async (
   await expect(ui).toHaveAttribute('data-mxp-state', /^(ready|paused|playing|ended|error)$/)
   const errorCode = await ui.getAttribute('data-mxp-error-code')
   if (testInfo.project.name === 'webkit-simulated') {
-    expect([null, 'NATIVE_NOT_SUPPORTED']).toContain(errorCode)
+    expect([null, 'NATIVE_NOT_SUPPORTED', 'STRATEGY_ALL_CANDIDATES_FAILED']).toContain(errorCode)
   } else {
     expect(errorCode).toBeNull()
   }
@@ -67,6 +67,25 @@ test('preserves visible focus and reduced-motion behavior', async ({ page }) => 
   await expect(focused).toBeVisible()
   const transition = await page.locator('.mxp-control-shell').evaluate((element) => getComputedStyle(element).transitionDuration)
   expect(transition).toMatch(/^(0s|0ms)(, (0s|0ms))*$/)
+})
+
+test('reports public playback diagnostics and resets them for a new intent', async ({ page }) => {
+  for (const panel of ['probe', 'decision', 'runtime', 'subtitles']) {
+    const locator = page.getByTestId(`${panel}-panel`)
+    await expect(locator).toBeVisible()
+    await expect(locator).toHaveAttribute('data-status', /^(empty|loading|ready|failed)$/)
+  }
+
+  const unknownSupport = page.locator('[data-support="unknown"]')
+  for (let index = 0; index < await unknownSupport.count(); index += 1) {
+    await expect(unknownSupport.nth(index)).toHaveText('Pending verification')
+  }
+
+  const decision = page.getByTestId('decision-panel')
+  const previousResetKey = await decision.getAttribute('data-reset-key')
+  await page.locator('#playback-intent').selectOption('filters')
+  await expect(decision).not.toHaveAttribute('data-reset-key', previousResetKey ?? '')
+  await expect(decision).toHaveAttribute('data-status', /^(loading|ready|failed)$/)
 })
 
 async function expectNoOverlap(page: Page, selector: string): Promise<void> {

@@ -1,8 +1,11 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { gsap } from 'gsap'
 import { MXPlayer, type MXPlayerComponentHandle } from '@mx-player-max/react'
+import type { MXPlayer as SdkPlayer } from '@mx-player-max/sdk'
 import type { PlaybackIntent, SourceDescriptor } from '@mx-player-max/types'
 import type { TheaterModeAdapter } from '@mx-player-max/ui'
+import { DiagnosticsPanel } from './components/DiagnosticsPanel'
+import { initializeDemoReveal } from './reveal'
 
 const DEFAULT_MEDIA = '/flower.webm'
 
@@ -34,17 +37,33 @@ export default function App() {
   }))
   const [intent, setIntent] = useState<PlaybackIntent>('normal')
   const [message, setMessage] = useState('Default CC0 sample')
+  const [diagnosticPlayer, setDiagnosticPlayer] = useState<SdkPlayer | null>(null)
+  const [diagnosticRevision, setDiagnosticRevision] = useState(0)
 
   useLayoutEffect(() => theaterMode.subscribe(setTheater), [theaterMode])
+
+  useEffect(() => {
+    let frame = 0
+    const connect = (): void => {
+      const player = playerRef.current?.player ?? null
+      if (player) { setDiagnosticPlayer(player); return }
+      frame = window.requestAnimationFrame(connect)
+    }
+    connect()
+    return (): void => window.cancelAnimationFrame(frame)
+  }, [])
 
   useLayoutEffect(() => {
     const root = rootRef.current
     if (!root) return
-    const context = gsap.context(() => {
-      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      gsap.fromTo('[data-demo-reveal]', { y: reduce ? 0 : 12, autoAlpha: reduce ? 1 : 0 }, { y: 0, autoAlpha: 1, duration: reduce ? 0 : 0.55, stagger: reduce ? 0 : 0.06, ease: 'power2.out', clearProps: 'transform,visibility,opacity' })
-    }, root)
-    return (): void => context.revert()
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    return initializeDemoReveal(root, reduce, (scope, reducedMotion) => {
+      const context = gsap.context(() => {
+        if (reducedMotion) { gsap.set('[data-demo-reveal]', { autoAlpha: 1 }); return }
+        gsap.fromTo('[data-demo-reveal]', { y: 12, autoAlpha: 0 }, { y: 0, autoAlpha: 1, duration: 0.55, stagger: 0.06, ease: 'power2.out', clearProps: 'transform,visibility,opacity' })
+      }, scope)
+      return (): void => context.revert()
+    })
   }, [])
 
   const playerOptions = useMemo(() => ({
@@ -66,6 +85,7 @@ export default function App() {
       const parsed = new URL(url, window.location.href)
       if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('protocol')
       setSource({ kind: 'url', url: parsed.href })
+      setDiagnosticRevision((revision) => revision + 1)
       setMessage(parsed.hostname)
     } catch {
       setMessage('Enter a valid HTTP or HTTPS media URL')
@@ -76,6 +96,7 @@ export default function App() {
     const file = event.target.files?.[0]
     if (!file) return
     setSource({ kind: 'file', file })
+    setDiagnosticRevision((revision) => revision + 1)
     setMessage(`${file.name} · ${formatBytes(file.size)}`)
     event.target.value = ''
   }
@@ -97,7 +118,7 @@ export default function App() {
     <main ref={rootRef} className={theater ? 'demo-shell is-theater' : 'demo-shell'}>
       <header className="topbar" data-demo-reveal>
         <div className="brand-block"><span className="brand-mark">MX</span><span><strong>Player Max</strong><small>Playback workbench</small></span></div>
-        <div className="runtime-status"><i aria-hidden="true" /><span>Phase 9 optional UI</span></div>
+        <div className="runtime-status"><i aria-hidden="true" /><span>Phase 12 public API workbench</span></div>
         <a href="https://github.com/" target="_blank" rel="noreferrer">Repository</a>
       </header>
 
@@ -121,7 +142,7 @@ export default function App() {
           </div>
           <div className="mode-field">
             <label htmlFor="playback-intent">Playback intent</label>
-            <select id="playback-intent" value={intent} onChange={(event) => setIntent(event.target.value as PlaybackIntent)}>
+            <select id="playback-intent" value={intent} onChange={(event) => { setIntent(event.target.value as PlaybackIntent); setDiagnosticRevision((revision) => revision + 1) }}>
               <option value="normal">Normal / Native first</option>
               <option value="filters">Filters / Custom path</option>
               <option value="frame-access">Frame access / Custom path</option>
@@ -134,6 +155,8 @@ export default function App() {
           </dl>
         </aside>
       </section>
+
+      <DiagnosticsPanel player={diagnosticPlayer} resetKey={`${diagnosticRevision}:${intent}`} />
 
       <footer data-demo-reveal><span>Native + WebCodecs + WebGPU/WebGL2/Canvas2D</span><span>Chrome · Firefox · macOS Safari verification tracked separately</span></footer>
     </main>
