@@ -358,6 +358,8 @@ Phase 13 质量、安全和性能固化
 
 目标：让第三方可以通过 npm、jsDelivr 或一行 `<script>` 接入，并让 Docker 演示展示真实引擎能力。
 
+当前状态：Browser ESM/IIFE、Demo 公开 API 诊断、发布元数据、Manifest/SHA/SRI、pack/consumer smoke、Docker 配置和 CI/Release 门禁已实现。自动化证据见 `docs/development/phase-12-acceptance.md`；Docker CLI、真实物理浏览器矩阵和真实发布动作未在本环境执行，保持 pending/未执行。
+
 ### 任务
 
 1. 完成原生 SDK API、React 适配器和 Vue 适配器。

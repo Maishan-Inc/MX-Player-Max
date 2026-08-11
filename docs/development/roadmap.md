@@ -67,7 +67,7 @@ Chrome/Firefox/macOS Safari Codec 与系统能力验证继续作为环境门禁�
 
 ## 阶段 12：SDK、演示站与发布
 
-稳定并发布现有 SDK/UI/React/Vue API，增加 UMD/IIFE 产物与发布元数据，完成 npm/jsDelivr 入口、SRI、Docker 多线程演示和版本化 WASM manifest。Phase 9 已完成框架适配器与官方 UI Demo，Phase 12 不重复实现控制逻辑。
+当前状态：自动化发布就绪已完成。Browser ESM/IIFE、公开 API 诊断工作台、统一发布元数据、Manifest/SHA/SRI、17 包 pack/consumer smoke、Docker 配置与 CI/Release 门禁均已交付。真实 Docker、latest-two-stable/物理 Safari、Codec/WASM 二进制审查和 npm/CDN 发布仍是明确的后续环境门禁；Phase 12 不重复实现控制逻辑。
 
 ## 阶段 13：质量与扩展
 

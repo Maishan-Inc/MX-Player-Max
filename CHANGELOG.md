@@ -52,6 +52,7 @@
 ### Changed
 
 - Phase 12 集成与分发文档现覆盖 npm SDK/UI、Browser ESM/IIFE、jsDelivr 固定版本模板、SRI、React/Vue peer、Decision Trace 隐私边界、CORS/Range、COOP/COEP 和未审查 WASM/真实浏览器边界。
+- Phase 12 验收记录固定自动化命令、17 个 tarball、Browser Manifest/SRI、Playwright 16/16 结果，以及 Docker/真实浏览器/真实发布的 pending 边界。
 - `MXPlayer.ready` 现在始终返回当前 load promise，并新增可重复 `load()`、`playback` 与 `requestPreview()` SDK 代理。
 - Native 与 Custom 都从同一公共快照驱动 UI；Custom 仅在宿主提供预览 provider 时报告 preview capability，Native 预览使用与活动播放元素隔离的有界媒体元素和 canvas。
 - 原生能力探测在 MediaCapabilities 配置不完整但 `canPlayType()` 明确返回 `probably` 时保留 Native 支持；`maybe` 仍为 `unknown`。
