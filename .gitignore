@@ -9,4 +9,5 @@ coverage/
 .env
 .env.*
 !.env.example
-
+.release-tmp/
+packages/browser/dist/manifest.json

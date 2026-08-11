@@ -54,6 +54,24 @@ jsDelivr ESM/CDN
 
 CDN 只负责分发，解码仍在用户浏览器本地完成。远程媒体源必须允许当前页面 CORS 和 Range。
 
+### 3.1 发布资源 Manifest
+
+`pnpm release:manifest` 从固定白名单生成 `packages/browser/dist/manifest.json`。Manifest 使用
+`packageName + packageVersion + path` 标识资源，包含文件字节数、SHA-256、SHA-384、SRI、
+MIME 和资源类型。当前白名单覆盖 Browser ESM/IIFE/CSS、source map、Demux/Decoder Worker
+入口和 AudioWorklet 入口；脚本不会递归信任任意 `dist` 目录。
+
+Manifest 不包含生成时间，资源按包名和路径排序，因此相同输入产生逐字节相同的 JSON。
+缺失文件、重复路径、目录逃逸、未知 MIME 或显式期望哈希不匹配都会终止生成。
+
+待许可证或专利审查的 WASM 和模型只能进入 `excluded`，且 `publishable` 必须为 `false`。
+当前没有 Codec WASM 或 AI 模型进入正式 publishable assets。
+
+自托管时，`assetBaseUrl` 优先使用调用方显式值，否则相对于 ESM 模块 URL 或 IIFE 脚本 URL
+解析；`wasmBaseUrl` 和 `aiModelBaseUrl` 分别优先使用各自显式值，否则在 `assetBaseUrl` 下
+解析 `wasm/` 与 `models/`。不得从 Demo 页面 origin 猜测 SDK 资源位置。跨包 Worker 与
+AudioWorklet 条目必须按 Manifest 的包名、版本和路径部署，不能只复制入口文件并丢失依赖。
+
 ## 4. Docker 响应头
 
 演示站是静态构建产物，由 Nginx 在 Docker 内提供。要启用多线程 WASM，页面响应必须包含：

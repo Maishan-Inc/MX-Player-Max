@@ -12,6 +12,8 @@
     "test": "pnpm -r --if-present test",
     "test:browser": "playwright test",
     "verify:packages": "node scripts/release/verify-packages.mjs",
+    "release:manifest": "node scripts/release/generate-manifest.mjs",
+    "test:release": "node --test scripts/release/tests/*.test.mjs",
     "lint": "pnpm -r --if-present lint",
     "clean": "pnpm -r --if-present clean"
   },
