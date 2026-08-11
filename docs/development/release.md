@@ -20,6 +20,8 @@ jsDelivr / npm ESM
 
 SDK 必须允许通过 `wasmBaseUrl` 自托管 WASM。发布前验证 JS、Worker、AudioWorklet 和 WASM 的 MIME、CORS、内容哈希和版本一致性。
 
+`pnpm release:pack` 生成 17 个公开包 tarball 和 pack report；`pnpm release:smoke` 只从这些 tarball 安装隔离消费者，验证 Node ESM、TypeScript declarations、Browser IIFE/CSS 与 React/Vue peer。`pnpm release:manifest` 输出 `packages/browser/dist/manifest.json`，其中的 SHA-256、SHA-384 和 SRI 与 tarball、Browser bundle 一起进入 workflow artifact。生成目录被忽略，不作为源码手工维护。
+
 ## Docker 演示站
 
 ```bash

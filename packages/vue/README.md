@@ -2,6 +2,8 @@
 
 Vue 3.3+ 的 SDK + UI 薄适配器。组件只管理共享宿主与生命周期，所有控制、快捷键和字幕行为仍由 `@mx-player-max/ui` 实现。
 
+许可证：`PolyForm-Noncommercial-1.0.0`。Vue 作为 peer dependency，不会被打入 SDK；应用仍需显式导入 UI CSS。
+
 ```vue
 <script setup lang="ts">
 import { shallowRef } from 'vue'

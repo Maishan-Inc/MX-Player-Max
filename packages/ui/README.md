@@ -77,4 +77,4 @@ Custom 预览由宿主通过 `MXPlayerOptions.preview.provider` 提供。Native 
 
 `theme` 支持 `dark | light | system`。在 `<=760px` 隐藏音量滑块和剧场按钮，在 `<=420px` 重排控制行；`prefers-reduced-motion` 会移除状态过渡。
 
-完整 API 与集成说明见 `docs/api/player-ui.md`。Phase 9 不包含 WASM Codec、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码或 UMD/IIFE 产物。
+完整 API 与集成说明见 `docs/api/player-ui.md`。Browser 包会把本 UI 与 SDK 组合为 ESM/IIFE，但 UI 包自身仍不包含 WASM Codec、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务或 Custom 内建预览解码。许可证为 `PolyForm-Noncommercial-1.0.0`。

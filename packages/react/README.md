@@ -2,6 +2,8 @@
 
 React 18+ 的 SDK + UI 薄适配器。组件只创建共享宿主、挂载 `MXPlayer` 和 `@mx-player-max/ui`，不复制控制状态机、快捷键或字幕逻辑。
 
+许可证：`PolyForm-Noncommercial-1.0.0`。React 与 Vue peer dependency 不会被打入 SDK；应用仍需显式导入 UI CSS。
+
 ```tsx
 import { useMemo, useRef } from 'react'
 import {

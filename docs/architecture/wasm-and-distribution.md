@@ -2,7 +2,7 @@
 
 ## 1. 单一 SDK 版本
 
-对外发布一个 npm 包和一个稳定 JS API。包内通过 manifest 描述 Codec 解码器、WASM URL、版本、哈希、线程变体和许可证。
+对外发布一个 SDK 版本和一个稳定 JS API。Browser 包是 SDK + UI 的组合分发入口；包内通过 manifest 描述已审核资源、Codec/WASM URL、版本、哈希、线程变体和许可证。
 
 ```text
 SDK Loader
@@ -65,7 +65,7 @@ Manifest 不包含生成时间，资源按包名和路径排序，因此相同�
 缺失文件、重复路径、目录逃逸、未知 MIME 或显式期望哈希不匹配都会终止生成。
 
 待许可证或专利审查的 WASM 和模型只能进入 `excluded`，且 `publishable` 必须为 `false`。
-当前没有 Codec WASM 或 AI 模型进入正式 publishable assets。
+当前没有 Codec WASM 或 AI 模型进入正式 publishable assets；任何新增二进制都必须先完成来源、版本、许可证、编译选项和专利风险审查。PolyForm Noncommercial 只覆盖本仓库包，不替代第三方 Codec/WASM/模型许可证。
 
 自托管时，`assetBaseUrl` 优先使用调用方显式值，否则相对于 ESM 模块 URL 或 IIFE 脚本 URL
 解析；`wasmBaseUrl` 和 `aiModelBaseUrl` 分别优先使用各自显式值，否则在 `assetBaseUrl` 下
@@ -85,4 +85,4 @@ Cross-Origin-Embedder-Policy: require-corp
 
 ## 5. Docker 安全
 
-生产容器应配置 CSP、`X-Content-Type-Options: nosniff`、严格 HTTPS、只读文件系统和非 root Nginx。WASM 必须返回 `application/wasm`，Worker 必须返回正确 JavaScript MIME。
+生产容器应配置 CSP、`X-Content-Type-Options: nosniff`、严格 HTTPS、只读文件系统和非 root Nginx。WASM 必须返回 `application/wasm`，Worker 必须返回正确 JavaScript MIME；Demo Docker smoke 会检查 Nginx MIME 映射、Range、缓存和 `crossOriginIsolated`，但当前没有可发布 WASM 文件可供下载验证。

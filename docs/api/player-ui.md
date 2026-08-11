@@ -1,6 +1,6 @@
 # 播放状态、预览与可选 UI API
 
-本文记录 Phase 9 新增的公共契约。所有示例只使用 `@mx-player-max/sdk`、`@mx-player-max/types`、`@mx-player-max/ui`、`@mx-player-max/react` 或 `@mx-player-max/vue` 的公共入口。
+本文记录当前 SDK、UI、Browser 和框架适配器的公共契约。所有示例只使用 `@mx-player-max/sdk`、`@mx-player-max/types`、`@mx-player-max/ui`、`@mx-player-max/browser`、`@mx-player-max/react` 或 `@mx-player-max/vue` 的公共入口。
 
 ## 1. 原生 DOM 接入
 
@@ -167,7 +167,7 @@ import '@mx-player-max/ui/style.css'
 
 包不会运行时注入 `<style>`。所有 UI 类名以 `mxp-` 开头，公开视觉参数以 `--mxp-*` 开头。`<=760px` 隐藏音量 slider 与剧场按钮，`<=420px` 重排控制行；focus-visible 与 `prefers-reduced-motion` 由样式表实现。
 
-发布入口只有 ESM、declarations 和 `./style.css`。UMD/IIFE、`unpkg`/`jsdelivr` 默认脚本入口计划在 Phase 12，Phase 9 不声称已提供。
+SDK/UI/React/Vue 入口是 ESM + declarations；Browser 另外发布 `./iife`、`./iife.min` 和 `./style.css`。IIFE 全局名为 `MXPlayerMax`，固定版本 URL 和 SRI 从 release manifest 取得。
 
 ## 10. React 与 Vue
 
@@ -179,4 +179,4 @@ import '@mx-player-max/ui/style.css'
 
 UI 稳定错误码：`UI_DESTROYED`、`UI_INVALID_CONTAINER`、`UI_INVALID_OPTIONS`、`UI_OPERATION_FAILED`。公共 UI/播放错误不包含 URL query、字幕全文、DOMException、内部 stack 或宿主异常 message。
 
-Phase 9 明确不包含 Phase 10 WASM Codec、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码、Document PiP 或 UMD/IIFE 分发。
+当前明确不包含真实 Codec WASM/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码或 Document PiP。IIFE 只代表 Browser 的 SDK + UI 组合，不代表所有 Codec 已支持。

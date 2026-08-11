@@ -137,8 +137,8 @@ packages/ui/dist/
 └─ style.css
 ```
 
-Phase 9 只提供 ESM、declarations 与 CSS export。UMD/IIFE、全局变量和 script-tag bundle 属于 Phase 12，不能在当前文档或兼容性声明中标记为可用。
+UI 包自身提供 ESM、declarations 与 CSS export。Phase 12 的 Browser 组合包额外提供 `MXPlayerMax` IIFE，但不会把 IIFE、SDK 或 Browser 生命周期实现反向放入 UI 包。
 
 ## 11. 范围边界
 
-Phase 9 不实现 Phase 10 WASM Codec、PGS/VobSub、完整 libass、字幕内容编辑器、playlist/下一集业务、Custom 内建预览 decoder、Document Picture-in-Picture、UMD/IIFE 或无关架构重构。
+UI 包不实现 WASM Codec、PGS/VobSub、完整 libass、字幕内容编辑器、playlist/下一集业务、Custom 内建预览 decoder 或 Document Picture-in-Picture。Browser IIFE 是独立组合产物，不改变 UI 包的边界。

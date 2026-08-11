@@ -2,6 +2,8 @@
 
 对外的原生 JavaScript/TypeScript SDK 入口。React 和 Vue 适配层只包装这个入口，不复制媒体引擎逻辑。
 
+许可证：`PolyForm-Noncommercial-1.0.0`。本包不包含官方 UI、Lucide 或 CSS；商业使用需单独授权。
+
 ```ts
 import { MXPlayer } from '@mx-player-max/sdk'
 

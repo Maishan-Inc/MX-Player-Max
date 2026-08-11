@@ -44,12 +44,12 @@ import '@mx-player-max/ui/style.css'
 const player = new MXPlayer({ target: container, source })
 attachPlayerUi(player, container, { theme: 'dark' })
 
-// 3. UMD 一行接入（Phase 12 未来形态，Phase 9 尚未发布）
+// 3. Browser IIFE 一行接入（Phase 12 已发布构建产物；固定版本与 SRI 由 release manifest 提供）
 <script src="https://cdn.jsdelivr.net/npm/@mx-player-max/ui/dist/mx-player.min.js"></script>
 <script>MXPlayerMax.mount('#player', { src: '...' })</script>
 ```
 
-Phase 9 已交付前两种 ESM 形态。第三种是本 ADR 保留的分发目标，当前不能作为可用 API 或产物示例。
+Phase 9 已交付 SDK/UI ESM 形态；Phase 12 的 `@mx-player-max/browser` 交付第三种组合形态，公开全局名为 `MXPlayerMax`。IIFE 只组合 SDK + UI，不改变引擎与 UI 的依赖边界。
 
 UI 包用**框架无关的原生 DOM** 实现，不用 React。`@mx-player-max/react` 与 `@mx-player-max/vue` 是对 SDK + UI 的薄封装，不是 UI 的实现载体。原因：UI 若用 React 写，则 UMD 产物必须内联整个 React 运行时（约 45 KB gzip），而 UMD 的目标用户恰恰是无构建工具、不用 React 的页面。
 

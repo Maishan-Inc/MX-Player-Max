@@ -2,7 +2,7 @@
 
 ## 公共 API
 
-- `api/player-ui.md`：Phase 9 播放快照、预览、UI 生命周期、选项、CSS 与 React/Vue 适配器。
+- `api/player-ui.md`：播放快照、Decision Trace、预览、UI 生命周期、选项、CSS 与 React/Vue 适配器。
 - `../packages/decoder-wasm/README.md`：Phase 10 WASM Manager、插件契约、加载规则与稳定错误。
 - `../packages/platform/README.md`：Phase 11 平台增强、诊断、版本 Issue 规则与评分边界。
 
@@ -13,7 +13,7 @@
 - `architecture/media-fundamentals.md`：封装结构、编码代际、HDR/SDR、对象音频、蓝光原盘和 FFmpeg 边界的原理说明。
 - `architecture/codec-strategy.md`：容器/后缀映射、四类解码路径、完整决策矩阵、HDR 与许可证边界。
 - `architecture/playback-decision-flow.md`：从源到后端的完整决策流程、硬件解码与 GPU 渲染的区别、M3U8 专门决策、支持格式总表。
-- `architecture/distribution-and-embedding.md`：三种接入方式、CORS 三条链路、HTTPS 与安全上下文限制、COEP 连锁反应、分发渠道与落地优先级。
+- `architecture/distribution-and-embedding.md`：SDK/UI、Browser ESM/IIFE、React/Vue 接入，CORS/Range、固定版本/SRI、HTTPS 与 COOP/COEP。
 - `architecture/audio-pipeline.md`：音频解码、AudioWorklet 和音画同步。
 - `architecture/subtitle-pipeline.md`：SRT/ASS 字幕、轨道、样式和外挂字幕。
 - `architecture/ui-package.md`：可选 UI 包的组件结构、CSS 契约、主题变量、双路径适配与无障碍要求。
@@ -40,6 +40,8 @@
 - `development/phase-9-acceptance.md`：Phase 9 UI、适配器、Demo、截图、发布边界和真实浏览器矩阵。
 - `development/phase-10-acceptance.md`：Phase 10 WASM Manager、manifest、变体选择、哈希/缓存和发布边界。
 - `development/phase-11-acceptance.md`：Phase 11 浏览器增强、诊断、Issue 规则和平台回归边界。
+- `development/release.md`：本地构建、Docker smoke、CI/Release 门禁和未执行的真实发布边界。
+- `development/phase-12-acceptance.md`：Phase 12 命令证据、包清单、Manifest/SRI 和 pending 项。
 
 ## 决策记录
 

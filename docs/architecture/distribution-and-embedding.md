@@ -2,7 +2,7 @@
 
 ## 1. 当前发布形态
 
-Phase 9 的包采用 ESM + TypeScript declarations：
+Phase 12 的公开包提供 ESM + TypeScript declarations；Browser 包另外提供固定文件名的 IIFE 和 CSS：
 
 | 使用方式 | 安装包 | 样式 | 状态 |
 |---|---|---|---|
@@ -10,9 +10,9 @@ Phase 9 的包采用 ESM + TypeScript declarations：
 | 原生 DOM 播放器 UI | `sdk` + `ui` | 显式导入 `@mx-player-max/ui/style.css` | 已实现 |
 | React | `@mx-player-max/react` | 显式导入 UI CSS | 已实现 |
 | Vue | `@mx-player-max/vue` | 显式导入 UI CSS | 已实现 |
-| UMD/IIFE script tag | 单文件全局变量 | link CSS | Phase 12 pending |
+| Browser IIFE script tag | `MXPlayerMax` 全局 | `@mx-player-max/browser/style.css` | 已实现 |
 
-当前没有 `mx-player.min.js`、`unpkg` 或 `jsdelivr` 全局脚本入口。npm 发布后可由支持 ESM 的 CDN 解析包入口，但 Phase 9 不把 CDN 转换结果当作仓库发布的 UMD 产物。
+Browser 包包含 `mx-player-max.iife.js`、`mx-player-max.iife.min.js`、`style.css` 和 ESM entry。`unpkg`/`jsdelivr` 字段指向 release-time 生成的 IIFE；生产 URL 必须锁定精确版本并使用 Manifest 的 SRI，不使用 `latest`。
 
 ## 2. 可选安装与 tree-shaking
 
@@ -26,7 +26,7 @@ react/vue -> sdk + ui + types + framework peer
 
 每个包发布前使用 `pnpm pack` 或递归 publish，让 pnpm 把 `workspace:*` 转换为真实版本。Demo 是 private app，不发布为 SDK 包。
 
-## 3. 三种嵌入方式
+## 3. 四种嵌入方式
 
 ### 3.1 SDK only
 
@@ -56,6 +56,19 @@ SDK 与 UI 必须共享同一个定位容器。SDK 拥有 video/canvas/subtitle 
 ### 3.3 React/Vue
 
 框架组件内部组合 SDK + UI，props identity 改变时分别 reload/update，卸载时 UI-first cleanup。CSS 仍由应用显式导入，便于替换主题或完全省略官方样式。
+
+### 3.4 Browser ESM/IIFE
+
+```ts
+import { create } from '@mx-player-max/browser'
+import '@mx-player-max/browser/style.css'
+
+const handle = create({ target: '#player', source })
+await handle.ready
+handle.destroy()
+```
+
+Script-tag 用户使用 `MXPlayerMax.create(...)`。IIFE 不代理媒体、不上传本地文件，也不把 Worker、AudioWorklet、WASM 或模型自动内联进主 bundle；这些资源按 Manifest 和自托管 base URL 规则解析。
 
 ## 4. 远程媒体 CORS 与 Range
 
@@ -101,17 +114,18 @@ Cross-Origin-Embedder-Policy: require-corp
 
 SDK 无法从 JavaScript 设置这些头。启用 COEP 后，页面全部跨域资源也要提供 CORS 或 CORP。单线程路径必须是一等 fallback。
 
-Phase 9 没有进入 Phase 10 WASM Codec；本节只记录宿主分发约束，不表示 Codec 二进制已经可发布。
+当前没有已审查 Codec WASM 二进制进入 publishable manifest。本节记录宿主分发约束，不表示任意 WASM/Codec 已支持或可发布。
 
 ## 8. 发布渠道
 
-- npm：主渠道，使用 `pnpm publish -r --access public` 处理 workspace 版本。
-- ESM CDN：npm 发布后可供支持 ESM 的 CDN 使用；生产环境建议锁定精确版本并自测 headers。
+- npm：主渠道，使用受保护 workflow 的 `pnpm publish -r --access public` 处理 workspace 版本。
+- ESM CDN：npm 发布后可供支持 ESM 的 CDN 使用；生产环境锁定精确版本并从 Manifest 复制 SRI。
+- IIFE CDN：Browser 包 `unpkg`/`jsdelivr` 字段指向 `mx-player-max.iife.min.js`，示例中的版本和 SRI 是 release-time 替换模板。
 - GitHub Releases：后续用于离线包、哈希清单和经许可审查的二进制。
 - Docker/GHCR：只分发 Demo，不是 SDK 的安装前置。
 - 自托管：企业内网、离线审计和区域 CDN 的推荐方案。
 
-UMD/IIFE、CJS、SRI 自动生成、`unpkg`/`jsdelivr` 默认字段属于 Phase 12 发布工作。
+不提供 CJS 或 UMD 兼容层。SRI、SHA-256/SHA-384、IIFE/CSS 和 Worker/AudioWorklet 条目由 release manifest 生成；未审查 WASM/模型必须保持 excluded。
 
 ## 9. 安全与诊断
 

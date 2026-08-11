@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-仓库已完成 Phase 1-11 的当前批准范围：能力探测、Range/Demux、Native/Custom 播放、Audio、Renderer、AI、SRT/ASS 字幕内核、独立 `@mx-player-max/ui`、WASM Decoder Manager，以及可插拔浏览器平台增强/诊断/Issue 规则。Phase 10 仍不包含真实 Codec 二进制或 Core WASM 接入。
+仓库已完成 Phase 1-12 的当前批准范围：能力探测、Range/Demux、Native/Custom 播放、Audio、Renderer、AI、SRT/ASS 字幕内核、独立 `@mx-player-max/ui`、WASM Decoder Manager、可插拔浏览器平台增强/诊断/Issue 规则，以及 Browser ESM/IIFE 分发和发布验证。当前仍不包含真实 Codec WASM 二进制或 Core WASM 解码接入。
 
 ```bash
 pnpm add @mx-player-max/sdk @mx-player-max/ui
@@ -31,6 +31,22 @@ player.destroy()
 
 只安装 `@mx-player-max/sdk` 时不会引入 UI、Lucide 或样式代码。React 与 Vue 包是 SDK + UI 的薄生命周期适配器；Demo 只是独立集成样例，不是运行时依赖。
 
+浏览器一体化入口：
+
+```ts
+import { create } from '@mx-player-max/browser'
+import '@mx-player-max/browser/style.css'
+
+const handle = create({
+  target: '#player',
+  source: { kind: 'url', url: 'https://media.example.com/video.mp4' },
+  ui: { theme: 'dark' },
+})
+await handle.ready
+```
+
+`@mx-player-max/browser` 只组合 SDK 和官方 UI，`destroy()` 按 UI -> SDK 顺序幂等清理。所有公开包使用 `PolyForm-Noncommercial-1.0.0`；商业使用需要单独授权。
+
 ## 包边界
 
 ```text
@@ -40,6 +56,7 @@ player.destroy()
 @mx-player-max/ui -> sdk + types
 @mx-player-max/react -> sdk + ui + types
 @mx-player-max/vue -> sdk + ui + types
+@mx-player-max/browser -> sdk + ui + types (ESM/IIFE)
 apps/demo -> react + sdk + ui + types
 ```
 
@@ -50,6 +67,7 @@ apps/demo -> react + sdk + ui + types
 - `docs/api/player-ui.md`：SDK 播放快照、预览与 UI 公共 API。
 - `docs/architecture/ui-package.md`：UI 生命周期、状态同步、CSS、可访问性和边界。
 - `docs/architecture/distribution-and-embedding.md`：可选安装、宿主容器、CORS、HTTPS 与分发。
+- `docs/development/release.md`：固定版本、SRI、Docker、CI 和受保护发布门禁。
 - `packages/platform/README.md`：Phase 11 平台增强、Issue 规则和诊断 API。
 - `docs/development/phase-11-acceptance.md`：Phase 11 自动化与真实浏览器待验证项。
 - `docs/development/roadmap.md`：后续阶段范围。
@@ -63,10 +81,14 @@ pnpm test
 pnpm build
 pnpm test:browser
 pnpm dev
+pnpm test:release
+pnpm verify:packages
+pnpm release:pack
+pnpm release:smoke
 ```
 
 Playwright Chromium/Firefox/WebKit 自动化与真实 Chrome、Firefox、macOS Safari 验证分开记录。Playwright WebKit 不能替代真实 macOS Safari 证据。
 
 ## 当前范围边界
 
-当前仓库不包含真实 WASM Codec 二进制/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表或下一集业务、HLS/DASH 自定义管线、UMD/IIFE 分发和无关架构重构。Playwright WebKit 也不等价于物理 macOS Safari 验收。
+当前仓库不包含真实 WASM Codec 二进制/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表或下一集业务、HLS/DASH 自定义管线和无关架构重构。Browser IIFE 只提供 SDK + 官方 UI 的组合入口；它不构成完整 Codec 覆盖承诺。Playwright WebKit 也不等价于物理 macOS Safari 验收。
