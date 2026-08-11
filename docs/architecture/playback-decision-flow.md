@@ -187,6 +187,10 @@ HDR 保留         +30    hdrPreservation 意图
 
 **回退必须原子化：** 当前候选失败后，下一候选从零开始初始化，不能带着旧状态。
 
+Phase 12 已在 Core 落地该循环：Strategy `evaluate()` 一次返回调整前候选、有效 adjustment、
+最终排序与 selection template；Core 为每项创建独立 attempt scope，缓冲事件，成功后才提交
+selection/backendchange。失败 scope 先完整清理再继续，候选用尽返回去敏聚合错误。
+
 WASM 内部还有一层回退：
 
 ```text

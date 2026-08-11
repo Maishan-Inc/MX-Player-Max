@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { MediaEngine, MediaPreviewImage, MXPlayerOptions, PlaybackSnapshot } from '@mx-player-max/types'
+import type { MediaEngine, MediaPreviewImage, MXPlayerOptions, PlaybackDecisionTrace, PlaybackSnapshot } from '@mx-player-max/types'
 
 const snapshot: PlaybackSnapshot = {
   sessionEpoch: 2, state: 'ready', paused: true, currentTime: 0, duration: null, played: [], buffered: [], bufferedAhead: 0,
@@ -7,6 +7,11 @@ const snapshot: PlaybackSnapshot = {
   capabilities: { seek: true, volume: true, playbackRate: true, fullscreen: false, pictureInPicture: false, preview: true }, lastError: null,
 }
 const preview: MediaPreviewImage = { blob: new Blob(['x'], { type: 'image/png' }), time: 0, width: 160, height: 90, sessionEpoch: 2 }
+const decisionTrace: PlaybackDecisionTrace = {
+  schemaVersion: 1, sessionEpoch: 2, generatedAtMs: 10, status: 'selected', intent: 'normal',
+  media: { container: 'mp4', mimeType: 'video/mp4', videoCodec: 'avc1.640028', audioCodec: 'mp4a.40.2', duration: null },
+  candidates: [], attempts: [], selectedCandidateId: 'native-html-video', finalErrorCode: null,
+}
 const pendingLoads: Array<{ promise: Promise<void>; resolve(): void }> = []
 
 function pendingLoad(): Promise<void> {
@@ -18,6 +23,7 @@ function pendingLoad(): Promise<void> {
 
 const fakeEngine = {
   playback: snapshot,
+  decisionTrace,
   state: 'ready', media: null, selection: null, nativeFeatures: null, nativeStats: null, customVideoStats: null, customAudioStats: null, audioClock: null,
   rendererKind: null, rendererState: null, rendererStats: null, subtitleTracks: [], selectedSubtitleTrack: null, subtitleState: 'disabled', subtitleStyle: {},
   on: vi.fn(() => () => {}), off: vi.fn(), once: vi.fn(() => () => {}), load: vi.fn(pendingLoad),
@@ -40,6 +46,10 @@ describe('MXPlayer Phase 9 playback facade', () => {
     expect(player.ready).toBe(replacement)
     expect(player.ready).not.toBe(initial?.promise)
     expect(player.playback).toBe(snapshot)
+    expect(player.decisionTrace).toBe(decisionTrace)
+    const decisionListener = vi.fn()
+    player.on('decisionchange', decisionListener)
+    expect(fakeEngine.on).toHaveBeenCalledWith('decisionchange', decisionListener)
     await expect(player.requestPreview({ time: 0 })).resolves.toBe(preview)
     pendingLoads[1]?.resolve()
     await replacement

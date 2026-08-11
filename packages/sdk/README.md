@@ -39,6 +39,24 @@ const image = await player.requestPreview({
 
 可选播放器界面位于独立的 `@mx-player-max/ui`，SDK 不依赖它。完整契约见 `docs/api/player-ui.md`。
 
+## Phase 12 playback decision trace
+
+`decisionTrace` 是 Core 当前 load epoch 的冻结、去敏决策快照；`decisionchange` 在评估、候选
+初始化、失败、选择和 close 时发布新快照。它记录调整前/后分数、平台 adjustment、稳定
+candidate ID、attempt 顺序和错误码，但不包含 URL、header、Codec private data、原始异常、
+Frame、PCM 或字幕正文。
+
+```ts
+player.on('decisionchange', ({ trace }) => {
+  console.table(trace.candidates)
+  console.table(trace.attempts)
+})
+```
+
+Trace 用于解释 SDK 已经执行的决策，不能作为跳过 capability probe 或后端初始化验证的输入。
+所有候选失败时 load 返回 `STRATEGY_ALL_CANDIDATES_FAILED`，具体去敏失败位于错误的
+`failures[]` 和 trace attempts。
+
 `MXPlayer` 同步代理 core 的 `state`、`media`、`selection`、`nativeFeatures`、事件 `on/off/once`、seek/倍速/音量/静音、全屏和原生 Picture-in-Picture。NativeMediaPipeline 的错误使用稳定 `ENGINE_*`/`NATIVE_*` 码；autoplay 仍受用户手势策略限制。
 
 Phase 5 还代理只读 `customAudioStats` 与 `audioClock`，以及 `audiostatechange`、`audiounderrun`、`clockupdate`。这些事件只含统计/状态/微秒时间，不含 `AudioData`、PCM 或压缩数据。`customAudio` 选项沿 `MXPlayerOptions` 传入 core。

@@ -188,6 +188,10 @@ Firefox 存在长期未修复的缺陷（[Bugzilla #1918769](https://bugzilla.mo
 
 **强制要求**：`configure()` 必须包在 try/catch 中，且失败必须触发原子回退到下一候选。探测结果是必要条件，不是充分条件。这不是可选的防御性编程，是 Firefox 上的必需品。Firefox 上 VP9 比 H.264 更可靠，平台策略（阶段 11）应据此调整评分。
 
+Phase 12 Core 候选控制器已实现上述原子回退，并通过 `PlaybackDecisionTrace` 记录稳定候选 ID、
+attempt 状态和错误码。Trace 不改变评分、不改写能力，也不替代 Decoder/Renderer 初始化时的
+try/catch。
+
 ### 4.3.3 浏览器 WebCodecs 视频解码支持
 
 | Codec | 配置字符串示例 | Chrome | Firefox | Safari |

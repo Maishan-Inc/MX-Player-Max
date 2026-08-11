@@ -25,6 +25,7 @@ import type {
   SubtitleTrack,
   SubtitleTrackOptions,
   PlaybackSnapshot,
+  PlaybackDecisionTrace,
   MediaPreviewImage,
   MediaPreviewRequest,
 } from '@mx-player-max/types'
@@ -56,6 +57,7 @@ export class MXPlayer {
   get subtitleState(): SubtitleState { return this.engine.subtitleState }
   get subtitleStyle(): SubtitleCueStyle { return this.engine.subtitleStyle }
   get playback(): PlaybackSnapshot { return this.engine.playback }
+  get decisionTrace(): PlaybackDecisionTrace | null { return this.engine.decisionTrace }
 
   on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
     return this.engine.on(event, listener)

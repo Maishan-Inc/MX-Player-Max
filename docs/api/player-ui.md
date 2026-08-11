@@ -91,6 +91,13 @@ player.on('playbackchange', ({ snapshot, reason }) => {
 
 `PlaybackChangeReason` 用于限频或诊断：`load | state | time | buffer | volume | rate | presentation | capabilities | error`。
 
+### Playback Decision Trace
+
+`player.decisionTrace` 与 `decisionchange` 提供当前 load epoch 的只读决策链：候选排序、初始与
+最终分数、平台 adjustment、初始化 attempt、最终选择或稳定失败码。快照不会暴露 source
+URL/header、Codec private data、原始异常、Frame、PCM 或字幕正文。UI 和 Demo 可以显示该
+快照，但不得据此绕过 SDK 的实际能力检测或自行强制不存在的后端。
+
 ## 5. 换源与 ready
 
 ```ts
