@@ -1,22 +1,37 @@
 {
   "name": "@mx-player-max/browser",
   "version": "0.1.0",
+  "description": "Browser-ready MX-Player-Max bundle combining the SDK and official UI.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Maishan-Inc/MX-Player-Max.git",
+    "directory": "packages/browser"
+  },
+  "homepage": "https://github.com/Maishan-Inc/MX-Player-Max#readme",
+  "bugs": { "url": "https://github.com/Maishan-Inc/MX-Player-Max/issues" },
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./style.css": "./dist/style.css"
+    "./style.css": "./dist/style.css",
+    "./iife": "./dist/mx-player-max.iife.js",
+    "./iife.min": "./dist/mx-player-max.iife.min.js"
   },
+  "unpkg": "./dist/mx-player-max.iife.min.js",
+  "jsdelivr": "./dist/mx-player-max.iife.min.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": [
     "./dist/style.css"

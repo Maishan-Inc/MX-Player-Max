@@ -2,6 +2,7 @@
   "name": "mx-player-max",
   "version": "0.1.0",
   "private": true,
+  "license": "PolyForm-Noncommercial-1.0.0",
   "packageManager": "pnpm@10.14.0",
   "scripts": {
     "dev": "pnpm --filter @mx-player-max/demo dev",
@@ -10,6 +11,7 @@
     "typecheck": "pnpm -r --if-present build && pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "test:browser": "playwright test",
+    "verify:packages": "node scripts/release/verify-packages.mjs",
     "lint": "pnpm -r --if-present lint",
     "clean": "pnpm -r --if-present clean"
   },

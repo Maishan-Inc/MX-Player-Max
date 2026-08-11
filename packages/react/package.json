@@ -1,11 +1,21 @@
 {
   "name": "@mx-player-max/react",
   "version": "0.1.0",
+  "description": "React adapter for the MX-Player-Max SDK and official player UI.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Maishan-Inc/MX-Player-Max.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://github.com/Maishan-Inc/MX-Player-Max#readme",
+  "bugs": { "url": "https://github.com/Maishan-Inc/MX-Player-Max/issues" },
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
@@ -13,6 +23,12 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
   "peerDependencies": {
     "react": ">=18"
   },

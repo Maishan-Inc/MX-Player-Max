@@ -1,11 +1,21 @@
 {
   "name": "@mx-player-max/ui",
   "version": "0.1.0",
+  "description": "Official accessible player controls for the MX-Player-Max SDK.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Maishan-Inc/MX-Player-Max.git",
+    "directory": "packages/ui"
+  },
+  "homepage": "https://github.com/Maishan-Inc/MX-Player-Max#readme",
+  "bugs": { "url": "https://github.com/Maishan-Inc/MX-Player-Max/issues" },
   "type": "module",
   "publishConfig": {
     "access": "public"
   },
   "main": "./dist/index.js",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
@@ -16,7 +26,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "sideEffects": [
     "./dist/style.css"
