@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-仓库已完成 Phase 1-9：能力探测、Range/Demux、Native/Custom 播放、Audio、Renderer、AI、SRT/ASS 字幕内核，以及独立的 `@mx-player-max/ui`。UI 使用原生 DOM + TypeScript，同一实现消费 SDK 公共状态并覆盖 Native `<video>` 与 Custom `<canvas>` 路径。
+仓库已完成 Phase 1-11 的当前批准范围：能力探测、Range/Demux、Native/Custom 播放、Audio、Renderer、AI、SRT/ASS 字幕内核、独立 `@mx-player-max/ui`、WASM Decoder Manager，以及可插拔浏览器平台增强/诊断/Issue 规则。Phase 10 仍不包含真实 Codec 二进制或 Core WASM 接入。
 
 ```bash
 pnpm add @mx-player-max/sdk @mx-player-max/ui
@@ -50,7 +50,8 @@ apps/demo -> react + sdk + ui + types
 - `docs/api/player-ui.md`：SDK 播放快照、预览与 UI 公共 API。
 - `docs/architecture/ui-package.md`：UI 生命周期、状态同步、CSS、可访问性和边界。
 - `docs/architecture/distribution-and-embedding.md`：可选安装、宿主容器、CORS、HTTPS 与分发。
-- `docs/development/phase-9-acceptance.md`：Phase 9 自动化、截图与真实浏览器待验证项。
+- `packages/platform/README.md`：Phase 11 平台增强、Issue 规则和诊断 API。
+- `docs/development/phase-11-acceptance.md`：Phase 11 自动化与真实浏览器待验证项。
 - `docs/development/roadmap.md`：后续阶段范围。
 
 ## 本地命令
@@ -66,6 +67,6 @@ pnpm dev
 
 Playwright Chromium/Firefox/WebKit 自动化与真实 Chrome、Firefox、macOS Safari 验证分开记录。Playwright WebKit 不能替代真实 macOS Safari 证据。
 
-## Phase 9 范围
+## 当前范围边界
 
-Phase 9 不包含 Phase 10 WASM Codec、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表或下一集业务、Custom 内建预览解码、UMD/IIFE 分发和无关架构重构。
+当前仓库不包含真实 WASM Codec 二进制/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表或下一集业务、HLS/DASH 自定义管线、UMD/IIFE 分发和无关架构重构。Playwright WebKit 也不等价于物理 macOS Safari 验收。

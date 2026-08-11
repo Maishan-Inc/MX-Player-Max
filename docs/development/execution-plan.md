@@ -30,7 +30,7 @@ Phase 7  AI 后处理（插帧与超分）
 Phase 8  SRT/ASS 字幕内核
 Phase 9  UI 包（控制条、字幕菜单、主题）
 Phase 10 WASM Decoder Manager          Manager/Plugin Factory 已实现；真实 Codec/Core 接入待后续
-Phase 11 浏览器平台优化
+Phase 11 浏览器平台优化              实现完成，三浏览器真实环境验收待执行
 Phase 12 SDK、演示站与发布
 Phase 13 质量、安全和性能固化
 ```

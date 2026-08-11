@@ -4,6 +4,7 @@
 
 - `api/player-ui.md`：Phase 9 播放快照、预览、UI 生命周期、选项、CSS 与 React/Vue 适配器。
 - `../packages/decoder-wasm/README.md`：Phase 10 WASM Manager、插件契约、加载规则与稳定错误。
+- `../packages/platform/README.md`：Phase 11 平台增强、诊断、版本 Issue 规则与评分边界。
 
 ## 架构
 
@@ -38,6 +39,7 @@
 - `development/phase-8-acceptance.md`：Phase 8 字幕内核自动化与真实浏览器待验证项。
 - `development/phase-9-acceptance.md`：Phase 9 UI、适配器、Demo、截图、发布边界和真实浏览器矩阵。
 - `development/phase-10-acceptance.md`：Phase 10 WASM Manager、manifest、变体选择、哈希/缓存和发布边界。
+- `development/phase-11-acceptance.md`：Phase 11 浏览器增强、诊断、Issue 规则和平台回归边界。
 
 ## 决策记录
 
@@ -45,3 +47,4 @@
 - `decisions/ADR-0002-single-sdk-wasm-variants.md`
 - `decisions/ADR-0003-ai-post-processing.md`
 - `decisions/ADR-0004-engine-and-optional-ui.md`：引擎与可选 UI 包分离，及其对 UMD 产物的约束。
+- `decisions/ADR-0005-platform-policy-and-issue-rules.md`：平台增强、诊断与可过期负向评分规则。

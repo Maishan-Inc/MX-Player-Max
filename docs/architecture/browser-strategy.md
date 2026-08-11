@@ -54,6 +54,11 @@ Chromium 的优势是 WebCodecs、WebGPU 和部分 Worker MediaSource 能力组�
 
 Worker MediaSource 不属于首阶段文件播放器的必需能力。没有它时，Demux Worker 仍然可以通过自定义 Range 管线工作。
 
+Phase 11 实现只在 `CapabilitySnapshot.workerMediaSource` 与
+`webGpuFeatures.importExternalTexture` 已实际探测成功时输出对应增强。Chromium 的
+WebCodecs + WebGPU 小幅加分还要求媒体级 WebCodecs 报告为 supported；关闭任一可选能力
+只会移除这项加分，不会移除 WebCodecs/WebGL2/Canvas2D 通用候选。
+
 ## 4. WebKit/Safari 专属增强
 
 WebKit 适合优先利用系统原生媒体能力：
@@ -64,6 +69,10 @@ WebKit 适合优先利用系统原生媒体能力：
 - `fastSeek()` 可用于原生路径的快速近似定位。
 
 对 MP4/H.264/H.265/AAC 等普通文件，如果 `decodingInfo` 显示平滑且低功耗，Safari 的 HTMLVideo 候选应获得更高分。对 MKV 或冷门 Codec，必须回到 WebCodecs/WASM，不能因为 Safari 有原生 HLS 就强行使用原生路径。
+
+Phase 11 分别探测固定 HLS/HEVC `canPlayType()`、HDR display media query、
+ManagedMediaSource、AirPlay 和标准/WebKit PiP。HEVC/HDR/HLS 偏好只作用于已经存在且媒体级
+Native 报告支持的 HTMLVideo 候选；单个增强信号不能创建 Native 或 MSE/HLS 候选。
 
 ## 5. Gecko/Firefox 专属增强
 
@@ -76,6 +85,9 @@ Firefox 的核心路径仍然是标准 API和能力检测：
 - `mozDecodedFrames`、`mozPresentedFrames`、`mozPaintedFrames`、`mozFrameDelay` 仅作为诊断和回归数据，不参与硬编码后端选择。
 
 Firefox 当前不应被假设支持 Worker MediaSource。流媒体插件需要单独检测 `MediaSource.canConstructInDedicatedWorker` 与 `MediaSource.handle`。
+
+Phase 11 把标准 `getVideoPlaybackQuality()` 与 `mozDecodedFrames`、`mozPresentedFrames`、
+`mozPaintedFrames`、`mozFrameDelay` 分开记录。后者只出现在诊断快照，不参与评分。
 
 ## 6. 评分模型
 
@@ -97,6 +109,15 @@ known-platform-risk     -100
 ## 7. 快照和缓存
 
 能力快照按浏览器品牌、版本、操作系统、GPU 标识、Codec 配置和 SDK 版本缓存。缓存只用于减少探测，不得绕过初始化失败回退。平台 Bug 黑名单必须带版本范围、Issue 链接、失效日期和测试样本。
+
+Phase 11 将该要求实现为 `PlatformIssueRule`。规则必须是负向评分，非法、正向、版本无效或
+过期规则被忽略，并且只能匹配现有候选。首条内建规则对应 Firefox Bugzilla #1918769，
+覆盖已验证的 130-145 版本 H.264 WebCodecs configure 风险；规则降低优先级，但不把
+`isConfigSupported()` 结果改写为 unsupported，初始化 try/catch 与原子回退仍然必须保留。
+
+WebCodecs 没有标准接口报告最终选中了硬件还是软件实现。Phase 11 的诊断记录器只保存
+decoder adapter 明确提供的 `requestedPreference`/`selected`，否则记录 `unknown`；不得从
+`powerEfficient` 或 config supported 推断硬件选择。
 
 实现上，环境快照和媒体报告使用不同缓存键。键包含 capability schema、SDK 版本、规范化浏览器/系统、跨源隔离状态；媒体报告键额外包含 WebGPU 快照与规范化 Codec 查询。默认缓存为内存加可用时的 `sessionStorage`，`forceRefresh` 可绕过缓存。缓存内容损坏或存储不可用时必须退回实时探测。
 
@@ -148,3 +169,16 @@ Playwright 配置运行 Chromium desktop/mobile、Firefox 与 WebKit 的 DOM/CSS
 | Playwright WebKit | behavior/layout | macOS Safari 最新两个稳定大版本 pending；不得用 WebKit run 替代 |
 
 真实环境仍需验证实际 Codec/媒体画面、CORS canvas preview、PiP/fullscreen、font fallback、DPR/resize、触摸/键盘和长时间资源清理。精确命令、截图与 pending 项记录在 `development/phase-9-acceptance.md`。
+
+## 11. Phase 11 实现状态
+
+`@mx-player-max/platform` 已交付以下公共边界：
+
+- `detectPlatformEnhancements()` 与可注入 `PlatformRuntimeAdapter`。
+- `createPlatformPolicy()`、每候选唯一 adjustment 和可审计 `PlatformIssueRule`。
+- `createPlatformDiagnostics()`、标准/Gecko 帧统计与显式 WebCodecs 加速观测。
+- Firefox #1918769 版本回归夹具和规则过期/版本变化/缺特性单元测试。
+
+这些自动化验证 API 合约和降级行为，不构成 Chrome、Firefox、macOS Safari 最新两个稳定
+大版本的真实 Codec、AirPlay、系统 PiP、HDR display、ManagedMediaSource 或 external
+texture 通过证据。真实环境矩阵记录在 `development/phase-11-acceptance.md`。

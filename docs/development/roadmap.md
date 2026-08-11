@@ -61,6 +61,10 @@
 
 实现 Chromium/WebKit/Gecko 可插拔优化和 Issue 黑名单。平台策略只能改变候选评分，不得创建不存在的能力。
 
+当前状态：增强快照、可注入运行时探测、标准/Gecko 播放诊断、显式 WebCodecs 加速观测、
+版本/Issue/失效日期/回归样本约束和 Firefox #1918769 负向评分规则已完成。真实 latest-two-stable
+Chrome/Firefox/macOS Safari Codec 与系统能力验证继续作为环境门禁。
+
 ## 阶段 12：SDK、演示站与发布
 
 稳定并发布现有 SDK/UI/React/Vue API，增加 UMD/IIFE 产物与发布元数据，完成 npm/jsDelivr 入口、SRI、Docker 多线程演示和版本化 WASM manifest。Phase 9 已完成框架适配器与官方 UI Demo，Phase 12 不重复实现控制逻辑。
