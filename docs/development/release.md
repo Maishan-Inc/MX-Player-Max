@@ -45,3 +45,9 @@ Smoke 使用 `mx-player-max-demo:phase-12-local` 镜像和带专用 label 的临
 - Codec/WASM 构建版本写入 manifest。
 - 破坏公共接口时提升 major。
 - 改变策略评分或浏览器黑名单时必须补充 ADR 和回归样本。
+
+## GitHub Actions 门禁
+
+普通 push/PR 只运行 CI 验证，不包含 publish step。Release workflow 的 `validate`、`package`、`consumer-smoke` 和 `artifact` 必须全部成功，才会解锁生产 job。Tag push 只执行验证链；实际发布必须在 `v*.*.*` tag 上手动 dispatch，并将 `publish` input 明确设为 `publish`，同时通过受保护的 `npm-production` environment 和 `NPM_TOKEN` secret。
+
+本仓库不在开发环境执行真实 `npm publish`、GitHub Release 或 CDN 发布。
