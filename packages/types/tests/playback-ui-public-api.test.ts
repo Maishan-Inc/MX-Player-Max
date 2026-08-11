@@ -10,6 +10,7 @@ import type {
   MediaPreviewRequest,
   MXPlayerOptions,
   PlaybackChangeReason,
+  PlaybackDecisionTrace,
   PlaybackSnapshot,
   PlaybackTimeRange,
 } from '../src/index'
@@ -26,6 +27,7 @@ describe('Phase 9 playback and preview public API', () => {
     >()
     expectTypeOf<EngineEventMap['playbackchange']>().toHaveProperty('snapshot')
     expectTypeOf<MediaEngine['playback']>().toEqualTypeOf<PlaybackSnapshot>()
+    expectTypeOf<MediaEngine['decisionTrace']>().toEqualTypeOf<PlaybackDecisionTrace | null>()
   })
 
   it('keeps preview requests isolated from media internals', () => {

@@ -37,6 +37,7 @@ import type {
   SubtitleTrack,
   SubtitleTrackOptions,
   PlaybackSnapshot,
+  PlaybackDecisionTrace,
   PlaybackChangeReason,
   MediaPreviewImage,
   MediaPreviewRequest,
@@ -123,6 +124,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let epoch = 0
   let closed = false
   let playbackSnapshot: PlaybackSnapshot = createPlaybackSnapshot(0)
+  let currentDecisionTrace: PlaybackDecisionTrace | null = null
   let previewManager: PreviewManager | NativePreviewController | null = null
   let customPreviewProvider: MediaPreviewProvider | undefined
   let customPlayingIntent = false
@@ -470,6 +472,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     get subtitleState(): SubtitleState { return subtitleController?.state ?? 'disabled' },
     get subtitleStyle(): SubtitleCueStyle { return subtitleController?.style ?? { ...DEFAULT_SUBTITLE_STYLE } },
     get playback(): PlaybackSnapshot { return playbackSnapshot },
+    get decisionTrace(): PlaybackDecisionTrace | null { return currentDecisionTrace },
 
     on<K extends EngineEventName>(event: K, listener: EngineEventListener<K>): () => void {
       let eventListeners = listeners.get(event)

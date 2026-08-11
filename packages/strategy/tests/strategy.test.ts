@@ -244,6 +244,27 @@ describe('strategy engine', () => {
     expect(first).toEqual(second)
     expect(first.map((candidate) => candidate.kind)).toEqual(['html-video', 'webcodecs'])
   })
+
+  it('evaluates base candidates, adjustments, ranking, and selection in one policy pass', () => {
+    let calls = 0
+    const policy: PlatformPolicy = {
+      adjustScores(candidates) {
+        calls += 1
+        expect(candidates.find((candidate) => candidate.id === 'native-html-video')?.score).toBe(170)
+        return [{ candidateId: 'native-html-video', scoreDelta: -200, reasons: ['runtime-regression'] }]
+      },
+    }
+    const evaluation = createStrategyEngine(policy).evaluate(createMedia(), 'normal', createContext())
+
+    expect(calls).toBe(1)
+    expect(evaluation.baseCandidates.find((candidate) => candidate.id === 'native-html-video')?.score).toBe(170)
+    expect(evaluation.adjustments).toEqual([
+      { candidateId: 'native-html-video', scoreDelta: -200, reasons: ['runtime-regression'] },
+    ])
+    expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['webcodecs-custom', 'native-html-video'])
+    expect(evaluation.selection?.backend.id).toBe('webcodecs-custom')
+    expect(evaluation.baseCandidates).not.toBe(evaluation.rankedCandidates)
+  })
 })
 
 describe('platform score adjustments', () => {

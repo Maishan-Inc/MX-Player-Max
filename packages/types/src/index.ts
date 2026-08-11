@@ -559,6 +559,56 @@ export interface PlaybackSelection {
   aiPlan?: AiPlan
 }
 
+export interface StrategyEvaluation {
+  readonly baseCandidates: readonly Readonly<BackendCandidate>[]
+  readonly adjustments: readonly Readonly<PlatformScoreAdjustment>[]
+  readonly rankedCandidates: readonly Readonly<BackendCandidate>[]
+  readonly selection: PlaybackSelection | null
+}
+
+export type PlaybackDecisionStatus = 'evaluating' | 'initializing' | 'selected' | 'failed' | 'closed'
+export type PlaybackDecisionAttemptStatus = 'initializing' | 'selected' | 'failed' | 'skipped'
+
+export interface PlaybackDecisionMediaSummary {
+  readonly container: string
+  readonly mimeType: string | null
+  readonly videoCodec: string | null
+  readonly audioCodec: string | null
+  readonly duration: Micros | null
+}
+
+export interface PlaybackDecisionCandidateTrace {
+  readonly candidateId: string
+  readonly kind: BackendKind
+  readonly renderer: RendererKind
+  readonly initialScore: number
+  readonly finalScore: number
+  readonly reasons: readonly string[]
+  readonly requires: readonly string[]
+  readonly adjustment: Readonly<PlatformScoreAdjustment> | null
+}
+
+export interface PlaybackDecisionAttempt {
+  readonly index: number
+  readonly candidateId: string
+  readonly kind: BackendKind
+  readonly status: PlaybackDecisionAttemptStatus
+  readonly errorCode: string | null
+}
+
+export interface PlaybackDecisionTrace {
+  readonly schemaVersion: 1
+  readonly sessionEpoch: number
+  readonly generatedAtMs: number
+  readonly status: PlaybackDecisionStatus
+  readonly intent: PlaybackIntent
+  readonly media: PlaybackDecisionMediaSummary
+  readonly candidates: readonly PlaybackDecisionCandidateTrace[]
+  readonly attempts: readonly PlaybackDecisionAttempt[]
+  readonly selectedCandidateId: string | null
+  readonly finalErrorCode: string | null
+}
+
 export interface PlatformScoreAdjustment {
   candidateId: string
   scoreDelta: number
@@ -870,6 +920,7 @@ export interface EngineEventMap {
   subtitlestylechange: { style: SubtitleCueStyle }
   subtitlewarning: { trackId: string | null; diagnostic: SubtitleDiagnostic }
   playbackchange: { snapshot: PlaybackSnapshot; reason: PlaybackChangeReason }
+  decisionchange: { trace: PlaybackDecisionTrace }
   error: { error: EngineError }
 }
 
@@ -952,6 +1003,7 @@ export const ErrorCodes = {
   CAPABILITY_CACHE_FAILED: 'CAPABILITY_CACHE_FAILED',
   STRATEGY_NO_VIABLE_BACKEND: 'STRATEGY_NO_VIABLE_BACKEND',
   STRATEGY_INVALID_PLATFORM_ADJUSTMENT: 'STRATEGY_INVALID_PLATFORM_ADJUSTMENT',
+  STRATEGY_ALL_CANDIDATES_FAILED: 'STRATEGY_ALL_CANDIDATES_FAILED',
   RANGE_INVALID: 'RANGE_INVALID',
   RANGE_UNSUPPORTED: 'RANGE_UNSUPPORTED',
   RANGE_CONTENT_RANGE_INVALID: 'RANGE_CONTENT_RANGE_INVALID',
@@ -1048,6 +1100,7 @@ export interface MediaEngine extends EngineEventSource {
   readonly subtitleState: SubtitleState
   readonly subtitleStyle: SubtitleCueStyle
   readonly playback: PlaybackSnapshot
+  readonly decisionTrace: PlaybackDecisionTrace | null
 
   load(options: MXPlayerOptions): Promise<void>
   play(): Promise<void>

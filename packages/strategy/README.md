@@ -5,9 +5,14 @@
 ```ts
 const context = { snapshot, media: report }
 const engine = createStrategyEngine(platformPolicy)
+const evaluation = engine.evaluate(mediaDescriptor, 'normal', context)
 const ranked = engine.rank(mediaDescriptor, 'normal', context)
 const selection = engine.select(mediaDescriptor, 'normal', context)
 ```
+
+`evaluate()` 在一次平台策略调用中返回调整前候选、有效 adjustment、调整后排序和 selection，
+供 Core 构建去敏 Decision Trace 与按序初始化。`rank()` 和 `select()` 保持兼容，调用方不应把
+evaluation 当作跳过实际后端初始化验证的依据。
 
 策略只从已验证能力生成候选：
 

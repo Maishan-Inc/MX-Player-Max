@@ -11,6 +11,7 @@ import type {
   PlaybackIntent,
   PlaybackSelection,
   RendererKind,
+  StrategyEvaluation,
   WasmDecoderDeclaration,
 } from '@mx-player-max/types'
 import { ErrorCodes } from '@mx-player-max/types'
@@ -25,6 +26,7 @@ export interface PlatformPolicy {
 }
 
 export interface StrategyEngine {
+  evaluate(media: MediaDescriptor, intent: PlaybackIntent, context: CapabilityContext): StrategyEvaluation
   rank(media: MediaDescriptor, intent: PlaybackIntent, context: CapabilityContext): readonly BackendCandidate[]
   select(media: MediaDescriptor, intent: PlaybackIntent, context: CapabilityContext): PlaybackSelection
 }
@@ -40,25 +42,37 @@ export class StrategySelectionError extends Error implements EngineError {
 }
 
 export function createStrategyEngine(policy?: PlatformPolicy): StrategyEngine {
-  const rank = (media: MediaDescriptor, intent: PlaybackIntent, context: CapabilityContext): readonly BackendCandidate[] => {
-    const candidates = createCandidates(media, intent, context)
-    const adjusted = applyPlatformAdjustments(candidates, policy?.adjustScores(candidates, media, intent, context) ?? [])
-    return adjusted.sort(compareCandidates)
-  }
-
-  return {
-    rank,
-    select(media, intent, context) {
-      const ranked = rank(media, intent, context)
-      const backend = ranked[0]
-      if (!backend) throw new StrategySelectionError()
-      const selection: PlaybackSelection = {
-        backend,
+  const evaluate = (media: MediaDescriptor, intent: PlaybackIntent, context: CapabilityContext): StrategyEvaluation => {
+    const baseCandidates = createCandidates(media, intent, context)
+    const policyInput = baseCandidates.map(cloneCandidate)
+    const requestedAdjustments = policy?.adjustScores(policyInput, media, intent, context) ?? []
+    const adjustments = normalizePlatformAdjustments(baseCandidates, requestedAdjustments)
+    const rankedCandidates = applyPlatformAdjustments(baseCandidates, adjustments).sort(compareCandidates)
+    const backend = rankedCandidates[0]
+    let selection: PlaybackSelection | null = null
+    if (backend) {
+      selection = {
+        backend: cloneCandidate(backend),
         intent,
         capabilities: context.snapshot,
         mediaCapabilities: context.media,
       }
-      if (intent === 'ai-enhance') selection.aiPlan = proposeAiPlan(context.snapshot, ranked)
+      if (intent === 'ai-enhance') selection.aiPlan = proposeAiPlan(context.snapshot, rankedCandidates)
+    }
+    return {
+      baseCandidates: baseCandidates.map(cloneCandidate),
+      adjustments: adjustments.map(cloneAdjustment),
+      rankedCandidates: rankedCandidates.map(cloneCandidate),
+      selection,
+    }
+  }
+
+  return {
+    evaluate,
+    rank: (media, intent, context) => evaluate(media, intent, context).rankedCandidates.map(cloneCandidate),
+    select: (media, intent, context) => {
+      const selection = evaluate(media, intent, context).selection
+      if (!selection) throw new StrategySelectionError()
       return selection
     },
   }
@@ -80,6 +94,23 @@ export function applyPlatformAdjustments(
   }
 
   return candidates.map((candidate) => byId.get(candidate.id) ?? cloneCandidate(candidate))
+}
+
+function normalizePlatformAdjustments(
+  candidates: readonly BackendCandidate[],
+  adjustments: readonly PlatformScoreAdjustment[],
+): PlatformScoreAdjustment[] {
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id))
+  const adjustedIds = new Set<string>()
+  const normalized: PlatformScoreAdjustment[] = []
+  for (const adjustment of adjustments) {
+    if (!candidateIds.has(adjustment.candidateId)
+      || adjustedIds.has(adjustment.candidateId)
+      || !Number.isFinite(adjustment.scoreDelta)) continue
+    adjustedIds.add(adjustment.candidateId)
+    normalized.push(cloneAdjustment(adjustment))
+  }
+  return normalized
 }
 
 function createCandidates(
@@ -240,6 +271,14 @@ function cloneCandidate(candidate: BackendCandidate): BackendCandidate {
     ...candidate,
     reasons: [...candidate.reasons],
     requires: [...candidate.requires],
+  }
+}
+
+function cloneAdjustment(adjustment: PlatformScoreAdjustment): PlatformScoreAdjustment {
+  return {
+    candidateId: adjustment.candidateId,
+    scoreDelta: adjustment.scoreDelta,
+    reasons: [...adjustment.reasons],
   }
 }
 

@@ -6,8 +6,13 @@ import type {
   EngineEventListener,
   EngineEventMap,
   MediaCapabilityReport,
+  PlaybackDecisionAttempt,
+  PlaybackDecisionCandidateTrace,
+  PlaybackDecisionStatus,
+  PlaybackDecisionTrace,
   PlatformScoreAdjustment,
   RangeReadResult,
+  StrategyEvaluation,
   VideoCodecConfig,
 } from '../src/index'
 import { ErrorCodes } from '../src/index'
@@ -36,5 +41,21 @@ describe('@mx-player-max/types public API', () => {
   it('keeps event listeners keyed to their payload type', () => {
     expectTypeOf<EngineEventListener<'error'>>().parameter(0).toEqualTypeOf<EngineEventMap['error']>()
     expectTypeOf<EngineEventListener<'timeupdate'>>().parameter(0).toEqualTypeOf<EngineEventMap['timeupdate']>()
+  })
+
+  it('exports bounded playback decision contracts', () => {
+    expectTypeOf<PlaybackDecisionStatus>().toEqualTypeOf<'evaluating' | 'initializing' | 'selected' | 'failed' | 'closed'>()
+    expectTypeOf<PlaybackDecisionCandidateTrace>().toHaveProperty('initialScore')
+    expectTypeOf<PlaybackDecisionCandidateTrace>().toHaveProperty('finalScore')
+    expectTypeOf<PlaybackDecisionAttempt>().toHaveProperty('errorCode')
+    expectTypeOf<PlaybackDecisionAttempt>().not.toHaveProperty('error')
+    expectTypeOf<PlaybackDecisionTrace>().toHaveProperty('sessionEpoch')
+    expectTypeOf<PlaybackDecisionTrace>().not.toHaveProperty('source')
+    expectTypeOf<StrategyEvaluation>().toHaveProperty('baseCandidates')
+    expectTypeOf<StrategyEvaluation>().toHaveProperty('adjustments')
+    expectTypeOf<StrategyEvaluation>().toHaveProperty('rankedCandidates')
+    expectTypeOf<StrategyEvaluation>().toHaveProperty('selection')
+    expectTypeOf<EngineEventMap['decisionchange']>().toEqualTypeOf<{ trace: PlaybackDecisionTrace }>()
+    expect(ErrorCodes.STRATEGY_ALL_CANDIDATES_FAILED).toBe('STRATEGY_ALL_CANDIDATES_FAILED')
   })
 })
