@@ -61,4 +61,18 @@ describe('MXPlayer custom video API', () => {
     expect(close).toHaveBeenCalledOnce()
     player.destroy()
   })
+
+  it('delivers governor quality changes through the public SDK event API', () => {
+    const listener = vi.fn()
+    const player = new MXPlayer({ target: '#target', source: { kind: 'url', url: 'https://example.test/media' }, intent: 'ai-enhance' })
+
+    player.on('qualitychange', listener)
+    const registration = vi.mocked(fakeEngine.on).mock.calls.find(([event]) => event === 'qualitychange')
+    const engineListener = registration?.[1]
+    if (typeof engineListener !== 'function') throw new Error('qualitychange listener was not registered with Core')
+    engineListener({ previous: 'high', current: 'medium', reasons: ['governor-tier-change'] })
+
+    expect(listener).toHaveBeenCalledWith({ previous: 'high', current: 'medium', reasons: ['governor-tier-change'] })
+    player.destroy()
+  })
 })

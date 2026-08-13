@@ -4,6 +4,29 @@
 
 ### Added
 
+- Phase 13 可重复质量语料：7 个合成媒体与 2 个字幕 fixture、来源/许可证/FFmpeg 命令、
+  SHA-256/FFprobe 校验，以及不提交 30 分钟大文件的 seed-loop 生成策略。
+- Native/WebCodecs Playwright 媒体工程，覆盖非空像素、播放生命周期、连续 seek、字幕 cue、换源、
+  video/canvas 像素统计一致性、resize/DPR、offline、Range/MIME/404、截断和损坏文件稳定错误码；
+  WebKit 明确为 automation-only。
+- Postprocess kernel/packed RT4KSR/RIFE 数值 oracle、GPU fallback/device-lost、quality SDK event、
+  stale epoch 和 10,000-cycle bounded texture/tensor pool 回归。
+- 隔离/非隔离性能 collector、版本化阈值和四份 Chromium/Firefox automation smoke baseline；
+  未暴露的首音/漂移/CPU/内存/功耗指标保存 `null + reason`，长跑文件哈希由 collector 实算，
+  缺字段或复用 seed hash 的证据会被拒绝，30 分钟门禁不由短跑关闭。
+- AI/WASM 供应链来源/hash/license/build-options 审计、真实浏览器 pending schema、统一 508-test
+  机器计数与文档漂移 CI；
+  Docker 增加 CSP、隔离 80/非隔离 8080 双运行时静态合同。
+
+- Phase 10.2 restricted libvpx `v1.15.2` VP8 垂直切片：真实 single/SIMD/threaded WASM 资产、
+  MXWF I420 帧 ABI v1、真实媒体样本、WebAssembly compile/instantiate runtime 和供应链资料。
+- 后端无关 `@mx-player-max/decoder-worker` 控制面，以及 VP8 WASM Worker 对 Phase 2 packet、
+  Phase 4 epoch/reset/flush/有界队列/背压/pull reader 的复用。
+- Core 仅在显式 `wasmBaseUrl` 下声明 restricted VP8，支持 WebCodecs 初始化失败原子回退 WASM；
+  非隔离 single 和隔离 threaded -> SIMD 回退均通过真实 Chromium 渲染，Firefox single 通过。
+- Browser release manifest 显式排除三个 restricted VP8 WASM 变体，禁止未完成许可与专利审查的
+  二进制进入 publishable assets。
+
 - Phase 12 Demo 公开 API 诊断工作台：Probe、Decision、Runtime、Subtitles 四面板及 empty/loading/ready/failed 状态，只消费 SDK getter/event；source/intent 切换清理旧 epoch，未知能力保留 pending verification，GSAP 与 reduced-motion 不阻塞播放器生命周期。
 - Phase 12 Docker 演示站冻结依赖安装，区分 HTML、版本化静态资源和媒体缓存，并增加 COOP/COEP/nosniff、MIME、Range、404 与 `crossOriginIsolated` smoke。
 - Phase 12 CI/Release workflow：普通 CI 增加浏览器、包元数据和 release script 门禁；发布拆分为 validate/package/consumer-smoke/artifact/publish，生产 publish 需要显式 tag、input、受保护 environment 和 npm token。
@@ -11,7 +34,7 @@
 - Phase 11 `@mx-player-max/platform`：可注入 Chromium/WebKit/Gecko 增强探测，覆盖 Worker MediaSource、WebGPU external texture、原生 HLS/HEVC、HDR display、ManagedMediaSource、AirPlay/PiP、fastSeek、标准播放质量和仅诊断使用的 Firefox 帧计数。
 - 可审计 `PlatformIssueRule`：浏览器/半开版本范围、HTTPS Issue、失效日期、回归样本、负向评分和候选匹配；内建 Firefox Bugzilla #1918769 H.264 WebCodecs configure 风险规则，不改写能力支持状态。
 - `PlatformDiagnostics` 显式记录 WebCodecs 硬件偏好/实际选择，并在标准 API 无法确认时保留 `unknown`，不从 `powerEfficient` 或配置支持结果推断硬解。
-- Phase 10 `@mx-player-max/decoder-wasm` Manager 契约：严格且不可变的 manifest/review 校验、Codec/轨道受限的插件 Registry、审核后的策略声明、能力驱动的 threaded/SIMD/single 变体选择、HTTP(S) URL 边界、内存/Cache Storage、SHA-256 验证、并发去重、Abort 和原子回退；本阶段不包含真实 WASM 二进制或 Core 解码接入。
+- Phase 10 `@mx-player-max/decoder-wasm` Manager 契约：严格且不可变的 manifest/review 校验、Codec/轨道受限的插件 Registry、审核后的策略声明、能力驱动的 threaded/SIMD/single 变体选择、HTTP(S) URL 边界、内存/Cache Storage、SHA-256 验证、并发去重、Abort 和原子回退。
 - Phase 9 独立可选的 `@mx-player-max/ui`：原生 DOM + TypeScript 控制条、进度/缓冲/连续 seek、160x90 可取消预览、状态层、单一浮层状态机、自动隐藏、快捷键、ARIA、字幕轨道与样式编辑，以及独立 `style.css`。
 - Native/Custom 共用的 `PlaybackSnapshot`、播放范围、能力、展示模式、安全错误摘要、`playbackchange` 事件和受预算/epoch/AbortSignal 保护的公共预览契约。
 - React/Vue SDK + UI 薄组件、播放器 workbench Demo，以及 Chromium desktop/mobile、Firefox 和 Playwright WebKit 的交互与截图自动化。
@@ -50,6 +73,13 @@
 - Typed engine event map and Phase 1 capability/strategy error codes.
 
 ### Changed
+
+- Range/container probe 保留协议与损坏错误码，不再把错误 200、Content-Range、断连或截断全部折叠为
+  `NATIVE_NOT_SUPPORTED`；公共 SDK error 事件移除内部 cause，避免泄漏 URL、路径和平台错误。
+- Engine 创建的 Custom canvas 继承宿主尺寸，AI governor options 生效，seek 后迟到的 postprocess
+  结果按 epoch 释放，纹理/张量池提供只读 bounded diagnostics。
+
+- Video-only Custom playback now anchors its wall clock to the first deliverable frame, preventing real software-decoder startup latency from dropping every initial frame as late.
 
 - Phase 12 集成与分发文档现覆盖 npm SDK/UI、Browser ESM/IIFE、jsDelivr 固定版本模板、SRI、React/Vue peer、Decision Trace 隐私边界、CORS/Range、COOP/COEP 和未审查 WASM/真实浏览器边界。
 - Phase 12 验收记录固定自动化命令、17 个 tarball、Browser Manifest/SRI、Playwright 16/16 结果，以及 Docker/真实浏览器/真实发布的 pending 边界。

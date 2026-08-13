@@ -16,7 +16,9 @@ test('lays out the production player UI without overlap or blank media', async (
   const background = await stage.evaluate((element) => getComputedStyle(element).backgroundImage)
   expect(background).toContain('mx-player-poster.png')
   const ui = page.locator('.mxp-player-ui')
-  await expect(ui).toHaveAttribute('data-mxp-state', /^(ready|paused|playing|ended|error)$/)
+  await expect(ui).toHaveAttribute('data-mxp-state', /^(ready|paused|playing|ended|error)$/, {
+    timeout: testInfo.project.name === 'webkit-simulated' ? 20_000 : undefined,
+  })
   const errorCode = await ui.getAttribute('data-mxp-error-code')
   if (testInfo.project.name === 'webkit-simulated') {
     expect([null, 'NATIVE_NOT_SUPPORTED', 'STRATEGY_ALL_CANDIDATES_FAILED']).toContain(errorCode)

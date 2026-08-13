@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test'
 
 export default defineConfig({
-  testDir: './packages/ui/tests/playwright',
+  testDir: '.',
   timeout: 45_000,
   expect: { timeout: 8_000, toHaveScreenshot: { maxDiffPixelRatio: 0.012 } },
   fullyParallel: false,
@@ -13,10 +13,15 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium-desktop', use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } } },
-    { name: 'chromium-mobile', use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
-    { name: 'firefox-simulated', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
-    { name: 'webkit-simulated', use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
+    { name: 'chromium-desktop', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } } },
+    { name: 'chromium-mobile', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'firefox-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
+    { name: 'webkit-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
+    { name: 'media-chromium', testDir: './tests/browser/media', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+    { name: 'media-firefox', testDir: './tests/browser/media', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
+    { name: 'media-webkit-automation', testDir: './tests/browser/media', timeout: 120_000, use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
+    { name: 'performance-chromium', testDir: './tests/browser/performance', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+    { name: 'performance-firefox', testDir: './tests/browser/performance', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
   ],
   webServer: {
     command: 'pnpm --dir apps/demo exec vite preview --host 127.0.0.1 --port 4175 --strictPort',

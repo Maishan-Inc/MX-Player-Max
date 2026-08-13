@@ -18,10 +18,20 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm test:browser
+pnpm quality:media
+pnpm quality:performance
+pnpm quality:audit
+pnpm quality:browsers
+pnpm quality:acceptance-drift
+pnpm test:quality
+pnpm test:release
+pnpm verify:packages
 git diff --check
 ```
 
-任何代码或文档修正后都要重新运行受影响命令。最终验收记录精确 test count、构建结果、SDK hash/bytes、UI pack 文件和真实浏览器 pending 项。
+任何代码或文档修正后都要重新运行受影响命令。当前 test count 只读取
+`docs/development/evidence/current-test-counts.json`；`pnpm test` 自动比较，数量变化使用
+`pnpm test:update-counts` 显式更新。最终验收记录构建结果、样本/SDK hash、环境元数据和 pending 项。
 
 ## 3. Phase 9 UI 覆盖
 
@@ -36,7 +46,9 @@ git diff --check
 
 ## 4. Playwright 截图
 
-配置包含 Chromium 1440x900、Chromium mobile 390x844、Firefox 和 WebKit。Chromium desktop/mobile 提交稳定 baseline；所有 project 运行行为与布局断言。
+UI 配置包含 Chromium 1440x900、Chromium mobile 390x844、Firefox 和 WebKit。媒体工程另含
+`media-chromium`、`media-firefox`、`media-webkit-automation`，性能工程含 Chromium/Firefox；
+WebKit 媒体结果始终标记 automation-only。Chromium desktop/mobile 提交稳定 UI baseline。
 
 截图验收必须用视觉检查确认：
 
@@ -64,7 +76,27 @@ git diff --check
 - close 后 listener、Object URL、media/canvas 资源清理。
 
 记录浏览器完整版本、OS、GPU、页面是否 cross-origin isolated、媒体样本 SHA-256 和结果。未实际运行的行保持 pending。
+结构化记录位于 `tests/browser/evidence/real-browser-matrix.json`，`pnpm quality:browsers` 禁止 pending
+行填入模拟版本，也禁止把 Playwright/Headless/Simulated 名称写成实机版本。
 
 ## 6. 性能与媒体样本
 
-继续记录首帧、首音、首字幕、seek latency、bufferedAhead、dropped frames、音画漂移、CPU、内存和功耗代理指标。样本按 container/codec/profile/bit-depth/audio/subtitle 命名并保存来源/许可；禁止提交版权不明媒体。
+样本 source of truth 为 `tests/media/manifest.json`；小样本提交，30 分钟样本从已提交 seed 确定性
+生成，不依赖 Git LFS 或网络。`pnpm quality:media` 验证许可证、SHA-256 和 FFprobe 元数据。
+
+性能 JSON schema、阈值和记录位于 `tests/performance/`。必须记录首帧、首音、首字幕、seek latency、
+bufferedAhead、dropped frames、音画漂移、CPU、内存和功耗代理；浏览器 API 不提供的指标使用
+`null + reason`，不得推断。隔离与非隔离是独立记录。短 smoke 只验证 collector；只有
+`runDurationMs >= 1800000` 且必需指标为实测数值的完整记录可关闭 30 分钟漂移/内存门禁。
+先按 manifest 生成 ignored 长片，再执行
+`pnpm quality:performance:collect -- --scenario=long-run-30m`；collector 必须从生成文件计算 SHA-256，
+不得沿用 seed hash。`pnpm test:quality` 用负例验证缺字段和 seed-hash 长跑证据会被拒绝。
+
+## 7. 安全与分发证据
+
+- `pnpm quality:audit` 校验 AI source/MXAI/WASM bytes、SHA-256、许可证和 review status；Phase 10
+  WASM 必须保持 restricted 并从 Browser release manifest 排除。
+- 字幕 Overlay 只用 `textContent`，远程 URL 限 HTTP(S)，媒体响应不能作为 HTML/JS/SVG 执行；
+  公共事件不得包含 URL query、本地路径或原始 platform cause。
+- Docker 80 端口是 COOP/COEP 隔离模式，8080 是非隔离模式；两者都要求 CSP、CORP、nosniff、
+  MIME、Range 和 404。静态测试不能代替 `docker compose build` 与 `docker-smoke.ps1` runtime 证据。

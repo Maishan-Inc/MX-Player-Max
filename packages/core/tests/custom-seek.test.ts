@@ -63,4 +63,25 @@ describe('CustomMediaPipeline seek and epoch', () => {
     await seek
     harness.pipeline.close()
   })
+
+  it('keeps queues bounded across 100 consecutive seeks', async () => {
+    const targets = Array.from({ length: 100 }, (_, index) => index * 10)
+    const harness = createCustomHarness({
+      responses: targets.map((target) => ({ packets: [packet(target, { keyframe: true, duration: 10 })], endOfStream: false })),
+      customVideo: { maxDecodedFrames: 2, lowWaterMark: 0, maxBufferedDuration: 20 },
+    })
+    await harness.pipeline.initialize()
+
+    for (const target of targets) {
+      await harness.pipeline.seek(target)
+      const frame = await harness.pipeline.readVideoFrame()
+      expect(frame).toMatchObject({ timestamp: target, epoch: target / 10 + 1 })
+      expect(harness.pipeline.stats.queuedFrames).toBeLessThanOrEqual(2)
+      frame?.frame.close()
+    }
+
+    expect(harness.demux.seek).toHaveBeenCalledTimes(100)
+    expect(harness.pipeline.epoch).toBe(100)
+    harness.pipeline.close()
+  })
 })

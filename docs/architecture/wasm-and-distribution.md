@@ -19,6 +19,11 @@ Phase 10 的 `@mx-player-max/decoder-wasm` Manager 只在策略已经选择 WASM
 再按能力快照产生变体顺序。Manager 不判断浏览器名称，也不把 WebAssembly API 的存在
 当成某个 Codec 已经可解码。
 
+Phase 10.2 增加一个 restricted libvpx VP8 video-only 垂直切片。Core 只有在调用方显式提供
+`wasmBaseUrl` 时才构造该次会话的 VP8 declaration；未提供时没有 WASM candidate，也不会检查
+isolation/SAB/SIMD/threads。VP8 packet 经共享 Decoder Worker 进入真实 WebAssembly runtime，
+通过 Codec 无关 MXWF ABI v1 构造 I420 `VideoFrame`，再复用既有 Custom Pipeline 和 Renderer。
+
 开发者不需要手动选择线程版本。SDK 在进入 WASM Decoder 后判断 `crossOriginIsolated`、`SharedArrayBuffer`、WASM Threads、SIMD 和 Worker 能力。多线程初始化失败自动回退单线程。
 
 ## 2. 懒加载和缓存
@@ -26,7 +31,7 @@ Phase 10 的 `@mx-player-max/decoder-wasm` Manager 只在策略已经选择 WASM
 - 启动阶段只加载核心 JS 和最小能力探测器。
 - 识别 Codec 后才请求对应 WASM。
 - 使用版本化 URL、内容哈希和 Cache Storage/浏览器 HTTP 缓存。
-- 单线程与多线程变体不能同时下载。
+- 变体按顺序下载；失败回退时可继续请求下一变体，但不会并行下载。
 - 失败结果按会话缓存，避免重复初始化坏二进制。
 - Worker、AudioWorklet 和 WASM 资源必须提供可诊断的加载错误。
 
@@ -67,6 +72,11 @@ Manifest 不包含生成时间，资源按包名和路径排序，因此相同�
 待许可证或专利审查的 WASM 和模型只能进入 `excluded`，且 `publishable` 必须为 `false`。
 当前没有 Codec WASM 或 AI 模型进入正式 publishable assets；任何新增二进制都必须先完成来源、版本、许可证、编译选项和专利风险审查。PolyForm Noncommercial 只覆盖本仓库包，不替代第三方 Codec/WASM/模型许可证。
 
+Phase 10.2 的 `single`、`simd`、`threaded` 三个 libvpx VP8 文件均显式进入 `excluded`，reason
+为 `license-and-patent-review-restricted`。threaded 是真实 pthread/shared-memory 构建，但当前
+没有 Emscripten pthread host glue；隔离会话尝试它后应获得可恢复初始化失败，再回退 SIMD/single。
+这只证明回退安全，不代表 threaded decode 可用。
+
 自托管时，`assetBaseUrl` 优先使用调用方显式值，否则相对于 ESM 模块 URL 或 IIFE 脚本 URL
 解析；`wasmBaseUrl` 和 `aiModelBaseUrl` 分别优先使用各自显式值，否则在 `assetBaseUrl` 下
 解析 `wasm/` 与 `models/`。不得从 Demo 页面 origin 猜测 SDK 资源位置。跨包 Worker 与
@@ -85,4 +95,4 @@ Cross-Origin-Embedder-Policy: require-corp
 
 ## 5. Docker 安全
 
-生产容器应配置 CSP、`X-Content-Type-Options: nosniff`、严格 HTTPS、只读文件系统和非 root Nginx。WASM 必须返回 `application/wasm`，Worker 必须返回正确 JavaScript MIME；Demo Docker smoke 会检查 Nginx MIME 映射、Range、缓存和 `crossOriginIsolated`，但当前没有可发布 WASM 文件可供下载验证。
+生产容器应配置 CSP、`X-Content-Type-Options: nosniff`、严格 HTTPS、只读文件系统和非 root Nginx。WASM 必须返回 `application/wasm`，Worker 必须返回正确 JavaScript MIME；隔离页面的 Worker 响应也必须满足 COEP/CORS/CORP 嵌入要求。Demo Playwright 验收会提供 restricted 开发资产，但 Docker/release smoke 仍不能把它们当成可发布文件。

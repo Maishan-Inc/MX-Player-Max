@@ -43,6 +43,7 @@ vi.mock('@mx-player-max/demux', () => ({ createRangeLoader: mocks.createRangeLoa
 vi.mock('@mx-player-max/capabilities', () => ({
   createCapabilityContext: (value: CapabilitySnapshot, mediaReport: MediaCapabilityReport) => ({ snapshot: value, media: mediaReport }),
   detectCapabilities: mocks.detectCapabilities,
+  detectWasmCapabilities: async (value: CapabilitySnapshot) => value,
   probeMediaCapabilities: mocks.probeMediaCapabilities,
 }))
 vi.mock('@mx-player-max/platform', () => ({ createPlatformPolicy: () => ({ adjustScores: () => [] }) }))

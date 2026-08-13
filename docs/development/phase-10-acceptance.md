@@ -1,64 +1,120 @@
 # Phase 10 验收记录
 
-日期：2026-08-10
+日期：2026-08-12
 
 ## 实现状态
 
-Phase 10 当前交付 `@mx-player-max/decoder-wasm` 的可测试 Manager 和 Codec 插件边界：
+Phase 10.2 单 Codec 垂直切片已实现，等待子阶段评审。Phase 10 总体没有完成：10.3 其余
+视频 Codec、10.4 WASM 音频、10.5 FFmpeg 与发布许可审查均保持 pending。
 
-- `WasmDecoderManifest` 校验构建来源、版本、变体 URL、SHA-256、体积、Codec 能力、
-  profile/level、输出像素格式、位深、许可证、编译器、flags、专利风险和 review 状态。
-- Manifest 拒绝未知字段并返回深度冻结的规范化数据。Registry 在调用插件匹配函数前
-  强制核对 manifest Codec 与视频/音频轨道能力，再按优先级和 ID 稳定排序。
-- Manager 默认只向策略层输出 review 已批准插件的 `WasmDecoderDeclaration`，不会让
-  策略选择随后必然被发布门禁拒绝的资产。
-- Manager 只在 WASM 已被策略选中后运行，按 `threaded → simd → single` 选择变体，
-  非隔离页面不会请求 threaded。
-- Loader 支持 HTTP(S) base path、内存/Cache Storage、SHA-256、失败记忆、并发去重和
-  `AbortSignal`；拒绝 URL 凭据和重定向，哈希、编译、插件初始化失败逐候选原子回退。
-- Manager 管理已创建实例，`close()` 和实例 `close()` 均幂等，并在关闭后拒绝新的注册/加载。
-- 全体已批准插件没有兼容构建时返回 `WASM_VARIANT_UNAVAILABLE`；实际尝试的候选全部
-  失败时才返回带安全 attempt 摘要的 `WASM_ALL_VARIANTS_FAILED`。
+本次交付范围固定为 restricted libvpx VP8：
 
-本阶段不包含真实 OpenH264、dav1d、libvpx、libde265、VVdeC 或 FFmpeg 二进制，不接入
-Core Custom Pipeline，也不宣称任何真实 Codec 已在浏览器中可播放。二进制发布仍必须
-完成许可证、专利和供应链审查。
+- 上游 libvpx `v1.15.2`，commit `d168454ecd099805c675d4a98c66f4891373302a`。
+- 仅支持 video-only VP8 profile 0、8-bit I420；不包含 VP9、AV1、H.264、HEVC、VVC 或音频。
+- `BrowserWasmDecoderRuntime` 使用真实 `WebAssembly.compile()` / `instantiate()`。
+- MXWF Frame ABI v1 固定 descriptor、I420 plane/stride、visible/display rect、微秒时间、颜色
+  metadata、frame token 和必要复制边界。
+- `@mx-player-max/decoder-worker` 复用既有 session/request identity、epoch、reset、flush、
+  transferable `VideoFrame`、旧帧关闭和错误清洗控制面。
+- Core 只有在显式 `wasmBaseUrl` 时向 `CapabilityContext` 注入 restricted VP8 declaration；
+  普通 HTMLVideo/WebCodecs 探测阶段使用 `includeWasm:false`，只有 WASM candidate 初始化时才
+  调用 `detectWasmCapabilities()`。
+- WebCodecs candidate 初始化失败后由同一个原子候选控制器回退 WASM。隔离环境 threaded
+  初始化失败后由 Manager 顺序回退 SIMD/single，失败 candidate 不提交事件或旧 epoch 画面。
+- 无音轨 Custom 路径在首个可交付视频帧到达时锚定墙钟，避免真实软件解码启动延迟使首批
+  帧全部被调度器判为 late drop。
 
-## 自动化验证
+## 资产与供应链
+
+Review 结论为 `restricted`，不是 `approved`。BSD-3-Clause 全文保存在
+`packages/decoder-wasm-vpx/third_party/libvpx/LICENSE`；上游 `PATENTS` 的 WebM 实现专利授权
+及诉讼终止条款原文保存在同目录。该授权降低风险，但不构成独立法律意见，发布审查未完成。
+
+| Variant | Bytes | SHA-256 | 构建/运行状态 |
+|---|---:|---|---|
+| `single` | 113304 | `d8de9e34abade1d60ebd4646d98681dacf3c688d2f38dc7b1e1c15c699f1c5ba` | self-contained，zero imports |
+| `simd` | 135291 | `79e784506b25160e650c02d6d87213075188f98fda1e829a342ad4cad980853d` | `-msimd128`，zero imports |
+| `threaded` | 139725 | `422c57f2634f6e24d2745b01dcf54a4cd2da0ba079fe60f85a0377041becb07f` | real pthread/shared-memory build；10.2 无 host glue，预期初始化失败并回退 |
+
+Toolchain 与编译选项：Emscripten `4.0.15`，release commit
+`b412b6307e541b93dd93f01b61181e15c17302ec`；libvpx 配置禁用 VP9、VP8 encoder、shared、docs、
+examples、tools、tests、webm-io 和 libyuv；公共 link flags 为 `-O3`、
+`-sSUPPORT_LONGJMP=wasm`、`--no-entry`、`-sSTANDALONE_WASM=1`、`-sFILESYSTEM=0`、
+`-sALLOW_MEMORY_GROWTH=0`、`-sINITIAL_MEMORY=268435456`、`-sMALLOC=emmalloc`。
+SIMD 增加 `-msimd128`；threaded 使用 `--enable-multithread`、`-pthread` 和 decoder threads=2。
+
+当前仓库保留 `native/mxwf_vpx.c`、资产审计脚本和完整 provenance，但没有提交自动获取
+toolchain/upstream 并重建二进制的脚本。本环境没有重新编译三份资产；`audit:wasm` 只证明现有
+文件的字节数、SHA-256、imports/exports 与记录一致，不等价于可复现构建证明。发布审批前必须
+补做独立 clean-room rebuild/reproducibility review。
+
+Browser release manifest 将三个变体全部记录为 `publishable:false`，reason 固定为
+`license-and-patent-review-restricted`；没有 `.wasm` 进入 publishable `assets`。
+
+## 媒体样本
+
+- 文件：`webm-vp8-p0-8bit-642x358.webm`
+- 输出：WebM、VP8 profile 0、8-bit `yuv420p`、642x358、30000/1001 fps、1.001 s、无音频
+- 输出 bytes：45408
+- 输出 SHA-256：`31cc0a477479e3acde7e336769d068cd57d4d18fab8904ba9e44a47bab7ab95a`
+- 来源：`https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.webm`
+- 来源许可：CC0 / public-domain dedication
+- 来源 SHA-256：`c6f8a348953395598a9a73b9bab1676436410797bce9f398f4be1531d6e76dda`
+- 生成工具：FFmpeg `9.0-full_build-www.gyan.dev`
+
+完整转码命令、工具 archive hash 和来源记录位于 fixture 同目录 `PROVENANCE.md`。
+
+## 规模与聚焦测试
+
+Phase 10 Manager/Worker/VP8 实现规模：
+
+| 范围 | 源码 | 测试 |
+|---|---:|---:|
+| `decoder-wasm` | 1320 lines / 10 TS files | 662 lines / 8 TS files |
+| `decoder-worker` | 499 lines / 1 TS file | 156 lines / 1 TS file |
+| `decoder-wasm-vpx` | 736 TS + 389 C lines | 454 lines / 4 TS files |
+
+聚焦自动化结果：types 22、capabilities 19、strategy 13、decoder-wasm 34、decoder-worker 6、
+decoder-wasm-vpx 13、decoder-webcodecs 57、core 124，合计 288 tests。全仓 `pnpm test` 精确为
+491 tests。分布为：types 22、audio 32、capabilities 19、decoder-wasm 34、decoder-worker 6、
+demux 44、platform 12、postprocess 16、renderers 16、strategy 13、subtitles 46、
+decoder-wasm-vpx 13、decoder-webcodecs 57、core 124、sdk 4、ui 18、browser 10、react 1、vue 1、
+demo 3。真实 VP8 packet 测试经过
+仓库 Demux，使用真实 `.wasm` compile/instantiate/decode，不使用 fake packet 作为解码结论。
+
+浏览器证据：
+
+- Windows Playwright Chromium desktop：非隔离 single，WebCodecs 失败后选择 WASM，渲染非空
+  Canvas；连续两次 seek 后 epoch >= 2，队列与 decode queue <= 4，未请求 threaded。
+- Windows Playwright Chromium desktop：隔离环境先请求 threaded，初始化失败后只请求 SIMD，
+  播放与非空 Canvas 渲染不中断。
+- Windows Playwright Firefox：非隔离 single，真实样本渲染非空 Canvas，未请求 threaded。
+- Playwright WebKit 与物理 macOS Safari 最新两个稳定版本的真实 VP8 播放均未作为通过证据；
+  物理 Safari 保持 pending。
+
+## 完整自动化门禁
 
 | 命令 | 结果 |
 |---|---|
-| `pnpm --filter @mx-player-max/decoder-wasm typecheck` | passed |
-| `pnpm --filter @mx-player-max/decoder-wasm test` | passed；32 tests |
-| `pnpm --filter @mx-player-max/types test` | passed；21 tests |
-| `pnpm typecheck` | passed；17 个工作区项目完成 build + strict typecheck |
-| `pnpm test` | passed；428 tests |
-| `pnpm build` | passed；17 个工作区项目及 Demo production build |
-| `pnpm test:browser` | passed；12 tests，Chromium desktop/mobile、Firefox、WebKit |
+| `pnpm typecheck` | passed；20 个工作区项目 build + strict typecheck |
+| `pnpm test` | passed；491 tests |
+| `pnpm build` | passed；20 个工作区项目及 Demo production build |
+| `pnpm test:browser` | passed；19 passed / 5 skipped；Chromium desktop/mobile、Firefox、Playwright WebKit |
+| `pnpm --filter @mx-player-max/decoder-wasm-vpx audit:wasm` | passed；三变体 bytes/hash/imports/exports |
+| `pnpm test:release` | passed；18 tests，含 restricted VP8 release exclusion |
+| `pnpm verify:packages` | passed；19 publishable packages 的 package/tarball 结构 |
 | `git diff --check` | passed |
 
-Manager 测试使用 fake fetcher/cache/runtime/plugin，覆盖 manifest 失败、Registry 重复
-ID和优先级、隔离与非隔离变体选择、非隔离不下载 threaded、Cache/URL/SHA-256、坏资源
-失败记忆、in-flight 去重、编译/插件初始化回退、review gate、策略声明过滤、无兼容变体、
-Abort、重定向拒绝、注册时不可变元数据快照、跨 Manager 失败隔离、无效实例清理以及
-实例关闭。32 项 decoder-wasm 测试包含 Memory 与 Cache Storage 两种缓存适配器。
+## Pending 门禁
 
-全仓 428 项测试分布为：types 21、audio 32、capabilities 17、decoder-wasm 32、
-decoder-webcodecs 57、demux 44、platform 3、postprocess 16、renderers 16、strategy 11、
-subtitles 46、core 109、sdk 4、ui 18、react 1、vue 1。
+- [pending] Phase 10.2 子阶段人工评审。
+- [pending] clean-room 可复现 WASM 重建与独立许可证/专利发布审查。
+- [pending] 物理 macOS Safari 最新两个稳定版本及 latest-two-stable 浏览器矩阵。
+- [pending] 长时间 seek/内存/CPU/功耗压力测试；当前仅有有界队列、旧 epoch 和 debug live bytes 自动化。
+- [pending] Phase 10.3 其他视频 Codec 插件。
+- [pending] Phase 10.4 WASM 音频与 PCM ABI。
+- [pending] Phase 10.5 FFmpeg 兜底与发布许可收口。
+- [pending] 将任何 Codec 二进制标记为 `approved` 或发布到 npm/CDN/Release。
 
-## 边界审计
-
-- `@mx-player-max/decoder-wasm` 的唯一生产依赖为 `@mx-player-max/types`；源码没有跨包内部引用。
-- 仓库中的 `.wasm` 文件计数为 0，本阶段没有新增或伪装任何 Codec 二进制。
-- 公共入口构建出 `dist/index.js` 与 `dist/index.d.ts`；全仓 Bundler 构建通过。
-- Core、SDK、Worker、AudioWorklet 和 Demo 未接入 Manager，不宣称真实播放能力。
-
-## 后续门禁
-
-- 真实 Codec 二进制、Worker/像素输出适配、Core fallback 和 Chrome/Firefox/Safari 实际
-  解码矩阵留到后续子阶段。
-- 本次 Playwright 结果是 Windows 上的 Chromium/Firefox/WebKit UI 回归，不替代最新两个
-  稳定大版本和物理 macOS Safari 的真实 WASM Codec、跨源隔离/非隔离播放验收。
-- 任何 WASM 发布前必须补齐每个二进制的来源 URL、上游 commit、编译器/flags、NOTICE、
-  许可证结论、专利风险说明、真实大小和 SHA-256。
+自动化通过只证明 Phase 10.2 实现满足当前仓库门禁，不把 VP8 review 状态从 `restricted` 改为
+`approved`，也不把本子阶段标记为已人工评审或可发布。

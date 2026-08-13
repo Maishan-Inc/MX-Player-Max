@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('@mx-player-max/demux', () => ({ createRangeLoader: mocks.createRangeLoader, probeContainer: mocks.probeContainer }))
-vi.mock('@mx-player-max/capabilities', () => ({ createCapabilityContext: (snapshot: CapabilitySnapshot, media: MediaCapabilityReport) => ({ snapshot, media }), detectCapabilities: mocks.detectCapabilities, probeMediaCapabilities: mocks.probeMediaCapabilities }))
+vi.mock('@mx-player-max/capabilities', () => ({ createCapabilityContext: (snapshot: CapabilitySnapshot, media: MediaCapabilityReport) => ({ snapshot, media }), detectCapabilities: mocks.detectCapabilities, detectWasmCapabilities: async (snapshot: CapabilitySnapshot) => snapshot, probeMediaCapabilities: mocks.probeMediaCapabilities }))
 vi.mock('@mx-player-max/platform', () => ({ createPlatformPolicy: mocks.createPlatformPolicy }))
 vi.mock('@mx-player-max/strategy', () => ({ createStrategyEngine: mocks.createStrategyEngine }))
 
@@ -101,6 +101,7 @@ describe('MediaEngine native load orchestration', () => {
     [ErrorCodes.RANGE_CORS_FAILED, ErrorCodes.NATIVE_CORS_FAILED],
     [ErrorCodes.RANGE_NETWORK_FAILED, ErrorCodes.NATIVE_NETWORK_FAILED],
     [ErrorCodes.RANGE_ABORTED, ErrorCodes.NATIVE_ABORTED],
+    [ErrorCodes.CONTAINER_TRUNCATED, ErrorCodes.CONTAINER_TRUNCATED],
   ])('maps %s probe failures to %s', async (inputCode, outputCode) => {
     mocks.probeContainer.mockRejectedValueOnce({ code: inputCode, message: 'private probe detail', recoverable: true })
     const engine = createMediaEngine()

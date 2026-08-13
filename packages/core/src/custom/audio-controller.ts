@@ -187,7 +187,13 @@ export class CustomAudioController {
   async requestPlay(): Promise<void> {
     this.#ensureOpen()
     this.#requestedPlaying = true
-    if (!this.enabled) { this.#clock.play(); this.#callbacks.onStarted(); return }
+    if (!this.enabled) {
+      if (this.#clockAnchored) {
+        this.#clock.play()
+        this.#callbacks.onStarted()
+      }
+      return
+    }
     try {
       await this.#output?.resumeContext()
       this.#startIfReady()
@@ -207,6 +213,15 @@ export class CustomAudioController {
   setPlaybackRate(rate: number): void { this.#clock.setPlaybackRate(rate); this.#output?.setPlaybackRate(rate, this.#epoch) }
   setVolume(value: number): void { this.#output?.setVolume(value) }
   setMuted(value: boolean): void { this.#output?.setMuted(value) }
+
+  anchorVideoFrame(timestamp: Micros, epoch: number): void {
+    if (this.enabled || this.#closed || epoch !== this.#epoch || this.#clockAnchored) return
+    this.#clock.seek(timestamp, epoch)
+    this.#clockAnchored = true
+    if (!this.#requestedPlaying) return
+    this.#clock.play()
+    this.#callbacks.onStarted()
+  }
 
   async reset(epoch: number, target: Micros): Promise<void> {
     this.#ensureOpen()

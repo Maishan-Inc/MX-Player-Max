@@ -1,5 +1,6 @@
 param(
   [int]$Port = 4176,
+  [int]$NonIsolatedPort = 4177,
   [string]$Image = 'mx-player-max-demo:phase-12-local',
   [string]$ContainerName = 'mx-player-max-phase12-smoke'
 )
@@ -7,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $smokeLabel = 'com.mx-player-max.smoke=phase12'
 $baseUrl = "http://127.0.0.1:$Port"
+$nonIsolatedBaseUrl = "http://127.0.0.1:$NonIsolatedPort"
 $containerId = $null
 
 function Invoke-Docker {
@@ -45,6 +47,7 @@ try {
     'run', '--detach', '--name', $ContainerName,
     '--label', $smokeLabel,
     '--publish', "127.0.0.1:${Port}:80",
+    '--publish', "127.0.0.1:${NonIsolatedPort}:8080",
     $Image
   )
 
@@ -62,6 +65,7 @@ try {
   Assert-Equal (Get-HeaderValue $htmlResponse 'Cross-Origin-Opener-Policy') 'same-origin' 'HTML COOP'
   Assert-Equal (Get-HeaderValue $htmlResponse 'Cross-Origin-Embedder-Policy') 'require-corp' 'HTML COEP'
   Assert-Equal (Get-HeaderValue $htmlResponse 'X-Content-Type-Options') 'nosniff' 'HTML nosniff'
+  Assert-Match (Get-HeaderValue $htmlResponse 'Content-Security-Policy') "object-src 'none'.*base-uri 'none'.*frame-ancestors 'none'" 'HTML CSP'
   $htmlCache = Get-HeaderValue $htmlResponse 'Cache-Control'
   Assert-Match $htmlCache '^no-cache$' 'HTML cache policy'
   if ($htmlCache -match 'immutable') { throw 'HTML navigation must not use immutable caching.' }
@@ -99,15 +103,17 @@ const { chromium } = require('@playwright/test');
     const page = await browser.newPage();
     await page.goto(process.argv[1], { waitUntil: 'domcontentloaded' });
     if (await page.evaluate(() => globalThis.crossOriginIsolated) !== true) throw new Error('crossOriginIsolated was not true');
+    await page.goto(process.argv[2], { waitUntil: 'domcontentloaded' });
+    if (await page.evaluate(() => globalThis.crossOriginIsolated) !== false) throw new Error('non-isolated endpoint was isolated');
   } finally {
     await browser.close();
   }
 })().catch((error) => { console.error(error.message); process.exit(1); });
 '@
-  & pnpm exec node -e $browserCheck $baseUrl
+  & pnpm exec node -e $browserCheck $baseUrl $nonIsolatedBaseUrl
   if ($LASTEXITCODE -ne 0) { throw 'Playwright crossOriginIsolated check failed.' }
 
-  Write-Output "Docker smoke passed: headers, MIME, Range, 404, and crossOriginIsolated at $baseUrl"
+  Write-Output "Docker smoke passed: CSP, headers, MIME, Range, 404, isolated $baseUrl, and non-isolated $nonIsolatedBaseUrl"
 } finally {
   if ($containerId) {
     try {

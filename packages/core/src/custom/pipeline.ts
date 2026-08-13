@@ -1,9 +1,8 @@
 import {
   createVideoDecoderConfig,
   VideoDecoderAdapter,
-  type VideoDecoderAdapterCallbacks,
-  type VideoDecoderAdapterLike,
 } from '@mx-player-max/decoder-webcodecs'
+import type { VideoDecoderAdapterCallbacks, VideoDecoderAdapterLike } from '@mx-player-max/decoder-worker'
 import type {
   AudioClockSnapshot,
   CapabilitySnapshot,
@@ -41,6 +40,8 @@ export interface CustomPipelineCallbacks {
 export interface CustomPipelineDependencies {
   createDemuxSession?(options: ResolvedCustomVideoOptions): DemuxSessionLike
   createDecoder?(callbacks: VideoDecoderAdapterCallbacks): VideoDecoderAdapterLike
+  decoderConfig?: VideoDecoderConfig
+  decoderConfigSupported?: boolean
   audio?: CustomAudioControllerDependencies
 }
 
@@ -90,6 +91,7 @@ export class CustomMediaPipeline {
   readonly #options: ResolvedCustomVideoOptions
   readonly #videoTrack: TrackInfo
   readonly #config: VideoDecoderConfig
+  readonly #configSupported: boolean
   readonly #demux: DemuxSessionLike
   readonly #decoder: VideoDecoderAdapterLike
   readonly #queue: VideoFrameQueue
@@ -136,7 +138,10 @@ export class CustomMediaPipeline {
     const videoTrack = options.media.tracks.find((track) => track.kind === 'video')
     if (!videoTrack) throw createEngineError(ErrorCodes.CUSTOM_VIDEO_TRACK_REQUIRED, 'A video track is required for frame access', false)
     this.#videoTrack = videoTrack
-    this.#config = createVideoDecoderConfig(videoTrack, options.capabilityReport, this.#options)
+    this.#config = options.dependencies?.decoderConfig
+      ?? createVideoDecoderConfig(videoTrack, options.capabilityReport, this.#options)
+    this.#configSupported = options.dependencies?.decoderConfigSupported
+      ?? options.capabilityReport.webCodecs.video.status === 'supported'
     this.#queue = new VideoFrameQueue(this.#options)
     this.#demux = options.dependencies?.createDemuxSession?.(this.#options)
       ?? new DemuxWorkerSession({ operationTimeoutMs: this.#options.operationTimeoutMs })
@@ -220,7 +225,7 @@ export class CustomMediaPipeline {
     const workerTrack = metadata.tracks.find((track) => track.id === this.#videoTrack.id && track.kind === 'video')
     if (!workerTrack) throw createEngineError(ErrorCodes.CUSTOM_VIDEO_TRACK_REQUIRED, 'The Demux Worker did not expose the selected video track', false)
     await this.#awaitDecoderOperation(
-      this.#decoder.configure(this.#config, this.#report.webCodecs.video.status === 'supported', this.#epoch),
+      this.#decoder.configure(this.#config, this.#configSupported, this.#epoch),
       this.#epoch,
       ErrorCodes.WEBCODECS_CONFIGURE_FAILED,
       'VideoDecoder configuration timed out',
@@ -321,7 +326,7 @@ export class CustomMediaPipeline {
       )
       this.#ensureEpoch(seekEpoch)
       await this.#awaitDecoderOperation(
-        this.#decoder.configure(this.#config, this.#report.webCodecs.video.status === 'supported', seekEpoch),
+        this.#decoder.configure(this.#config, this.#configSupported, seekEpoch),
         seekEpoch,
         ErrorCodes.WEBCODECS_CONFIGURE_FAILED,
         'VideoDecoder reconfiguration timed out',
@@ -555,6 +560,7 @@ export class CustomMediaPipeline {
       this.#droppedPreSeekFrames += 1
       return
     }
+    this.#audio.anchorVideoFrame(timestamp, epoch)
     const value: DecodedVideoFrame = { frame, timestamp, duration, epoch }
     const reader = this.#takeReader(epoch)
     if (reader) {

@@ -1,5 +1,5 @@
 import { ErrorCodes } from '@mx-player-max/types'
-import { DemuxError } from '../range/errors'
+import { DemuxError, isDemuxError } from '../range/errors'
 import type { RangeLoader } from '../range/types'
 import { MatroskaContainerAdapter } from './ebml/matroska-adapter'
 import { WebMContainerAdapter } from './ebml/webm-adapter'
@@ -27,6 +27,7 @@ export async function probeContainer(reader: RangeLoader, options: ProbeContaine
   try {
     headerResult = await reader.read({ start: 0, endExclusive: 12 })
   } catch (cause) {
+    if (isDemuxError(cause) && cause.code !== ErrorCodes.RANGE_INVALID) throw cause
     throw new DemuxError(ErrorCodes.CONTAINER_TRUNCATED, 'Source is too short for container identification', { cause })
   }
   const adapters = options.adapters ?? createDefaultContainerAdapters(options.limits)

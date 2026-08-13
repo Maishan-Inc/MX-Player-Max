@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CapabilitySnapshot, MediaDescriptor, WebGpuFeatureSnapshot } from '@mx-player-max/types'
 import {
   CAPABILITY_SCHEMA_VERSION,
+  createCapabilityContext,
   createDefaultProbeAdapter,
   detectCapabilities,
+  detectWasmCapabilities,
   probeMediaCapabilities,
   type CapabilityCache,
   type CapabilityProbeAdapter,
@@ -72,6 +74,44 @@ class MemoryCache implements CapabilityCache {
 }
 
 describe('detectCapabilities', () => {
+  it('defers isolation, shared memory, SIMD and threads until a WASM candidate is selected', async () => {
+    const isolation = vi.fn(() => true)
+    const sharedMemory = vi.fn(() => true)
+    const simd = vi.fn(() => true)
+    const threads = vi.fn(() => true)
+    const adapter = createAdapter({
+      isCrossOriginIsolated: isolation,
+      hasSharedArrayBuffer: sharedMemory,
+      probeWasmSimd: simd,
+      probeWasmThreads: threads,
+    })
+    const snapshot = await detectCapabilities({
+      adapter, cache: new MemoryCache(), sdkVersion: 'test-deferred-wasm', includeWasm: false,
+    })
+
+    expect(snapshot).toMatchObject({ crossOriginIsolated: false, sharedArrayBuffer: false, wasmSimd: false, wasmThreads: false })
+    expect(isolation).not.toHaveBeenCalled()
+    expect(sharedMemory).not.toHaveBeenCalled()
+    expect(simd).not.toHaveBeenCalled()
+    expect(threads).not.toHaveBeenCalled()
+
+    const hydrated = await detectWasmCapabilities(snapshot, { adapter })
+    expect(hydrated).toMatchObject({ crossOriginIsolated: true, sharedArrayBuffer: true, wasmSimd: true, wasmThreads: true })
+    expect(isolation).toHaveBeenCalledOnce()
+    expect(sharedMemory).toHaveBeenCalledOnce()
+    expect(simd).toHaveBeenCalledOnce()
+    expect(threads).toHaveBeenCalledOnce()
+  })
+  it('copies WASM declarations into the capability context', async () => {
+    const adapter = createAdapter()
+    const snapshot = await detectCapabilities({ adapter, cache: new MemoryCache(), sdkVersion: 'test-wasm-context' })
+    const report = await probeMediaCapabilities(createMedia(), { adapter, cache: new MemoryCache(), snapshot, sdkVersion: 'test-wasm-context' })
+    const declarations = [{ codec: 'vp8', supportsVideo: true, supportsAudio: false }] as const
+    const context = createCapabilityContext(snapshot, report, declarations)
+
+    expect(context.wasmDecoders).toEqual(declarations)
+    expect(context.wasmDecoders).not.toBe(declarations)
+  })
   it('does not fetch media or construct decoders through the default adapter', async () => {
     const fetchSpy = vi.fn()
     const videoDecoderConstructor = vi.fn()

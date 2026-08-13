@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "smoke": {
+    "firstFrameMsMax": 2000,
+    "firstAudioMsMax": 2500,
+    "firstSubtitleMsMax": 2500,
+    "seekLatencyMsMax": 1000,
+    "bufferedAheadMicrosMin": 1,
+    "droppedFramesMax": 10,
+    "avDriftMicrosMax": 50000,
+    "cpuTimeMsMax": 2000,
+    "memoryBytesMax": 536870912,
+    "droppedFrameRatioMax": 0.1,
+    "memoryGrowthBytesMax": 16777216,
+    "runDurationMsMin": 1000
+  },
+  "longRun30m": {
+    "firstFrameMsMax": 2000,
+    "firstAudioMsMax": 2500,
+    "firstSubtitleMsMax": 2500,
+    "seekLatencyMsMax": 1000,
+    "bufferedAheadMicrosMin": 1,
+    "droppedFramesMax": 2700,
+    "runDurationMsMin": 1800000,
+    "avDriftMicrosMax": 50000,
+    "cpuTimeMsMax": 900000,
+    "memoryBytesMax": 1073741824,
+    "memoryGrowthBytesMax": 67108864,
+    "droppedFrameRatioMax": 0.05
+  }
+}

@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "evidenceLevel": "playwright-automation",
+  "scenario": "smoke",
+  "backend": "html-video",
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+    "platform": "Win32",
+    "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "crossOriginIsolated": false,
+    "devicePixelRatio": 1,
+    "browserName": "chromium",
+    "browserVersion": "151.0.7922.34",
+    "os": "Windows_NT 10.0.26100 x64"
+  },
+  "sample": {
+    "id": "webm-vp8-p0-8bit-opus",
+    "path": "/quality-media/webm-vp8-p0-8bit-opus.webm",
+    "sha256": "e9e8baf10f81588a257bffe147648c31f5a0c5e5a52b57888e935917749d13b8"
+  },
+  "metrics": {
+    "firstFrameMs": {
+      "value": 709.5,
+      "reason": null
+    },
+    "firstAudioMs": {
+      "value": null,
+      "reason": "Native playback exposes no first-audible-sample timestamp"
+    },
+    "firstSubtitleMs": {
+      "value": 1594.2999999970198,
+      "reason": null
+    },
+    "seekLatencyMs": {
+      "value": 56.70000000298023,
+      "reason": null
+    },
+    "bufferedAheadMicros": {
+      "value": 783310,
+      "reason": null
+    },
+    "droppedFrames": {
+      "value": 1,
+      "reason": null
+    },
+    "avDriftMicros": {
+      "value": null,
+      "reason": "Native audio/video clocks are not independently observable"
+    },
+    "cpuTimeMs": {
+      "value": null,
+      "reason": "Browser automation exposes no process CPU metric"
+    },
+    "memoryBytes": {
+      "value": 10000000,
+      "reason": null
+    },
+    "memoryGrowthBytes": {
+      "value": 0,
+      "reason": null
+    },
+    "powerProxyDroppedFrameRatio": {
+      "value": 0.010309278350515464,
+      "reason": null
+    },
+    "runDurationMs": {
+      "value": 1023.7000000029802,
+      "reason": null
+    }
+  },
+  "memorySamples": [
+    {
+      "elapsedMs": 407.29999999701977,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 1669.8999999985099,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 1871.7999999970198,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 2072.39999999851,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 2274.0999999940395,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 2475.1999999955297,
+      "bytes": 10000000
+    }
+  ],
+  "errorCode": null,
+  "collectedAt": "2026-08-12T16:41:57.174Z"
+}

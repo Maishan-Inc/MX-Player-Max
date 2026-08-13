@@ -1,4 +1,4 @@
-import type { CapabilityContext, CapabilitySnapshot, MediaCapabilityReport, MediaDescriptor } from '@mx-player-max/types'
+import type { CapabilityContext, CapabilitySnapshot, MediaCapabilityReport, MediaDescriptor, WasmDecoderDeclaration } from '@mx-player-max/types'
 import {
   defaultCapabilityCache,
   isCapabilitySnapshot,
@@ -14,7 +14,7 @@ import {
   type MediaCapabilityProbeOptions,
 } from './contracts'
 import { createDefaultProbeAdapter } from './default-adapter'
-import { probeEnvironmentSnapshot, readEnvironmentIdentity } from './environment'
+import { hydrateWasmCapabilities, probeEnvironmentSnapshot, readEnvironmentIdentityWithWasm } from './environment'
 import { createMediaCapabilityQuery, probeMediaReport } from './media-report'
 
 export {
@@ -35,8 +35,9 @@ export async function detectCapabilities(options: CapabilityProbeOptions = {}): 
   const adapter = options.adapter ?? createDefaultProbeAdapter()
   const sdkVersion = options.sdkVersion ?? DEFAULT_SDK_VERSION
   const cache = options.cache ?? defaultCapabilityCache
-  const identity = readEnvironmentIdentity(adapter)
-  const environmentKey = makeCacheKey('snapshot-index', sdkVersion, identity)
+  const includeWasm = options.includeWasm !== false
+  const identity = readEnvironmentIdentityWithWasm(adapter, includeWasm)
+  const environmentKey = makeCacheKey('snapshot-index', sdkVersion, { identity, includeWasm })
 
   if (!options.forceRefresh) {
     const snapshotKey = readCache(cache, environmentKey, isString)
@@ -46,7 +47,7 @@ export async function detectCapabilities(options: CapabilityProbeOptions = {}): 
     if (pending) return pending
   }
 
-  const task = probeEnvironmentSnapshot(adapter, sdkVersion)
+  const task = probeEnvironmentSnapshot(adapter, sdkVersion, includeWasm)
   pendingSnapshots.set(environmentKey, task)
   try {
     const snapshot = await task
@@ -64,6 +65,14 @@ export async function detectCapabilities(options: CapabilityProbeOptions = {}): 
   } finally {
     pendingSnapshots.delete(environmentKey)
   }
+}
+
+export async function detectWasmCapabilities(
+  snapshot: CapabilitySnapshot,
+  options: Pick<CapabilityProbeOptions, 'adapter'> = {},
+): Promise<CapabilitySnapshot> {
+  const adapter = options.adapter ?? createDefaultProbeAdapter()
+  return hydrateWasmCapabilities(snapshot, adapter)
 }
 
 export async function probeMediaCapabilities(
@@ -98,6 +107,11 @@ export async function probeMediaCapabilities(
 export function createCapabilityContext(
   snapshot: CapabilitySnapshot,
   media: MediaCapabilityReport,
+  wasmDecoders?: readonly WasmDecoderDeclaration[],
 ): CapabilityContext {
-  return { snapshot, media }
+  return {
+    snapshot,
+    media,
+    ...(wasmDecoders === undefined ? {} : { wasmDecoders: [...wasmDecoders] }),
+  }
 }

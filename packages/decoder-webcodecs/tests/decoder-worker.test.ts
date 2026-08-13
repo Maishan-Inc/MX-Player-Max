@@ -44,7 +44,7 @@ describe('VideoDecoder Worker protocol', () => {
     const controller = new VideoDecoderWorkerController({
       postMessage(message, transfer = []) { messages.push(message); transfers.push(transfer) },
     }, { createAdapter: (value) => { callbacks = value; return fake } })
-    await controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c', supported: true, config: config() })
+    await controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c', config: workerConfig() })
     await controller.handle({ command: 'decode', sessionId: 's', epoch: 0, requestId: 'd', packet: packet() })
     const frame = { timestamp: 0, duration: 33_333, close: vi.fn() } as unknown as VideoFrame
     callbacks.onFrame(frame, 0)
@@ -57,7 +57,7 @@ describe('VideoDecoder Worker protocol', () => {
     const fake = new FakeAdapter()
     let callbacks!: VideoDecoderAdapterCallbacks
     const controller = new VideoDecoderWorkerController({ postMessage: vi.fn() }, { createAdapter: (value) => { callbacks = value; return fake } })
-    await controller.handle({ command: 'configure', sessionId: 's', epoch: 2, requestId: 'c', supported: true, config: config() })
+    await controller.handle({ command: 'configure', sessionId: 's', epoch: 2, requestId: 'c', config: workerConfig() })
     const close = vi.fn()
     callbacks.onFrame({ timestamp: 0, duration: null, close } as unknown as VideoFrame, 1)
     expect(close).toHaveBeenCalledOnce()
@@ -68,7 +68,7 @@ describe('VideoDecoder Worker protocol', () => {
     const fake = new FakeAdapter()
     fake.configure.mockRejectedValueOnce(Object.assign(new Error('private'), { name: 'OperationError' }))
     const controller = new VideoDecoderWorkerController({ postMessage: (message) => messages.push(message) }, { createAdapter: () => fake })
-    await controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c', supported: true, config: config() })
+    await controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c', config: workerConfig() })
     expect(messages[0]).toMatchObject({ type: 'error', error: { code: ErrorCodes.WEBCODECS_CONFIGURE_FAILED } })
     expect(JSON.stringify(messages[0])).not.toContain('OperationError')
   })
@@ -83,7 +83,7 @@ describe('VideoDecoder Worker protocol', () => {
         },
       },
     )
-    await expect(controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c', supported: true, config: config() })).resolves.toBeUndefined()
+    await expect(controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c', config: workerConfig() })).resolves.toBeUndefined()
     expect(messages[0]).toMatchObject({
       type: 'error',
       sessionId: 's',
@@ -97,10 +97,10 @@ describe('VideoDecoder Worker protocol', () => {
     const messages: DecoderWorkerResponse[] = []
     const fake = new FakeAdapter()
     const controller = new VideoDecoderWorkerController({ postMessage: (message) => messages.push(message) }, { createAdapter: () => fake })
-    await controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c0', supported: true, config: config() })
+    await controller.handle({ command: 'configure', sessionId: 's', epoch: 0, requestId: 'c0', config: workerConfig() })
     await controller.handle({ command: 'flush', sessionId: 's', epoch: 0, requestId: 'f0' })
     await controller.handle({ command: 'reset', sessionId: 's', epoch: 1, requestId: 'r1' })
-    await controller.handle({ command: 'configure', sessionId: 's', epoch: 1, requestId: 'c1', supported: true, config: config() })
+    await controller.handle({ command: 'configure', sessionId: 's', epoch: 1, requestId: 'c1', config: workerConfig() })
     await controller.handle({ command: 'close', sessionId: 's', epoch: 2, requestId: 'x2' })
     expect(messages.map((message) => message.type)).toEqual(['configured', 'flushed', 'reset', 'configured', 'closed'])
     expect(fake.reset).toHaveBeenCalledWith(1)
@@ -135,4 +135,5 @@ describe('VideoDecoder Worker protocol', () => {
 })
 
 function config(): VideoDecoderConfig { return { codec: 'vp8', codedWidth: 640, codedHeight: 360 } }
+function workerConfig() { return { kind: 'webcodecs' as const, config: config(), supported: true } }
 function packet(): DemuxPacket { return { trackId: 1, kind: 'video', timestamp: 0, duration: 33_333, keyframe: true, data: Uint8Array.of(1) } }

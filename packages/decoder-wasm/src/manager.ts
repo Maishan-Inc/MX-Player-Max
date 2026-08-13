@@ -6,6 +6,7 @@ import type {
 import { ErrorCodes } from '@mx-player-max/types'
 import type {
   WasmDecoderAssetCache,
+  WasmDecoderCallbacks,
   WasmDecoderInstance,
   WasmDecoderLoadOptions,
   WasmDecoderManager,
@@ -21,16 +22,12 @@ import { createVerifiedWasmAssetLoader, resolveWasmAssetUrl } from './loader'
 import { normalizeWasmCodec, validateWasmDecoderManifest } from './manifest'
 import { selectWasmVariants } from './variants'
 import { WasmDecoderRegistry } from './registry'
+import { createBrowserWasmDecoderRuntime } from './runtime'
 
-const defaultRuntime: WasmDecoderRuntime = {
-  async compile(bytes) {
-    if (typeof WebAssembly === 'undefined' || typeof WebAssembly.compile !== 'function') {
-      throw new Error('WebAssembly.compile is unavailable')
-    }
-    const copy = new Uint8Array(bytes.byteLength)
-    copy.set(bytes)
-    return WebAssembly.compile(copy.buffer as ArrayBuffer)
-  },
+const NOOP_CALLBACKS: WasmDecoderCallbacks = {
+  onFrame(frame) { frame.close() },
+  onError() {},
+  onDequeue() {},
 }
 
 export class DefaultWasmDecoderManager implements WasmDecoderManager {
@@ -53,7 +50,7 @@ export class DefaultWasmDecoderManager implements WasmDecoderManager {
     this.#cache = createManagerSessionCache(
       options.cache ?? createCacheStorageWasmCache() ?? createMemoryWasmCache(),
     )
-    this.#runtime = options.runtime ?? defaultRuntime
+    this.#runtime = options.runtime ?? createBrowserWasmDecoderRuntime()
     this.#assetLoader = createVerifiedWasmAssetLoader({
       baseUrl: this.#baseUrl,
       cache: this.#cache,
@@ -138,6 +135,8 @@ export class DefaultWasmDecoderManager implements WasmDecoderManager {
                 track,
                 capabilities,
                 signal: linked.signal,
+                runtime: this.#runtime,
+                callbacks: options.callbacks ?? NOOP_CALLBACKS,
               })
             } catch (cause) {
               if (isWasmAbort(cause, linked.signal)) throw createWasmError(ErrorCodes.WASM_ABORTED, 'The WASM plugin initialization was aborted', true)
@@ -214,8 +213,11 @@ function validateInstance(instance: WasmDecoderInstance, variant: WasmDecoderIns
     typeof instance !== 'object'
     || instance === null
     || instance.variant !== variant
+    || !Number.isSafeInteger(instance.decodeQueueSize)
+    || instance.decodeQueueSize < 0
     || typeof instance.decode !== 'function'
     || typeof instance.flush !== 'function'
+    || typeof instance.reset !== 'function'
     || typeof instance.close !== 'function'
   ) {
     const candidate = instance as Partial<WasmDecoderInstance> | null
@@ -238,13 +240,18 @@ function createManagedInstance(
     variant,
     pluginId,
     ...(manifest === undefined ? {} : { manifest }),
-    decode(packet, timestamp, key) {
+    get decodeQueueSize() { return inner.decodeQueueSize },
+    decode(packet) {
       if (closed) throw createWasmError(ErrorCodes.WASM_CLOSED, 'The WASM decoder instance is closed', false)
-      inner.decode(packet, timestamp, key)
+      inner.decode(packet)
     },
     async flush() {
       if (closed) throw createWasmError(ErrorCodes.WASM_CLOSED, 'The WASM decoder instance is closed', false)
       await inner.flush()
+    },
+    async reset() {
+      if (closed) throw createWasmError(ErrorCodes.WASM_CLOSED, 'The WASM decoder instance is closed', false)
+      await inner.reset()
     },
     close() {
       if (closed) return

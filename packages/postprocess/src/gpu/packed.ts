@@ -30,6 +30,10 @@ export class PackedTexturePool {
     this.#usage = packedTextureUsage()
   }
 
+  get capacity(): number { return this.#capacity }
+  get allocated(): number { return this.#slots.length }
+  get inUse(): number { return this.#slots.filter((slot) => slot.inUse).length }
+
   acquire(width: number, height: number, channels: number): PackedTexture {
     if (this.#closed) throw new Error('Packed texture pool is closed')
     if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || !Number.isSafeInteger(channels) || channels <= 0 || channels > 1024) throw new Error('Invalid packed tensor dimensions')
@@ -76,4 +80,3 @@ function packedTextureUsage(): GPUTextureUsageFlags {
   if (usage) return (usage.TEXTURE_BINDING ?? 0) | (usage.STORAGE_BINDING ?? 0) | (usage.COPY_SRC ?? 0) | (usage.COPY_DST ?? 0)
   return 0x04 | 0x08 | 0x01 | 0x02
 }
-

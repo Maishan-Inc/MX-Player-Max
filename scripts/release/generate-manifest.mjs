@@ -6,7 +6,7 @@ import { assertManifest, MANIFEST_SCHEMA_VERSION } from './manifest-schema.mjs'
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const defaultOutputPath = path.join(workspaceRoot, 'packages/browser/dist/manifest.json')
-const defaultAssets = [
+export const DEFAULT_RELEASE_ASSETS = [
   { packageDir: 'packages/audio', path: 'dist/worklet-processor.js', type: 'audio-worklet' },
   { packageDir: 'packages/browser', path: 'dist/index.js', type: 'esm' },
   { packageDir: 'packages/browser', path: 'dist/index.js.map', type: 'source-map' },
@@ -17,12 +17,24 @@ const defaultAssets = [
   { packageDir: 'packages/browser', path: 'dist/style.css', type: 'css' },
   { packageDir: 'packages/core', path: 'dist/custom/demux-worker-entry.js', type: 'worker' },
   { packageDir: 'packages/decoder-webcodecs', path: 'dist/worker-entry.js', type: 'worker' },
+  {
+    packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-single.wasm', type: 'wasm',
+    publishable: false, reviewStatus: 'restricted', reason: 'license-and-patent-review-restricted',
+  },
+  {
+    packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-simd.wasm', type: 'wasm',
+    publishable: false, reviewStatus: 'restricted', reason: 'license-and-patent-review-restricted',
+  },
+  {
+    packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-threaded.wasm', type: 'wasm',
+    publishable: false, reviewStatus: 'restricted', reason: 'license-and-patent-review-restricted',
+  },
 ]
 
 export async function generateManifest({
   root = workspaceRoot,
   output = defaultOutputPath,
-  assets = defaultAssets,
+  assets = DEFAULT_RELEASE_ASSETS,
   excluded = [],
 } = {}) {
   const manifest = await createManifest({ root: path.resolve(root), assets, excluded })
@@ -33,7 +45,7 @@ export async function generateManifest({
   return manifest
 }
 
-export async function createManifest({ root = workspaceRoot, assets = defaultAssets, excluded = [] } = {}) {
+export async function createManifest({ root = workspaceRoot, assets = DEFAULT_RELEASE_ASSETS, excluded = [] } = {}) {
   const browserPackage = JSON.parse(await readFile(path.join(root, 'packages/browser/package.json'), 'utf8'))
   const sdkPackage = JSON.parse(await readFile(path.join(root, 'packages/sdk/package.json'), 'utf8'))
   if (browserPackage.version !== sdkPackage.version) throw new Error('Browser and SDK versions must match')

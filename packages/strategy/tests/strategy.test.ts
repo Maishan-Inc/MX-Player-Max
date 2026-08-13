@@ -179,6 +179,23 @@ describe('strategy engine', () => {
     expect(createStrategyEngine().select(createMedia(), 'ai-enhance', createContext(snapshot)).aiPlan?.proposedTier).toBe('off')
   })
 
+  it('keeps a software fallback adapter on passthrough instead of enabling AI stages', () => {
+    const base = createSnapshot()
+    const snapshot = createSnapshot({
+      webGpuFeatures: { ...base.webGpuFeatures, isFallbackAdapter: true },
+    })
+    const selection = createStrategyEngine().select(createMedia(), 'ai-enhance', createContext(snapshot))
+
+    expect(selection.backend.kind).toBe('webcodecs')
+    expect(selection.aiPlan).toEqual({
+      interpolation: false,
+      superResolution: false,
+      proposedTier: 'off',
+      reasons: ['webgpu-unavailable-or-software'],
+    })
+    expect(selection.backend.reasons).toContain('ai-passthrough-fallback')
+  })
+
   it('does not create a decoder candidate for media with no tracks', () => {
     const media = createMedia()
     media.tracks = []
@@ -223,6 +240,22 @@ describe('strategy engine', () => {
     expect(candidate?.kind).toBe('wasm')
     expect(candidate?.reasons).toContain('wasm-simd')
     expect(candidate?.reasons).not.toContain('wasm-threads')
+  })
+
+  it('does not create a Phase 10.2 WASM candidate when an audio track lacks a declaration', () => {
+    const snapshot = createSnapshot({ webCodecsVideo: false, webCodecsAudio: false })
+    const unsupportedReport = createReport({
+      webCodecs: {
+        video: { status: 'unsupported', reasons: [], configPresent: true },
+        audio: { status: 'unsupported', reasons: [], configPresent: true },
+        playable: 'unsupported', reasons: [],
+      },
+    })
+    const context = createContext(snapshot, unsupportedReport, [
+      { codec: 'avc1.640028', supportsVideo: true, supportsAudio: false, variants: ['single'] },
+    ])
+
+    expect(createStrategyEngine().rank(createMedia(), 'frame-access', context)).toEqual([])
   })
 
   it('uses deterministic tie-breaking without mutating candidates', () => {

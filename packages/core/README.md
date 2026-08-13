@@ -31,9 +31,10 @@ NativeMediaPipeline 只消费和管理 HTMLVideoElement 及其原生音频，不
 下一候选。source/Range/container/target、显式取消、epoch 失效和 close 不进入下一候选；autoplay
 用户手势限制发生在候选已成功提交之后，也不会触发后端切换。
 
-当前 Core 真实初始化 Native 与 WebCodecs Custom。尚未接入 Core adapter 的 WASM/MSE 候选只
-记录稳定 unavailable 失败，不下载二进制或伪装为可播放。Decision Trace 不包含 URL、header、
-Codec private data、Frame、PCM、字幕正文或原始异常。
+当前 Core 真实初始化 Native、WebCodecs Custom，以及显式 `wasmBaseUrl` 下的 restricted
+libvpx VP8 video-only Custom。WASM 与 WebCodecs 注入同一个 `CustomMediaPipeline`，失败候选
+完整清理后由同一原子控制器切换。MSE 和其他 WASM Codec 仍只记录稳定 unavailable；Decision
+Trace 不包含 URL、header、Codec private data、Frame、PCM、字幕正文或原始异常。
 
 ## Phase 4/5 CustomMediaPipeline
 

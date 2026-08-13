@@ -36,8 +36,9 @@ const decoder = await manager.load(codec, track, capabilities)
 不会携带旧状态进入下一候选。相同 manifest/URL/hash 的并发资产加载共享一个请求，
 不同变体不并行下载。
 
-Manager 不负责 Demux、packet 队列、媒体 epoch、Renderer、AudioWorklet 或具体像素/PCM
-ABI。插件实例的输出适配和 Core Custom Pipeline 接入属于后续阶段。
+Manager 不负责 Demux、packet 队列、媒体 epoch、Renderer 或 AudioWorklet。Phase 10.2 的
+`@mx-player-max/decoder-wasm-vpx` 在独立包中实现 MXWF I420 ABI 与 Worker adapter；Manager
+仍只负责校验资产、编译、实例化和插件生命周期。
 
 ## 资源和发布边界
 
@@ -59,6 +60,6 @@ Cache Storage 不可用时可以使用内存缓存。
 失败时才返回 `WASM_ALL_VARIANTS_FAILED`。聚合错误的 `attempts` 只包含插件 ID、变体、
 稳定错误码和安全摘要，不包含响应正文。
 
-当前仓库不包含 OpenH264、dav1d、libvpx、libde265、VVdeC 或 FFmpeg 的 WASM 二进制。
-每个正式二进制仍必须记录上游 commit、编译器、flags、许可证、专利风险、真实体积和
-SHA-256，并在发布前完成供应链审查。
+当前仓库包含一个 `review.status === 'restricted'` 的 libvpx VP8 8-bit I420 开发切片；默认
+review gate 不会公布或加载它。OpenH264、dav1d、VP9、AV1、libde265、VVdeC、WASM 音频和
+FFmpeg 均未接入。每个正式二进制仍必须在发布前完成独立供应链、许可证与专利审查。

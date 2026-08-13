@@ -7,6 +7,27 @@ function audioPacket(timestamp: number, duration = 10_000) {
 }
 
 describe('CustomMediaPipeline audio integration', () => {
+  it('starts the video-only wall clock from the first decoded frame', async () => {
+    const harness = createCustomHarness({
+      customVideo: { maxDecodeQueueSize: 1 },
+      responses: [{ packets: [packet(250_000, { keyframe: true })], endOfStream: false }],
+    })
+    await harness.pipeline.initialize()
+    harness.decoder().autoOutput = false
+    await harness.pipeline.play()
+    await vi.waitFor(() => expect(harness.decoder().decoded).toHaveLength(1))
+    expect(harness.pipeline.audioClock).toMatchObject({ source: 'wall-clock', running: false, mediaTime: 0, epoch: 0 })
+    expect(harness.events.some((event) => event.type === 'playing')).toBe(false)
+
+    harness.decoder().emitFrame(250_000, 33_333, 0)
+    expect(harness.pipeline.audioClock).toMatchObject({ source: 'wall-clock', running: true, epoch: 0 })
+    expect(harness.pipeline.audioClock.mediaTime).toBeGreaterThanOrEqual(250_000)
+    expect(harness.events.filter((event) => event.type === 'playing')).toHaveLength(1)
+    const frame = await harness.pipeline.readVideoFrame()
+    frame?.frame.close()
+    harness.pipeline.close()
+  })
+
   it('routes audio and video packets from one Demux session and observes startup buffering', async () => {
     const harness = createCustomHarness({
       audio: true,

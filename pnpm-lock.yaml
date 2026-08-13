@@ -103,9 +103,15 @@ importers:
       '@mx-player-max/decoder-wasm':
         specifier: workspace:*
         version: link:../decoder-wasm
+      '@mx-player-max/decoder-wasm-vpx':
+        specifier: workspace:*
+        version: link:../decoder-wasm-vpx
       '@mx-player-max/decoder-webcodecs':
         specifier: workspace:*
         version: link:../decoder-webcodecs
+      '@mx-player-max/decoder-worker':
+        specifier: workspace:*
+        version: link:../decoder-worker
       '@mx-player-max/demux':
         specifier: workspace:*
         version: link:../demux
@@ -134,7 +140,32 @@ importers:
         specifier: workspace:*
         version: link:../types
 
+  packages/decoder-wasm-vpx:
+    dependencies:
+      '@mx-player-max/decoder-wasm':
+        specifier: workspace:*
+        version: link:../decoder-wasm
+      '@mx-player-max/decoder-worker':
+        specifier: workspace:*
+        version: link:../decoder-worker
+      '@mx-player-max/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@mx-player-max/demux':
+        specifier: workspace:*
+        version: link:../demux
+
   packages/decoder-webcodecs:
+    dependencies:
+      '@mx-player-max/decoder-worker':
+        specifier: workspace:*
+        version: link:../decoder-worker
+      '@mx-player-max/types':
+        specifier: workspace:*
+        version: link:../types
+
+  packages/decoder-worker:
     dependencies:
       '@mx-player-max/types':
         specifier: workspace:*

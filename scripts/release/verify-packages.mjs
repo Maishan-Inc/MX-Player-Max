@@ -174,7 +174,7 @@ function isForbiddenTarballPath(fileName) {
 }
 
 function isUnreviewedBinary(fileName) {
-  return /\.(?:wasm|onnx|bin|data|model|weights|pth|pt|zip)$/i.test(fileName)
+  return /\.(?:wasm|mxai|onnx|bin|data|model|weights|pth|pt|zip)$/i.test(fileName)
 }
 
 function requireNonEmptyString(label, field, value) {

@@ -74,8 +74,10 @@ export const videoTrack: TrackInfo = {
 export function createInstance(variant: 'threaded' | 'simd' | 'single', onClose?: () => void): WasmDecoderInstance {
   return {
     variant,
+    decodeQueueSize: 0,
     decode: () => {},
     flush: async () => {},
+    reset: async () => {},
     close: () => onClose?.(),
   }
 }

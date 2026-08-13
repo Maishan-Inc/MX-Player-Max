@@ -1,0 +1,29 @@
+{
+  "name": "@mx-player-max/decoder-wasm-vpx",
+  "version": "0.1.0",
+  "description": "Restricted libvpx VP8 WASM decoder plugin for MX-Player-Max.",
+  "publishConfig": { "access": "public" },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "repository": { "type": "git", "url": "git+https://github.com/Maishan-Inc/MX-Player-Max.git", "directory": "packages/decoder-wasm-vpx" },
+  "homepage": "https://github.com/Maishan-Inc/MX-Player-Max#readme",
+  "bugs": { "url": "https://github.com/Maishan-Inc/MX-Player-Max/issues" },
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "dependencies": {
+    "@mx-player-max/decoder-wasm": "workspace:*",
+    "@mx-player-max/decoder-worker": "workspace:*",
+    "@mx-player-max/types": "workspace:*"
+  },
+  "devDependencies": { "@mx-player-max/demux": "workspace:*" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "audit:wasm": "node scripts/audit-wasm.mjs"
+  }
+}

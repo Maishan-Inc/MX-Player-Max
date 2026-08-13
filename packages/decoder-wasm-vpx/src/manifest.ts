@@ -1,0 +1,31 @@
+import type { WasmDecoderManifest } from '@mx-player-max/decoder-wasm'
+
+export const libvpxVp8Manifest: WasmDecoderManifest = Object.freeze({
+  codec: 'vp8',
+  version: 'libvpx-v1.15.2-mxwf1',
+  variants: Object.freeze({
+    threaded: 'libvpx-vp8-threaded.wasm',
+    simd: 'libvpx-vp8-simd.wasm',
+    single: 'libvpx-vp8-single.wasm',
+  }),
+  sha256: Object.freeze({
+    threaded: '422c57f2634f6e24d2745b01dcf54a4cd2da0ba079fe60f85a0377041becb07f',
+    simd: '79e784506b25160e650c02d6d87213075188f98fda1e829a342ad4cad980853d',
+    single: 'd8de9e34abade1d60ebd4646d98681dacf3c688d2f38dc7b1e1c15c699f1c5ba',
+  }),
+  sizeBytes: Object.freeze({ threaded: 139_725, simd: 135_291, single: 113_304 }),
+  supportsVideo: true,
+  supportsAudio: false,
+  profiles: Object.freeze(['0']),
+  pixelFormats: Object.freeze(['I420']),
+  bitDepths: Object.freeze([8] as const),
+  license: 'BSD-3-Clause',
+  upstream: 'https://chromium.googlesource.com/webm/libvpx@d168454ecd099805c675d4a98c66f4891373302a',
+  compiler: 'Emscripten 4.0.15 (b412b6307e541b93dd93f01b61181e15c17302ec)',
+  buildFlags: 'VP8 decoder only; -O3; SUPPORT_LONGJMP=wasm; STANDALONE_WASM=1; FILESYSTEM=0; fixed 256 MiB memory; SIMD=-msimd128; threaded=-pthread, CONFIG_MULTITHREAD=1, decoder threads=2',
+  patentRisk: 'Google WebM implementation patent grant with termination clause; independent distribution review is incomplete',
+  review: Object.freeze({
+    status: 'restricted',
+    notes: 'Development and explicit self-hosted opt-in only. Threaded asset currently requires unavailable Emscripten host glue and must fall back. Not approved for Browser release manifests or public binary publication.',
+  }),
+})

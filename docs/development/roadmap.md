@@ -54,8 +54,10 @@
 
 建立 Codec 插件注册、单线程/SIMD/多线程选择、WASM 哈希校验、懒加载、缓存和失败回退。先接入 libvpx、dav1d、libde265、OpenH264，再接入 VVdeC 和 FFmpeg 兜底。
 
-当前状态：Manager + Plugin Factory 已完成并通过 fake runtime/plugin 自动化验收；仓库仍不
-包含上述真实 Codec 二进制，Core 接入和发布审查继续作为后续门禁。
+当前状态：10.2 已完成 restricted libvpx VP8 8-bit I420 单 Codec 垂直切片，包括真实 WASM、
+MXWF 帧 ABI、共享 Worker、Core Custom Pipeline、WebCodecs 原子回退和 Chromium/Firefox
+真实样本渲染。只有显式 `wasmBaseUrl` 才启用；Browser release manifest 明确排除三个变体。
+10.3 其余视频 Codec、10.4 WASM 音频、10.5 FFmpeg 与独立许可/专利发布审查继续 pending。
 
 ## 阶段 11：浏览器平台优化
 
@@ -69,6 +71,12 @@ Chrome/Firefox/macOS Safari Codec 与系统能力验证继续作为环境门禁�
 
 当前状态：自动化发布就绪已完成。Browser ESM/IIFE、公开 API 诊断工作台、统一发布元数据、Manifest/SHA/SRI、17 包 pack/consumer smoke、Docker 配置与 CI/Release 门禁均已交付。真实 Docker、latest-two-stable/物理 Safari、Codec/WASM 二进制审查和 npm/CDN 发布仍是明确的后续环境门禁；Phase 12 不重复实现控制逻辑。
 
-## 阶段 13：质量与扩展
+## 阶段 13：质量、安全与性能固化
 
-建立媒体样本矩阵、三浏览器自动化、性能回归、内存压力、网络异常、许可证审查和安全审计。之后再进入 HLS/DASH、PGS/VobSub、移动端和 DRM 子项目。
+当前状态：已完成 7 媒体 + 2 字幕的确定性样本矩阵、Native/WebCodecs 真实媒体 Playwright、
+postprocess 数值/资源/epoch 固化、明确 Range/Worker/Audio/GPU 错误、隔离/非隔离性能 smoke、AI/WASM
+供应链审计、CSP 与 Docker 双模式静态合同，以及 508 tests 的自动计数漂移门禁。
+
+最终发布仍 pending：Chrome/Firefox latest-two-stable 和物理 macOS Safari 未执行，30 分钟音画漂移/
+内存/CPU/功耗未执行，本机无 Docker CLI，Phase 10.2 WASM 独立审批未通过。不得用 Playwright、
+fake runtime 或短 smoke 填充这些行。完成后才进入 HLS/DASH、PGS/VobSub、移动端和 DRM 子项目。

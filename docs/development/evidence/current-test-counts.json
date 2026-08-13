@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "command": "pnpm test",
+  "packages": [
+    {
+      "name": "@mx-player-max/audio",
+      "directory": "packages/audio",
+      "testFiles": 8,
+      "tests": 32,
+      "passed": 32,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/browser",
+      "directory": "packages/browser",
+      "testFiles": 2,
+      "tests": 10,
+      "passed": 10,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/capabilities",
+      "directory": "packages/capabilities",
+      "testFiles": 1,
+      "tests": 19,
+      "passed": 19,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/core",
+      "directory": "packages/core",
+      "testFiles": 25,
+      "tests": 128,
+      "passed": 128,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/decoder-wasm",
+      "directory": "packages/decoder-wasm",
+      "testFiles": 7,
+      "tests": 34,
+      "passed": 34,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/decoder-wasm-vpx",
+      "directory": "packages/decoder-wasm-vpx",
+      "testFiles": 4,
+      "tests": 13,
+      "passed": 13,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/decoder-webcodecs",
+      "directory": "packages/decoder-webcodecs",
+      "testFiles": 7,
+      "tests": 57,
+      "passed": 57,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/decoder-worker",
+      "directory": "packages/decoder-worker",
+      "testFiles": 1,
+      "tests": 6,
+      "passed": 6,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/demo",
+      "directory": "apps/demo",
+      "testFiles": 2,
+      "tests": 3,
+      "passed": 3,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/demux",
+      "directory": "packages/demux",
+      "testFiles": 5,
+      "tests": 45,
+      "passed": 45,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/platform",
+      "directory": "packages/platform",
+      "testFiles": 1,
+      "tests": 12,
+      "passed": 12,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/postprocess",
+      "directory": "packages/postprocess",
+      "testFiles": 6,
+      "tests": 26,
+      "passed": 26,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/react",
+      "directory": "packages/react",
+      "testFiles": 1,
+      "tests": 1,
+      "passed": 1,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/renderers",
+      "directory": "packages/renderers",
+      "testFiles": 1,
+      "tests": 16,
+      "passed": 16,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/sdk",
+      "directory": "packages/sdk",
+      "testFiles": 4,
+      "tests": 5,
+      "passed": 5,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/strategy",
+      "directory": "packages/strategy",
+      "testFiles": 1,
+      "tests": 14,
+      "passed": 14,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/subtitles",
+      "directory": "packages/subtitles",
+      "testFiles": 5,
+      "tests": 46,
+      "passed": 46,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/types",
+      "directory": "packages/types",
+      "testFiles": 8,
+      "tests": 22,
+      "passed": 22,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/ui",
+      "directory": "packages/ui",
+      "testFiles": 2,
+      "tests": 18,
+      "passed": 18,
+      "skipped": 0,
+      "todo": 0
+    },
+    {
+      "name": "@mx-player-max/vue",
+      "directory": "packages/vue",
+      "testFiles": 1,
+      "tests": 1,
+      "passed": 1,
+      "skipped": 0,
+      "todo": 0
+    }
+  ],
+  "totals": {
+    "testFiles": 92,
+    "tests": 508,
+    "passed": 508,
+    "skipped": 0,
+    "todo": 0
+  }
+}

@@ -1,6 +1,7 @@
 export type {
   WasmAssetLoadOptions,
   WasmDecoderAssetCache,
+  WasmDecoderCallbacks,
   WasmDecoderCreateContext,
   WasmDecoderDeclarationOptions,
   WasmDecoderInstance,
@@ -33,3 +34,4 @@ export { isWasmDecoderManifest, normalizeWasmCodec, validateWasmDecoderManifest 
 export { listWasmManifestVariants, selectWasmVariants } from './variants'
 export { WasmDecoderRegistry, createWasmDecoderRegistry } from './registry'
 export { DefaultWasmDecoderManager, createWasmDecoderManager } from './manager'
+export { BrowserWasmDecoderRuntime, createBrowserWasmDecoderRuntime } from './runtime'

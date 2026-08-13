@@ -10,26 +10,33 @@ export interface EnvironmentIdentity {
 }
 
 export function readEnvironmentIdentity(adapter: CapabilityProbeAdapter): EnvironmentIdentity {
+  return readEnvironmentIdentityWithWasm(adapter, true)
+}
+
+export function readEnvironmentIdentityWithWasm(
+  adapter: CapabilityProbeAdapter,
+  includeWasm: boolean,
+): EnvironmentIdentity {
   const userAgent = safeString(() => adapter.getUserAgent())
   const platform = safeString(() => adapter.getPlatform())
   return {
     browser: detectBrowser(userAgent),
     browserVersion: detectBrowserVersion(userAgent),
     platform: detectOperatingSystem(userAgent, platform),
-    crossOriginIsolated: safeBoolean(() => adapter.isCrossOriginIsolated()),
-    sharedArrayBuffer: safeBoolean(() => adapter.hasSharedArrayBuffer()),
+    crossOriginIsolated: includeWasm && safeBoolean(() => adapter.isCrossOriginIsolated()),
+    sharedArrayBuffer: includeWasm && safeBoolean(() => adapter.hasSharedArrayBuffer()),
   }
 }
 
 export async function probeEnvironmentSnapshot(
   adapter: CapabilityProbeAdapter,
   sdkVersion: string,
+  includeWasm = true,
 ): Promise<CapabilitySnapshot> {
-  const identity = readEnvironmentIdentity(adapter)
-  const wasmSimd = safeBoolean(() => adapter.probeWasmSimd())
-  const wasmThreads = identity.crossOriginIsolated
-    && identity.sharedArrayBuffer
-    && safeBoolean(() => adapter.probeWasmThreads())
+  const identity = readEnvironmentIdentityWithWasm(adapter, includeWasm)
+  const { wasmSimd, wasmThreads } = includeWasm
+    ? probeWasmEnvironment(adapter, identity)
+    : { wasmSimd: false, wasmThreads: false }
   const webGpuFeatures = await safeGpuProbe(adapter)
   return {
     schemaVersion: CAPABILITY_SCHEMA_VERSION,
@@ -48,6 +55,26 @@ export async function probeEnvironmentSnapshot(
     webGpuFeatures,
     quirks: [],
   }
+}
+
+export function hydrateWasmCapabilities(
+  snapshot: CapabilitySnapshot,
+  adapter: CapabilityProbeAdapter,
+): CapabilitySnapshot {
+  const identity = readEnvironmentIdentityWithWasm(adapter, true)
+  const wasm = probeWasmEnvironment(adapter, identity)
+  return { ...snapshot, ...identity, ...wasm }
+}
+
+function probeWasmEnvironment(
+  adapter: CapabilityProbeAdapter,
+  identity: Pick<EnvironmentIdentity, 'crossOriginIsolated' | 'sharedArrayBuffer'>,
+): Pick<CapabilitySnapshot, 'wasmSimd' | 'wasmThreads'> {
+  const wasmSimd = safeBoolean(() => adapter.probeWasmSimd())
+  const wasmThreads = identity.crossOriginIsolated
+    && identity.sharedArrayBuffer
+    && safeBoolean(() => adapter.probeWasmThreads())
+  return { wasmSimd, wasmThreads }
 }
 
 function detectBrowser(userAgent: string): CapabilitySnapshot['browser'] {

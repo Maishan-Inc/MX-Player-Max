@@ -4,7 +4,10 @@
 
 ## 当前阶段
 
-仓库已完成 Phase 1-12 的当前批准范围：能力探测、Range/Demux、Native/Custom 播放、Audio、Renderer、AI、SRT/ASS 字幕内核、独立 `@mx-player-max/ui`、WASM Decoder Manager、可插拔浏览器平台增强/诊断/Issue 规则，以及 Browser ESM/IIFE 分发和发布验证。当前仍不包含真实 Codec WASM 二进制或 Core WASM 解码接入。
+仓库已完成 Phase 1-12 的当前批准范围，以及 Phase 10.2 的 restricted libvpx VP8 WASM
+垂直切片：真实 WebAssembly runtime、MXWF I420 帧 ABI、Decoder Worker、Core Custom Pipeline
+和 WebCodecs -> WASM 原子回退。该切片仅覆盖 video-only VP8 profile 0 / 8-bit I420，且只有
+调用方显式提供自托管 `wasmBaseUrl` 时启用。
 
 ```bash
 pnpm add @mx-player-max/sdk @mx-player-max/ui
@@ -91,4 +94,7 @@ Playwright Chromium/Firefox/WebKit 自动化与真实 Chrome、Firefox、macOS S
 
 ## 当前范围边界
 
-当前仓库不包含真实 WASM Codec 二进制/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表或下一集业务、HLS/DASH 自定义管线和无关架构重构。Browser IIFE 只提供 SDK + 官方 UI 的组合入口；它不构成完整 Codec 覆盖承诺。Playwright WebKit 也不等价于物理 macOS Safari 验收。
+当前真实 WASM Codec 覆盖只包含 restricted libvpx VP8 video-only 切片；VP9、AV1、H.264、
+HEVC、VVC、WASM 音频和 FFmpeg 均未实现。三个 VP8 二进制不属于可发布资源，Browser release
+manifest 只把它们列入 `excluded`。仓库仍不包含 PGS/VobSub、完整 libass、字幕内容编辑器、
+播放列表或下一集业务、HLS/DASH 自定义管线。Playwright WebKit 不等价于物理 macOS Safari 验收。

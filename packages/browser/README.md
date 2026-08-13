@@ -2,7 +2,9 @@
 
 Browser-ready composition package for MX-Player-Max. It creates the SDK player, mounts the official UI on the same host, and owns their shared lifecycle.
 
-Licensed under `PolyForm-Noncommercial-1.0.0`. Commercial use requires a separate license. The package does not contain unreviewed WASM/Codec binaries.
+Licensed under `PolyForm-Noncommercial-1.0.0`. Commercial use requires a separate license. The package
+does not contain restricted VP8 WASM binaries; release generation records all three Phase 10.2 variants
+only in `manifest.json.excluded` with `publishable:false`.
 
 ```ts
 import { create } from '@mx-player-max/browser'

@@ -1,9 +1,16 @@
 import {
   createCapabilityContext,
   detectCapabilities,
+  detectWasmCapabilities,
   probeMediaCapabilities,
 } from '@mx-player-max/capabilities'
 import { createRangeLoader, probeContainer, type RangeLoader } from '@mx-player-max/demux'
+import { createWasmDecoderRegistry, resolveWasmAssetUrl } from '@mx-player-max/decoder-wasm'
+import {
+  createLibvpxVp8Plugin,
+  createLibvpxVp8VideoDecoderConfig,
+  WorkerLibvpxVp8DecoderAdapter,
+} from '@mx-player-max/decoder-wasm-vpx'
 import { createPlatformPolicy } from '@mx-player-max/platform'
 import { createStrategyEngine } from '@mx-player-max/strategy'
 import { createRenderer } from '@mx-player-max/renderers'
@@ -40,6 +47,8 @@ import type {
   PlaybackSnapshot,
   PlaybackDecisionTrace,
   StrategyEvaluation,
+  TrackInfo,
+  WasmDecoderDeclaration,
   PlaybackChangeReason,
   MediaPreviewImage,
   MediaPreviewRequest,
@@ -229,7 +238,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     if (closed) return
     setState('error')
     commitPlayback({ lastError: error, buffering: false, seeking: false }, 'error')
-    emit('error', { error })
+    emit('error', { error: publicEngineError(error) })
   }
 
   const syncNativePlayback = (reason: PlaybackChangeReason = 'time'): void => {
@@ -553,9 +562,10 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         if (loadEpoch !== epoch || closed) throw loadAborted(intent)
         const media = containerSelection.metadata.media
         currentMedia = media
-        const capabilities = await detectCapabilities()
+        const capabilities = await detectCapabilities({ includeWasm: false })
         const report = await probeMediaCapabilities(media, { snapshot: capabilities })
-        const context = createCapabilityContext(capabilities, report)
+        const wasmSession = createRestrictedWasmSession(options.wasmBaseUrl)
+        const context = createCapabilityContext(capabilities, report, wasmSession?.declarations)
         emit('capabilities', { context })
         const policy = createPlatformPolicy(capabilities)
         const strategy = createStrategyEngine(policy)
@@ -617,7 +627,8 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
           candidate: Readonly<BackendCandidate>,
           attemptContext: CandidateAttemptContext,
         ): CandidateAttemptScope<{ readonly selection: PlaybackSelection; activate(): void }> {
-          const playbackSelection = selectionForCandidate(candidate, intent, capabilities, report, evaluation.selection)
+          let candidateCapabilities = capabilities
+          let playbackSelection = selectionForCandidate(candidate, intent, candidateCapabilities, report, evaluation.selection)
           const bufferedEvents: Array<() => void> = []
           let committed = false
           let activated = false
@@ -658,19 +669,32 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
                 return
               }
 
-              if (candidate.kind !== 'webcodecs') {
+              if (candidate.kind !== 'webcodecs' && candidate.kind !== 'wasm') {
                 throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, `The ${candidate.kind} backend has no Core adapter`, true)
+              }
+              const isWasmCandidate = candidate.kind === 'wasm'
+              if (isWasmCandidate) {
+                candidateCapabilities = await detectWasmCapabilities(capabilities)
+                if (!attemptContext.isActive()) throw loadAborted(intent)
+                playbackSelection = selectionForCandidate(candidate, intent, candidateCapabilities, report, evaluation.selection)
               }
               const shouldCreateRenderer = dependencies.createRenderer !== undefined || dependencies.createCustomPipeline === undefined
               if ((intent === 'normal' || intent === 'low-power') && !shouldCreateRenderer) {
-                throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The selected WebCodecs path cannot provide complete playback without a renderer', true)
+                throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The selected custom path cannot provide complete playback without a renderer', true)
               }
-              if (!capabilities.webCodecsVideo || report.webCodecs.video.status !== 'supported' || !report.query.video) {
+              if (!isWasmCandidate && (!capabilities.webCodecsVideo || report.webCodecs.video.status !== 'supported' || !report.query.video)) {
                 throw createEngineError(ErrorCodes.WEBCODECS_NOT_SUPPORTED, 'The selected video configuration is not supported by WebCodecs', true)
               }
               const hasAudioTrack = media.tracks.some((track) => track.kind === 'audio')
-              if (hasAudioTrack && (!capabilities.webCodecsAudio || report.webCodecs.audio.status !== 'supported' || !report.query.audio)) {
+              if (isWasmCandidate && hasAudioTrack) {
+                throw createEngineError(ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE, 'Phase 10.2 WASM playback does not provide an audio decoder', true)
+              }
+              if (!isWasmCandidate && hasAudioTrack && (!capabilities.webCodecsAudio || report.webCodecs.audio.status !== 'supported' || !report.query.audio)) {
                 throw createEngineError(ErrorCodes.CUSTOM_AUDIO_BACKEND_UNAVAILABLE, 'The selected audio configuration is not supported by WebCodecs', true)
+              }
+              const wasmTrack = isWasmCandidate ? selectedWasmVideoTrack(media.tracks, candidate.videoCodec, wasmSession) : null
+              if (isWasmCandidate && (!wasmSession || !wasmTrack)) {
+                throw createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The selected WASM decoder is unavailable for this video track', true)
               }
               releaseUnusedOwnedVideo()
               customRendererRequired = shouldCreateRenderer
@@ -688,20 +712,32 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
                 source: options.source,
                 media,
                 capabilityReport: report,
-                capabilities,
+                capabilities: candidateCapabilities,
                 ...(options.customVideo === undefined ? {} : { customVideo: options.customVideo }),
                 ...(options.customAudio === undefined ? {} : { customAudio: options.customAudio }),
                 callbacks: {
                   isActive: () => !closed && loadEpoch === epoch && (attemptContext.isActive() || committed),
                   onEvent: (event) => dispatch(() => handleCustomEvent(event, loadEpoch)),
                 },
+                ...(wasmSession === null || wasmTrack === null ? {} : {
+                  dependencies: {
+                    decoderConfig: createLibvpxVp8VideoDecoderConfig(wasmTrack),
+                    decoderConfigSupported: true,
+                    createDecoder: (callbacks) => new WorkerLibvpxVp8DecoderAdapter({
+                      callbacks,
+                      baseUrl: wasmSession.baseUrl,
+                      track: wasmTrack,
+                      capabilities: candidateCapabilities,
+                    }),
+                  },
+                }),
               }
               const customPipeline = dependencies.createCustomPipeline?.(pipelineOptions) ?? new CustomMediaPipeline(pipelineOptions)
               activePipeline = { kind: 'custom-video', pipeline: customPipeline }
               await customPipeline.initialize()
               if (shouldCreateRenderer && customCanvas) {
                 const rendererOptions: RendererFactoryOptions = {
-                  capabilities,
+                  capabilities: candidateCapabilities,
                   ...(options.customVideo?.renderer === undefined ? {} : { preference: options.customVideo.renderer }),
                   ...(options.customVideo?.filter === undefined ? {} : { filter: options.customVideo.filter }),
                   ...(options.customVideo?.render === undefined ? {} : { transform: options.customVideo.render }),
@@ -793,7 +829,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         }
         if (error.code === ErrorCodes.NATIVE_AUTOPLAY_BLOCKED || error.code === ErrorCodes.AUDIO_AUTOPLAY_BLOCKED) {
           if (currentState !== 'ready') setState('ready')
-          emit('error', { error })
+          emit('error', { error: publicEngineError(error) })
         } else {
           emitError(error)
           disposePipeline()
@@ -976,6 +1012,9 @@ function createCustomCanvasTarget(resolved: ResolvedVideoTarget | null): Resolve
   catch (cause) { throw createEngineError(ErrorCodes.RENDERER_TARGET_INVALID, 'The Custom renderer canvas could not be created', false, cause) }
   try {
     if (resolved.container) {
+      canvas.style.display = 'block'
+      canvas.style.width = '100%'
+      canvas.style.height = '100%'
       resolved.container.appendChild(canvas)
       return { canvas, restore: () => { canvas.parentNode?.removeChild(canvas) } }
     }
@@ -1080,6 +1119,35 @@ function cloneBackendCandidate(candidate: Readonly<BackendCandidate>): BackendCa
   }
 }
 
+interface RestrictedWasmSession {
+  readonly baseUrl: string
+  readonly declarations: readonly WasmDecoderDeclaration[]
+  supportsVideo(codec: string, track: TrackInfo): boolean
+}
+
+function createRestrictedWasmSession(baseUrl: string | undefined): RestrictedWasmSession | null {
+  if (baseUrl === undefined) return null
+  const marker = '__mx_player_max_wasm_base__.wasm'
+  const resolvedMarker = resolveWasmAssetUrl(baseUrl, marker)
+  const normalizedBaseUrl = resolvedMarker.slice(0, -marker.length)
+  const plugin = createLibvpxVp8Plugin()
+  const registry = createWasmDecoderRegistry([plugin])
+  return {
+    baseUrl: normalizedBaseUrl,
+    declarations: registry.declarations({ requireApprovedReview: false }),
+    supportsVideo: (codec, track) => plugin.supports(codec, track),
+  }
+}
+
+function selectedWasmVideoTrack(
+  tracks: readonly TrackInfo[],
+  codec: string | null,
+  session?: RestrictedWasmSession | null,
+): TrackInfo | null {
+  if (codec === null || !session) return null
+  return tracks.find((track) => track.kind === 'video' && session.supportsVideo(codec, track)) ?? null
+}
+
 function candidateErrorCode(cause: unknown, candidate: Readonly<BackendCandidate>): string {
   if (isEngineError(cause)) return cause.code
   return candidate.kind === 'html-video' ? ErrorCodes.NATIVE_OPERATION_FAILED : ErrorCodes.CUSTOM_OPERATION_FAILED
@@ -1092,12 +1160,13 @@ function isCandidateInitializationRecoverable(cause: unknown): boolean {
     && cause.code !== ErrorCodes.NATIVE_SOURCE_INVALID
     && cause.code !== ErrorCodes.NATIVE_ABORTED
     && cause.code !== ErrorCodes.WEBCODECS_ABORTED
+    && cause.code !== ErrorCodes.WASM_ABORTED
 }
 
 function mapLoadError(cause: unknown, intent: MXPlayerOptions['intent']): EngineErrorException {
   const customIntent = intent !== undefined && intent !== 'normal' && intent !== 'low-power'
   const code = typeof cause === 'object' && cause !== null && 'code' in cause ? String((cause as { code?: unknown }).code) : ''
-  if (isEngineError(cause) && (customIntent || code.startsWith('CUSTOM_') || code.startsWith('WEBCODECS_') || code.startsWith('AUDIO_') || code.startsWith('RENDERER_'))) return cause as EngineErrorException
+  if (isEngineError(cause) && (customIntent || code.startsWith('CUSTOM_') || code.startsWith('WEBCODECS_') || code.startsWith('WASM_') || code.startsWith('AUDIO_') || code.startsWith('RENDERER_'))) return cause as EngineErrorException
   if (code === ErrorCodes.RANGE_CORS_FAILED) return createEngineError(ErrorCodes.NATIVE_CORS_FAILED, 'The remote media failed CORS validation', true, cause)
   if (code === ErrorCodes.RANGE_NETWORK_FAILED) return createEngineError(ErrorCodes.NATIVE_NETWORK_FAILED, 'The remote media network request failed', true, cause)
   if (code === ErrorCodes.RANGE_ABORTED) return createEngineError(ErrorCodes.NATIVE_ABORTED, 'The media load was aborted', true, cause)
@@ -1106,7 +1175,7 @@ function mapLoadError(cause: unknown, intent: MXPlayerOptions['intent']): Engine
       ? createEngineError(ErrorCodes.CUSTOM_BACKEND_UNAVAILABLE, 'The media has no supported WebCodecs frame-access path', false, cause)
       : createEngineError(ErrorCodes.NATIVE_NOT_SUPPORTED, 'The media has no supported native playback path', false, cause)
   }
-  if (code.startsWith('CONTAINER_')) return createEngineError(ErrorCodes.NATIVE_NOT_SUPPORTED, 'The media container is not supported', false, cause)
+  if (code === ErrorCodes.CONTAINER_UNSUPPORTED) return createEngineError(ErrorCodes.NATIVE_NOT_SUPPORTED, 'The media container is not supported', false, cause)
   if (isEngineError(cause)) return cause as EngineErrorException
   return createEngineError(customIntent ? ErrorCodes.CUSTOM_OPERATION_FAILED : ErrorCodes.NATIVE_OPERATION_FAILED, 'The media could not be loaded', true, cause)
 }
@@ -1129,4 +1198,8 @@ function loadAborted(intent: MXPlayerOptions['intent'], cause?: unknown): Engine
 
 function safeCloseVideoFrame(frame: VideoFrame): void {
   try { frame.close() } catch { /* best effort */ }
+}
+
+function publicEngineError(error: EngineError): EngineError {
+  return { code: error.code, message: error.message, recoverable: error.recoverable }
 }

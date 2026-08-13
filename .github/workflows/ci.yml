@@ -18,8 +18,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm quality:media
+      - run: pnpm quality:performance
+      - run: pnpm quality:audit
+      - run: pnpm quality:browsers
+      - run: pnpm test:quality
       - run: pnpm typecheck
       - run: pnpm test
+      - run: pnpm quality:acceptance-drift
       - run: pnpm build
       - run: pnpm verify:packages
       - run: pnpm test:release

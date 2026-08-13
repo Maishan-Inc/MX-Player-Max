@@ -16,6 +16,7 @@ export interface CapabilityCache {
 
 export interface CapabilityProbeOptions {
   forceRefresh?: boolean
+  includeWasm?: boolean
   sdkVersion?: string
   cache?: CapabilityCache
   adapter?: CapabilityProbeAdapter

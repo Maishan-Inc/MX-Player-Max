@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "evidenceLevel": "playwright-automation",
+  "scenario": "smoke",
+  "backend": "html-video",
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:153.0) Gecko/20100101 Firefox/153.0",
+    "platform": "Win32",
+    "gpu": "ANGLE (NVIDIA, NVIDIA GeForce GTX 480 Direct3D11 vs_5_0 ps_5_0), or similar",
+    "crossOriginIsolated": false,
+    "devicePixelRatio": 1,
+    "browserName": "firefox",
+    "browserVersion": "153.0",
+    "os": "Windows_NT 10.0.26100 x64"
+  },
+  "sample": {
+    "id": "webm-vp8-p0-8bit-opus",
+    "path": "/quality-media/webm-vp8-p0-8bit-opus.webm",
+    "sha256": "e9e8baf10f81588a257bffe147648c31f5a0c5e5a52b57888e935917749d13b8"
+  },
+  "metrics": {
+    "firstFrameMs": {
+      "value": 1429,
+      "reason": null
+    },
+    "firstAudioMs": {
+      "value": null,
+      "reason": "Native playback exposes no first-audible-sample timestamp"
+    },
+    "firstSubtitleMs": {
+      "value": 2120,
+      "reason": null
+    },
+    "seekLatencyMs": {
+      "value": 94,
+      "reason": null
+    },
+    "bufferedAheadMicros": {
+      "value": 913605,
+      "reason": null
+    },
+    "droppedFrames": {
+      "value": 1,
+      "reason": null
+    },
+    "avDriftMicros": {
+      "value": null,
+      "reason": "Native audio/video clocks are not independently observable"
+    },
+    "cpuTimeMs": {
+      "value": null,
+      "reason": "Browser automation exposes no process CPU metric"
+    },
+    "memoryBytes": {
+      "value": null,
+      "reason": "performance.memory is unavailable"
+    },
+    "memoryGrowthBytes": {
+      "value": null,
+      "reason": "performance.memory is unavailable"
+    },
+    "powerProxyDroppedFrameRatio": {
+      "value": 0.02127659574468085,
+      "reason": null
+    },
+    "runDurationMs": {
+      "value": 1034,
+      "reason": null
+    }
+  },
+  "memorySamples": [],
+  "errorCode": null,
+  "collectedAt": "2026-08-12T16:42:13.809Z"
+}

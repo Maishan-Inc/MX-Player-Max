@@ -1,4 +1,13 @@
 import type { DemuxPacket, EngineError } from '@mx-player-max/types'
+import type {
+  VideoDecoderAdapterCallbacks,
+  VideoDecoderAdapterLike,
+} from '@mx-player-max/decoder-worker'
+
+export type {
+  VideoDecoderAdapterCallbacks,
+  VideoDecoderAdapterLike,
+} from '@mx-player-max/decoder-worker'
 
 export type VideoDecoderRuntimeState = 'unconfigured' | 'configured' | 'closed'
 
@@ -23,22 +32,6 @@ export type VideoDecoderRuntimeFactory = (callbacks: VideoDecoderRuntimeCallback
 
 export interface EncodedVideoChunkFactory {
   create(init: EncodedVideoChunkInit): EncodedVideoChunk
-}
-
-export interface VideoDecoderAdapterCallbacks {
-  onFrame(frame: VideoFrame, epoch: number): void
-  onError(error: EngineError, epoch: number): void
-  onDequeue(epoch: number): void
-}
-
-export interface VideoDecoderAdapterLike {
-  readonly decodeQueueSize: number
-
-  configure(config: VideoDecoderConfig, supported: boolean, epoch: number): Promise<void>
-  decode(packet: DemuxPacket, epoch: number): void
-  flush(epoch: number): Promise<void>
-  reset(epoch: number): Promise<void>
-  close(): void
 }
 
 export interface VideoDecoderAdapterOptions {

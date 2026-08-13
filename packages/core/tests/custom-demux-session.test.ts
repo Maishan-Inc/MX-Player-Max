@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DemuxWorkerRequest, DemuxWorkerResponse } from '@mx-player-max/demux'
+import { ErrorCodes } from '@mx-player-max/types'
 import { DemuxWorkerSession, type DemuxWorkerTransport } from '../src/index'
 import { createMedia } from './custom-fakes'
 
@@ -18,6 +19,7 @@ class FakeWorker implements DemuxWorkerTransport {
     else this.error = null
   }
   respond(response: DemuxWorkerResponse): void { this.message?.({ data: response } as MessageEvent<DemuxWorkerResponse>) }
+  fail(): void { this.error?.(new Event('error')) }
 }
 
 describe('DemuxWorkerSession', () => {
@@ -62,5 +64,17 @@ describe('DemuxWorkerSession', () => {
     expect(worker.terminate).toHaveBeenCalledOnce()
     expect(worker.message).toBeNull()
     expect(worker.error).toBeNull()
+  })
+
+  it('rejects every pending request when the Worker terminates unexpectedly', async () => {
+    const worker = new FakeWorker()
+    const session = new DemuxWorkerSession({ operationTimeoutMs: 1000, transportFactory: () => worker, sessionId: 'session' })
+    const pending = session.start({ kind: 'file', file: new Blob(['x']) as File }, 0)
+
+    worker.fail()
+
+    await expect(pending).rejects.toMatchObject({ code: ErrorCodes.WEBCODECS_WORKER_FAILED, recoverable: true })
+    session.close(1)
+    expect(worker.terminate).toHaveBeenCalledOnce()
   })
 })

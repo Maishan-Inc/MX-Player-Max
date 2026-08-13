@@ -1,57 +1,32 @@
-import type { DemuxPacket, EngineError, Micros } from '@mx-player-max/types'
+import type {
+  DecoderWorkerCloseRequest as SharedDecoderWorkerCloseRequest,
+  DecoderWorkerConfigureRequest as SharedDecoderWorkerConfigureRequest,
+  DecoderWorkerDecodeRequest as SharedDecoderWorkerDecodeRequest,
+  DecoderWorkerFlushRequest as SharedDecoderWorkerFlushRequest,
+  DecoderWorkerRequest as SharedDecoderWorkerRequest,
+  DecoderWorkerResetRequest as SharedDecoderWorkerResetRequest,
+} from '@mx-player-max/decoder-worker'
 
-interface DecoderWorkerIdentity {
-  sessionId: string
-  epoch: number
-  requestId: string
-}
-
-export interface DecoderWorkerConfigureRequest extends DecoderWorkerIdentity {
-  command: 'configure'
+export interface WebCodecsWorkerConfig {
+  kind: 'webcodecs'
   config: VideoDecoderConfig
   supported: boolean
 }
 
-export interface DecoderWorkerDecodeRequest extends DecoderWorkerIdentity {
-  command: 'decode'
-  packet: DemuxPacket
-}
+export type DecoderWorkerConfigureRequest = SharedDecoderWorkerConfigureRequest<WebCodecsWorkerConfig>
+export type DecoderWorkerDecodeRequest = SharedDecoderWorkerDecodeRequest
+export type DecoderWorkerFlushRequest = SharedDecoderWorkerFlushRequest
+export type DecoderWorkerResetRequest = SharedDecoderWorkerResetRequest
+export type DecoderWorkerCloseRequest = SharedDecoderWorkerCloseRequest
+export type DecoderWorkerRequest = SharedDecoderWorkerRequest<WebCodecsWorkerConfig>
 
-export interface DecoderWorkerFlushRequest extends DecoderWorkerIdentity { command: 'flush' }
-export interface DecoderWorkerResetRequest extends DecoderWorkerIdentity { command: 'reset' }
-export interface DecoderWorkerCloseRequest extends DecoderWorkerIdentity { command: 'close' }
-
-export type DecoderWorkerRequest =
-  | DecoderWorkerConfigureRequest
-  | DecoderWorkerDecodeRequest
-  | DecoderWorkerFlushRequest
-  | DecoderWorkerResetRequest
-  | DecoderWorkerCloseRequest
-
-export interface DecoderWorkerConfiguredResponse extends DecoderWorkerIdentity { type: 'configured' }
-export interface DecoderWorkerFlushedResponse extends DecoderWorkerIdentity { type: 'flushed' }
-export interface DecoderWorkerResetResponse extends DecoderWorkerIdentity { type: 'reset' }
-export interface DecoderWorkerClosedResponse extends DecoderWorkerIdentity { type: 'closed' }
-export interface DecoderWorkerDequeueResponse extends DecoderWorkerIdentity {
-  type: 'dequeue'
-  decodeQueueSize: number
-}
-export interface DecoderWorkerFrameResponse extends DecoderWorkerIdentity {
-  type: 'frame'
-  frame: VideoFrame
-  timestamp: Micros
-  duration: Micros | null
-}
-export interface DecoderWorkerErrorResponse extends DecoderWorkerIdentity {
-  type: 'error'
-  error: EngineError
-}
-
-export type DecoderWorkerResponse =
-  | DecoderWorkerConfiguredResponse
-  | DecoderWorkerFlushedResponse
-  | DecoderWorkerResetResponse
-  | DecoderWorkerClosedResponse
-  | DecoderWorkerDequeueResponse
-  | DecoderWorkerFrameResponse
-  | DecoderWorkerErrorResponse
+export type {
+  DecoderWorkerClosedResponse,
+  DecoderWorkerConfiguredResponse,
+  DecoderWorkerDequeueResponse,
+  DecoderWorkerErrorResponse,
+  DecoderWorkerFlushedResponse,
+  DecoderWorkerFrameResponse,
+  DecoderWorkerResetResponse,
+  DecoderWorkerResponse,
+} from '@mx-player-max/decoder-worker'

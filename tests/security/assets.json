@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "kind": "ai-source",
+      "path": "packages/postprocess/assets/weights/rife/RIFEv4.25.zip",
+      "sha256": "e63d481b7ae5d4a4e6ad7ac5b410ff78f3bf7be3b51b2e38ca8152747abde5b4",
+      "bytes": 22919050,
+      "license": "MIT",
+      "reviewStatus": "approved",
+      "upstream": "https://github.com/hzwer/Practical-RIFE",
+      "commit": "17d8c7a1005b37f4c97bfee04e316aaec7fdc536",
+      "licensePath": "packages/postprocess/assets/weights/rife/LICENSE",
+      "provenancePath": "packages/postprocess/assets/README.md",
+      "buildOptions": "upstream-release-archive-no-conversion"
+    },
+    {
+      "kind": "ai-model",
+      "path": "packages/postprocess/assets/weights/rife/rife_v4.25.mxai",
+      "sha256": "665472509a3c9b50d9436d07e85754b8f1c4bb27ab48a3e531a6ebaec5bac56c",
+      "bytes": 24573228,
+      "license": "MIT",
+      "reviewStatus": "approved",
+      "upstream": "https://github.com/hzwer/Practical-RIFE",
+      "commit": "17d8c7a1005b37f4c97bfee04e316aaec7fdc536",
+      "licensePath": "packages/postprocess/assets/weights/rife/LICENSE",
+      "provenancePath": "packages/postprocess/assets/README.md",
+      "derivedFrom": "packages/postprocess/assets/weights/rife/RIFEv4.25.zip",
+      "buildOptions": "python tools/convert_pytorch_to_mxai.py assets/weights/rife/RIFEv4.25.zip assets/weights/rife/rife_v4.25.mxai --model rife-v4.25 --archive-member train_log/flownet.pkl --precision f32"
+    },
+    {
+      "kind": "ai-source",
+      "path": "packages/postprocess/assets/weights/rt4ksr/rt4ksr_x2.pth",
+      "sha256": "9ec7500092848a480e058a9c703e4b2254bc0cc97928c076bba272177752124f",
+      "bytes": 1699164,
+      "license": "Apache-2.0",
+      "reviewStatus": "approved",
+      "upstream": "https://github.com/eduardzamfir/RT4KSR",
+      "commit": "fd6627a48d789adf5d9aad29f02ab2a3d2a25296",
+      "licensePath": "packages/postprocess/assets/weights/rt4ksr/LICENSE",
+      "provenancePath": "packages/postprocess/assets/README.md",
+      "buildOptions": "upstream-checkpoint-no-conversion"
+    },
+    {
+      "kind": "ai-model",
+      "path": "packages/postprocess/assets/weights/rt4ksr/rt4ksr_x2.mxai",
+      "sha256": "c34a7654fe40f34f6ee0ba47c9c3bea504b18a7c9c045261bfd4733f2662fba0",
+      "bytes": 612953,
+      "license": "Apache-2.0",
+      "reviewStatus": "approved",
+      "upstream": "https://github.com/eduardzamfir/RT4KSR",
+      "commit": "fd6627a48d789adf5d9aad29f02ab2a3d2a25296",
+      "licensePath": "packages/postprocess/assets/weights/rt4ksr/LICENSE",
+      "provenancePath": "packages/postprocess/assets/README.md",
+      "derivedFrom": "packages/postprocess/assets/weights/rt4ksr/rt4ksr_x2.pth",
+      "buildOptions": "python tools/convert_pytorch_to_mxai.py assets/weights/rt4ksr/rt4ksr_x2.pth assets/weights/rt4ksr/rt4ksr_x2.mxai --model rt4ksr-x2 --precision f32"
+    },
+    {
+      "kind": "wasm",
+      "path": "packages/decoder-wasm-vpx/wasm/libvpx-vp8-single.wasm",
+      "sha256": "d8de9e34abade1d60ebd4646d98681dacf3c688d2f38dc7b1e1c15c699f1c5ba",
+      "bytes": 113304,
+      "license": "BSD-3-Clause",
+      "reviewStatus": "restricted",
+      "upstream": "https://chromium.googlesource.com/webm/libvpx",
+      "commit": "d168454ecd099805c675d4a98c66f4891373302a",
+      "licensePath": "packages/decoder-wasm-vpx/third_party/libvpx/LICENSE",
+      "patentStatementPath": "packages/decoder-wasm-vpx/third_party/libvpx/PATENTS",
+      "provenancePath": "packages/decoder-wasm-vpx/wasm/PROVENANCE.md",
+      "buildOptions": "`--disable-multithread`; decoder threads=1"
+    },
+    {
+      "kind": "wasm",
+      "path": "packages/decoder-wasm-vpx/wasm/libvpx-vp8-simd.wasm",
+      "sha256": "79e784506b25160e650c02d6d87213075188f98fda1e829a342ad4cad980853d",
+      "bytes": 135291,
+      "license": "BSD-3-Clause",
+      "reviewStatus": "restricted",
+      "upstream": "https://chromium.googlesource.com/webm/libvpx",
+      "commit": "d168454ecd099805c675d4a98c66f4891373302a",
+      "licensePath": "packages/decoder-wasm-vpx/third_party/libvpx/LICENSE",
+      "patentStatementPath": "packages/decoder-wasm-vpx/third_party/libvpx/PATENTS",
+      "provenancePath": "packages/decoder-wasm-vpx/wasm/PROVENANCE.md",
+      "buildOptions": "single flags plus `-msimd128`; decoder threads=1"
+    },
+    {
+      "kind": "wasm",
+      "path": "packages/decoder-wasm-vpx/wasm/libvpx-vp8-threaded.wasm",
+      "sha256": "422c57f2634f6e24d2745b01dcf54a4cd2da0ba079fe60f85a0377041becb07f",
+      "bytes": 139725,
+      "license": "BSD-3-Clause",
+      "reviewStatus": "restricted",
+      "upstream": "https://chromium.googlesource.com/webm/libvpx",
+      "commit": "d168454ecd099805c675d4a98c66f4891373302a",
+      "licensePath": "packages/decoder-wasm-vpx/third_party/libvpx/LICENSE",
+      "patentStatementPath": "packages/decoder-wasm-vpx/third_party/libvpx/PATENTS",
+      "provenancePath": "packages/decoder-wasm-vpx/wasm/PROVENANCE.md",
+      "buildOptions": "`--enable-multithread --extra-cflags='-pthread -sSUPPORT_LONGJMP=wasm'`; wrapper `-DMXWF_DECODER_THREADS=2`; link `-pthread`"
+    }
+  ]
+}

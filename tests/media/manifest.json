@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "source": "Synthetic FFmpeg lavfi testsrc2 video and sine audio generated for this repository",
+  "generator": {
+    "name": "FFmpeg",
+    "version": "9.0-full_build-www.gyan.dev",
+    "script": "scripts/quality/generate-media-fixtures.ps1"
+  },
+  "subtitles": [
+    { "id": "srt-basic-timing", "path": "fixtures/basic-timing.srt", "format": "srt", "sha256": "c26f385d9d5c9570a11a6a691a7f7394f54106e8a93f7984b11ce0f30273a2b8" },
+    { "id": "ass-basic-style", "path": "fixtures/basic-style.ass", "format": "ass", "sha256": "de8ac7e0c81b3cdec51b9f041bb6da5e403eadf72b609d039080af720c2ddb4f" }
+  ],
+  "samples": [
+    {
+      "id": "mp4-h264-baseline-8bit-aac", "path": "fixtures/mp4-h264-baseline-8bit-aac.mp4", "container": "mp4",
+      "video": { "codec": "h264", "profile": "Constrained Baseline", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["srt-basic-timing", "ass-basic-style"], "durationSeconds": 3, "bytes": 137736,
+      "sha256": "c3cb704e533d88da2d4727c7147cf24db698ec37299ab5ef4aaa3dc585495446",
+      "minimumReproduction": "Normal playback, first frame/audio, seek to 1.5 s, external cue timing, ended", "expectedPaths": ["native", "webcodecs"]
+    },
+    {
+      "id": "webm-vp8-p0-8bit-opus", "path": "fixtures/webm-vp8-p0-8bit-opus.webm", "container": "webm",
+      "video": { "codec": "vp8", "profile": "0", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["srt-basic-timing"], "durationSeconds": 3.008, "bytes": 165203,
+      "sha256": "e9e8baf10f81588a257bffe147648c31f5a0c5e5a52b57888e935917749d13b8",
+      "minimumReproduction": "Native/WebCodecs WebM playback and Opus clock", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "blocked-by-phase-10"
+    },
+    {
+      "id": "webm-vp8-p0-8bit-video-only", "path": "fixtures/webm-vp8-p0-8bit-video-only.webm", "container": "webm",
+      "video": { "codec": "vp8", "profile": "0", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": null, "subtitleIds": ["srt-basic-timing"], "durationSeconds": 3, "bytes": 132537,
+      "sha256": "d4a405dedb1eff44ee8b86ee7b364d8a25dfd17ef04c5c5b10579ae63aa4c9a9",
+      "minimumReproduction": "WebCodecs canvas playback without requiring an audio decoder", "expectedPaths": ["webcodecs"], "wasmStatus": "blocked-by-phase-10"
+    },
+    {
+      "id": "webm-vp9-p0-8bit-opus", "path": "fixtures/webm-vp9-p0-8bit-opus.webm", "container": "webm",
+      "video": { "codec": "vp9", "profile": "Profile 0", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["ass-basic-style"], "durationSeconds": 3.008, "bytes": 116674,
+      "sha256": "03994a3fda205cb6492fec594361347e6724b467a0a9bfab1170d8a50f6ebbc7",
+      "minimumReproduction": "VP9 profile 0 decode and external ASS cue", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "blocked-by-phase-10"
+    },
+    {
+      "id": "webm-vp9-p2-10bit-opus", "path": "fixtures/webm-vp9-p2-10bit-opus.webm", "container": "webm",
+      "video": { "codec": "vp9", "profile": "Profile 2", "bitDepth": 10, "pixelFormat": "yuv420p10le", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": [], "durationSeconds": 3.008, "bytes": 122388,
+      "sha256": "486bef6ea4c41cad518fe50cde5cce40d3171c3650f9e03f088f80d35638a0ea",
+      "minimumReproduction": "10-bit VP9 capability and decode result", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "blocked-by-phase-10"
+    },
+    {
+      "id": "mp4-av1-main-8bit-aac", "path": "fixtures/mp4-av1-main-8bit-aac.mp4", "container": "mp4",
+      "video": { "codec": "av1", "profile": "Main", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": [], "durationSeconds": 3, "bytes": 152640,
+      "sha256": "0a23314493e35f5a8585d332d6177ad33977eff18a40a6aa7bf19842e340ee56",
+      "minimumReproduction": "AV1 Main capability and decode result", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "blocked-by-phase-10"
+    },
+    {
+      "id": "mp4-hevc-main10-10bit-aac", "path": "fixtures/mp4-hevc-main10-10bit-aac.mp4", "container": "mp4",
+      "video": { "codec": "hevc", "profile": "Main 10", "bitDepth": 10, "pixelFormat": "yuv420p10le", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["srt-basic-timing"], "durationSeconds": 3, "bytes": 161379,
+      "sha256": "35b82636aa6109ae930cb0c86ecfbda2fb66d65f586c2f89eb9ff1075f1c2d4d",
+      "minimumReproduction": "HEVC Main 10 native capability and safe unsupported result elsewhere", "expectedPaths": ["native"], "wasmStatus": "blocked-by-phase-10"
+    }
+  ],
+  "largeFixturePolicy": {
+    "storage": "generated-not-committed", "seedId": "webm-vp8-p0-8bit-opus", "durationSeconds": 1800,
+    "command": "ffmpeg -stream_loop 599 -i tests/media/fixtures/webm-vp8-p0-8bit-opus.webm -t 1800 -c copy tests/media/generated/long-run-vp8-opus-30m.webm",
+    "reason": "Avoid repository/LFS growth and external network dependence while retaining a deterministic checked-in seed"
+  }
+}

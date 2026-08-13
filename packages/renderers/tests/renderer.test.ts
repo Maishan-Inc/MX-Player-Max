@@ -184,7 +184,9 @@ describe('renderer factory', () => {
     loseDevice()
     await vi.waitFor(() => expect(renderer.kind).toBe('canvas2d'))
     expect(renderer.stats.fallbackCount).toBe(1)
-    expect(events).toHaveBeenCalledWith(expect.objectContaining({ type: 'fallback', previous: 'webgpu', current: 'canvas2d' }))
+    expect(events).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'fallback', previous: 'webgpu', current: 'canvas2d', reason: ErrorCodes.RENDERER_DEVICE_REBUILD_FAILED,
+    }))
     renderer.close()
   })
 })

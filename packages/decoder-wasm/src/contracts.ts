@@ -1,7 +1,7 @@
 import type {
   CapabilitySnapshot,
   DemuxPacket,
-  Micros,
+  EngineError,
   TrackInfo,
   WasmDecoderDeclaration,
 } from '@mx-player-max/types'
@@ -41,9 +41,17 @@ export interface WasmDecoderInstance {
   readonly variant: WasmVariant
   readonly pluginId?: string
   readonly manifest?: WasmDecoderManifest
-  decode(packet: Uint8Array, timestamp: Micros, key: boolean): void
+  readonly decodeQueueSize: number
+  decode(packet: DemuxPacket): void
   flush(): Promise<void>
+  reset(): Promise<void>
   close(): void
+}
+
+export interface WasmDecoderCallbacks {
+  onFrame(frame: VideoFrame): void
+  onError(error: EngineError): void
+  onDequeue(): void
 }
 
 export interface WasmDecoderCreateContext {
@@ -53,6 +61,8 @@ export interface WasmDecoderCreateContext {
   readonly track: TrackInfo
   readonly capabilities: CapabilitySnapshot
   readonly signal: AbortSignal
+  readonly runtime: WasmDecoderRuntime
+  readonly callbacks: WasmDecoderCallbacks
 }
 
 export interface WasmDecoderPlugin {
@@ -82,6 +92,7 @@ export interface WasmDecoderAssetCache {
 
 export interface WasmDecoderRuntime {
   compile(bytes: Uint8Array): Promise<WebAssembly.Module>
+  instantiate(module: WebAssembly.Module, imports?: WebAssembly.Imports): Promise<WebAssembly.Instance>
 }
 
 export interface VerifiedWasmAsset {
@@ -119,6 +130,7 @@ export interface VerifiedWasmAssetLoaderLike {
 
 export interface WasmDecoderLoadOptions {
   readonly signal?: AbortSignal
+  readonly callbacks?: WasmDecoderCallbacks
 }
 
 export interface WasmDecoderDeclarationOptions {

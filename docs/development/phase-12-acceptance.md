@@ -17,12 +17,7 @@
 
 | 命令 | 实际结果 |
 |---|---|
-| `pnpm --filter @mx-player-max/types test` | passed，22 tests |
-| `pnpm --filter @mx-player-max/strategy test` | passed，12 tests |
-| `pnpm --filter @mx-player-max/core test` | passed，120 tests |
-| `pnpm --filter @mx-player-max/sdk test` | passed，4 tests |
-| `pnpm --filter @mx-player-max/browser test` | passed，10 tests |
-| `pnpm --filter @mx-player-max/demo test` | passed，3 tests |
+| Phase 12 聚焦包测试 | 当阶段均 passed；当前逐包数量由 `docs/development/evidence/current-test-counts.json` 自动生成并由 CI 校验 |
 | `pnpm typecheck` | passed，18 workspace projects；Demo、Browser、React、Vue 均通过 |
 | `pnpm test` | passed，所有 workspace test script 通过 |
 | `pnpm build` | passed；Vite 提示 Demo 主 chunk 超过 500 kB，未作为失败处理 |

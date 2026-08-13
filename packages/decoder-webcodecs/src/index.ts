@@ -57,6 +57,7 @@ export type {
   DecoderWorkerResetRequest,
   DecoderWorkerResetResponse,
   DecoderWorkerResponse,
+  WebCodecsWorkerConfig,
 } from './worker-protocol'
 export type {
   DecoderAdapterFactory,

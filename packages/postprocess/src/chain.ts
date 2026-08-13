@@ -48,6 +48,7 @@ export class AiPipeline implements FrameSource {
     this.#interpolation = options.interpolation ?? null
     this.#superResolution = options.superResolution ?? null
     this.#governor = options.governor ?? createFrameBudgetGovernor({
+      ...options.governorOptions,
       ...(options.initialTier === undefined ? {} : { initialTier: options.initialTier }),
       ...(options.maxTier === undefined ? {} : { maxTier: options.maxTier }),
       ...(options.now === undefined ? {} : { now: options.now }),
@@ -83,15 +84,24 @@ export class AiPipeline implements FrameSource {
     const started = nowMs()
     try {
       let frame = await this.#readFrame(t, epoch)
+      if (!this.#isActiveEpoch(epoch)) {
+        releasePipelineFrame(frame)
+        return null
+      }
       if (!frame) return null
       if (this.#superResolutionEnabled && this.#superResolution && frame.location === 'cpu') {
         frame = await this.#superResolution.process(frame, epoch)
       } else if (this.#superResolutionEnabled && this.#superResolution) {
         frame = await this.#superResolution.process(frame, epoch)
       }
+      if (!this.#isActiveEpoch(epoch)) {
+        releasePipelineFrame(frame)
+        return null
+      }
       this.#governor.record(nowMs() - started, this.#frameBudgetMs)
       return frame
     } catch (error) {
+      if (!this.#isActiveEpoch(epoch)) return null
       this.#onEvent({ type: 'error', reason: 'ai-pipeline-failed', error })
       this.#disableWithFallback('ai-pipeline-failed')
       return this.#passthrough.frameAt(t, epoch)
@@ -134,6 +144,10 @@ export class AiPipeline implements FrameSource {
     this.#superResolutionEnabled = false
     this.#onEvent({ type: 'fallback', previous, current: 'off', reason })
   }
+
+  #isActiveEpoch(epoch: number): boolean {
+    return !this.#closed && epoch === this.#currentEpoch
+  }
 }
 
 export function createAiPipeline(options: AiPipelineOptions): AiPipeline {
@@ -141,3 +155,7 @@ export function createAiPipeline(options: AiPipelineOptions): AiPipeline {
 }
 
 function nowMs(): number { return typeof performance === 'undefined' ? Date.now() : performance.now() }
+
+function releasePipelineFrame(frame: PipelineFrame | null): void {
+  if (frame?.location === 'gpu') frame.release()
+}

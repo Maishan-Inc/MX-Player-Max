@@ -52,6 +52,7 @@ vi.mock('@mx-player-max/demux', () => ({ createRangeLoader: mocks.createRangeLoa
 vi.mock('@mx-player-max/capabilities', () => ({
   createCapabilityContext: (snapshot: CapabilitySnapshot, media: MediaCapabilityReport) => ({ snapshot, media }),
   detectCapabilities: mocks.detectCapabilities,
+  detectWasmCapabilities: async (snapshot: CapabilitySnapshot) => snapshot,
   probeMediaCapabilities: mocks.probeMediaCapabilities,
 }))
 vi.mock('@mx-player-max/platform', () => ({ createPlatformPolicy: () => ({ adjustScores: () => [] }) }))
@@ -246,7 +247,7 @@ describe('MediaEngine custom video integration', () => {
 
   it('keeps the initialized custom pipeline ready when AudioContext resume is autoplay-blocked', async () => {
     let custom!: FakeCustomPipeline
-    const blocked = { code: ErrorCodes.AUDIO_AUTOPLAY_BLOCKED, message: 'AudioContext resume was blocked', recoverable: true }
+    const blocked = { code: ErrorCodes.AUDIO_AUTOPLAY_BLOCKED, message: 'AudioContext resume was blocked', recoverable: true, cause: new Error('private') }
     const engine = createMediaEngine({ createCustomPipeline: (options) => {
       custom = new FakeCustomPipeline(options)
       custom.play.mockRejectedValueOnce(blocked)
@@ -258,7 +259,31 @@ describe('MediaEngine custom video integration', () => {
       .rejects.toMatchObject({ code: ErrorCodes.AUDIO_AUTOPLAY_BLOCKED })
     expect(engine.state).toBe('ready')
     expect(custom.close).not.toHaveBeenCalled()
-    expect(error).toHaveBeenCalledWith({ error: blocked })
+    expect(error).toHaveBeenCalledWith({ error: { code: blocked.code, message: blocked.message, recoverable: true } })
+    engine.close()
+  })
+
+  it('redacts URLs, paths and raw platform causes from public error events', async () => {
+    let custom!: FakeCustomPipeline
+    const internal = {
+      code: ErrorCodes.WEBCODECS_DECODE_FAILED,
+      message: 'Video decode failed',
+      recoverable: false,
+      cause: new Error('https://media.example/video.webm?token=secret C:\\Users\\private\\video.webm'),
+    }
+    const engine = createMediaEngine({ createCustomPipeline: (options) => {
+      custom = new FakeCustomPipeline(options)
+      return custom as unknown as CustomMediaPipeline
+    } })
+    const error = vi.fn()
+    engine.on('error', error)
+    await engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File }, intent: 'frame-access' })
+
+    custom.options.callbacks.onEvent({ type: 'error', error: internal })
+
+    expect(error).toHaveBeenCalledWith({ error: { code: internal.code, message: internal.message, recoverable: false } })
+    expect(JSON.stringify(error.mock.calls)).not.toContain('token=secret')
+    expect(JSON.stringify(error.mock.calls)).not.toContain('C:\\\\Users')
     engine.close()
   })
 
@@ -331,6 +356,7 @@ describe('MediaEngine custom video integration', () => {
     expect(children[0]).toBe(retained)
     expect(children).toHaveLength(2)
     expect((children[1] as { tagName: string }).tagName).toBe('CANVAS')
+    expect((children[1] as { style: Record<string, string> }).style).toMatchObject({ display: 'block', width: '100%', height: '100%' })
     engine.close()
     expect(children).toEqual([retained])
   })

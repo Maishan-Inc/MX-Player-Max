@@ -38,6 +38,7 @@ export class TexturePool {
   }
 
   get capacity(): number { return this.#capacity }
+  get allocated(): number { return this.#slots.length }
   get inUse(): number { return this.#slots.filter((slot) => slot.inUse).length }
 
   acquire(width: number, height: number): PooledTexture {

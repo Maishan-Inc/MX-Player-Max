@@ -122,6 +122,22 @@ describe('Mp4ContainerAdapter', () => {
       new Mp4ContainerAdapter({ maxPacketBytes: 1 }).probe(loaderFor(createMp4Fixture())),
       ErrorCodes.CONTAINER_LIMIT_EXCEEDED,
     )
+
+    const excessiveDuration = createMp4Fixture().slice()
+    const mvhdTypeOffset = findType(excessiveDuration, 'mvhd')
+    excessiveDuration[mvhdTypeOffset + 4] = 1
+    const durationView = new DataView(excessiveDuration.buffer, excessiveDuration.byteOffset)
+    durationView.setUint32(mvhdTypeOffset + 24, 1)
+    durationView.setBigUint64(mvhdTypeOffset + 28, BigInt(Number.MAX_SAFE_INTEGER) + 1n)
+    await expectCode(probeContainer(loaderFor(excessiveDuration)), ErrorCodes.CONTAINER_INVALID)
+  })
+
+  it('preserves initial remote Range protocol failures', async () => {
+    const loader = new HttpRangeLoader('https://media.test/fixture.mp4', {
+      fetch: async () => new Response(new Uint8Array(12), { status: 200 }),
+    })
+
+    await expectCode(probeContainer(loader), ErrorCodes.RANGE_UNSUPPORTED)
   })
 
   it('produces identical metadata and packets from File and mocked HTTP Range', async () => {
@@ -150,3 +166,11 @@ describe('Mp4ContainerAdapter', () => {
     expect(fetchMock).toHaveBeenCalled()
   })
 })
+
+function findType(data: Uint8Array, type: string): number {
+  const bytes = new TextEncoder().encode(type)
+  for (let offset = 0; offset <= data.byteLength - bytes.byteLength; offset += 1) {
+    if (bytes.every((byte, index) => data[offset + index] === byte)) return offset
+  }
+  throw new Error(`Fixture has no ${type} box`)
+}

@@ -6,4 +6,5 @@ services:
       dockerfile: apps/demo/Dockerfile
     ports:
       - "4173:80"
+      - "4174:8080"
     restart: unless-stopped

@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { createManifest } from '../generate-manifest.mjs'
+import { createManifest, DEFAULT_RELEASE_ASSETS } from '../generate-manifest.mjs'
 
 test('generates deterministic hashes, MIME, ordering, and SRI', async () => {
   const root = await fixtureRoot()
@@ -35,6 +35,28 @@ test('excludes unreviewed WASM/model resources from publishable assets', async (
     })
     assert.equal(manifest.assets.some((asset) => asset.path.endsWith('.wasm')), false)
     assert.deepEqual(manifest.excluded, [{ packageDir: 'packages/fixture', path: 'dist/pending.wasm', type: 'wasm', publishable: false, reason: 'license-review-required' }])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('keeps all restricted libvpx VP8 variants out of the Browser release assets', async () => {
+  const root = await fixtureRoot()
+  try {
+    const vp8Assets = DEFAULT_RELEASE_ASSETS.filter((asset) => asset.packageDir === 'packages/decoder-wasm-vpx')
+    const manifest = await createManifest({ root, assets: vp8Assets })
+    assert.equal(manifest.assets.some((asset) => asset.path.endsWith('.wasm')), false)
+    assert.deepEqual(manifest.excluded, [
+      'wasm/libvpx-vp8-simd.wasm',
+      'wasm/libvpx-vp8-single.wasm',
+      'wasm/libvpx-vp8-threaded.wasm',
+    ].map((assetPath) => ({
+      packageDir: 'packages/decoder-wasm-vpx',
+      path: assetPath,
+      type: 'wasm',
+      publishable: false,
+      reason: 'license-and-patent-review-restricted',
+    })))
   } finally {
     await rm(root, { recursive: true, force: true })
   }

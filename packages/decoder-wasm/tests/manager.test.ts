@@ -18,7 +18,7 @@ describe('WASM decoder Manager', () => {
       baseUrl: 'https://cdn.example.test/wasm/',
       registry: createWasmDecoderRegistry([createPlugin('fallback-test', createManifest(), { create: create as never })]),
       fetcher: vi.fn(async () => new Response(HELLO_BYTES, { status: 200 })),
-      runtime: { compile },
+      runtime: { compile, instantiate: async () => ({}) as WebAssembly.Instance },
     })
     const instance = await manager.load('avc1', videoTrack, createCapabilities({ crossOriginIsolated: true, sharedArrayBuffer: true, wasmThreads: true }))
     expect(instance.variant).toBe('simd')
@@ -33,7 +33,7 @@ describe('WASM decoder Manager', () => {
       baseUrl: 'https://cdn.example.test/wasm/',
       registry: createWasmDecoderRegistry([createPlugin('non-isolated', createManifest())]),
       fetcher,
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     const instance = await manager.load('avc1', videoTrack, createCapabilities())
     expect(instance.variant).toBe('simd')
@@ -52,7 +52,7 @@ describe('WASM decoder Manager', () => {
         createPlugin('second', createManifest({ version: 'second' }), { priority: 0, create: async ({ variant }) => createInstance(variant, secondClose) }),
       ]),
       fetcher: vi.fn(async () => new Response(HELLO_BYTES, { status: 200 })),
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     const instance = await manager.load('avc1', videoTrack, createCapabilities({ wasmSimd: false }))
     expect(instance.pluginId).toBe('second')
@@ -66,7 +66,7 @@ describe('WASM decoder Manager', () => {
       baseUrl: 'https://cdn.example.test/wasm/',
       registry: createWasmDecoderRegistry([createPlugin('pending', createManifest({ review: { status: 'pending' } }))]),
       fetcher,
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     await expect(manager.load('avc1', videoTrack, createCapabilities())).rejects.toMatchObject({ code: ErrorCodes.WASM_REVIEW_REQUIRED })
     expect(fetcher).not.toHaveBeenCalled()
@@ -111,6 +111,7 @@ describe('WASM decoder Manager', () => {
     const invalidClose = vi.fn()
     const invalidCreate = vi.fn(async () => ({
       variant: 'simd',
+      decodeQueueSize: 0,
       decode: () => {},
       flush: async () => {},
       close: invalidClose,
@@ -126,7 +127,7 @@ describe('WASM decoder Manager', () => {
         })),
       ]),
       fetcher: vi.fn(async () => new Response(HELLO_BYTES, { status: 200 })),
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
 
     const instance = await manager.load('avc1', videoTrack, createCapabilities({ wasmSimd: false }))
@@ -141,7 +142,7 @@ describe('WASM decoder Manager', () => {
       baseUrl: 'https://cdn.example.test/wasm/',
       registry: createWasmDecoderRegistry([createPlugin('close-test', createManifest({ variants: { single: 'single.wasm' }, sha256: { single: HELLO_HASH } }), { create: async ({ variant }) => createInstance(variant, onClose) })]),
       fetcher: vi.fn(async () => new Response(HELLO_BYTES, { status: 200 })),
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     const instance = await manager.load('avc1', videoTrack, createCapabilities({ wasmSimd: false }))
     manager.close()
@@ -164,7 +165,7 @@ describe('WASM decoder Manager', () => {
       registry: createWasmDecoderRegistry([createPlugin('session-scope', manifest)]),
       cache,
       fetcher: vi.fn(async () => new Response(new TextEncoder().encode('bad'), { status: 200 })),
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     await expect(failing.load('avc1', videoTrack, createCapabilities({ wasmSimd: false }))).rejects.toMatchObject({ code: ErrorCodes.WASM_ALL_VARIANTS_FAILED })
     failing.close()
@@ -174,7 +175,7 @@ describe('WASM decoder Manager', () => {
       registry: createWasmDecoderRegistry([createPlugin('session-scope', manifest)]),
       cache,
       fetcher: vi.fn(async () => new Response(HELLO_BYTES, { status: 200 })),
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     await expect(succeeding.load('avc1', videoTrack, createCapabilities({ wasmSimd: false }))).resolves.toMatchObject({ variant: 'single' })
     succeeding.close()
@@ -193,7 +194,7 @@ describe('WASM decoder Manager', () => {
         version: 'abort-share', variants: { single: 'single.wasm' }, sha256: { single: HELLO_HASH },
       }))]),
       fetcher,
-      runtime: { compile: async () => ({}) as WebAssembly.Module },
+      runtime: runtime(),
     })
     const first = manager.load('avc1', videoTrack, createCapabilities({ wasmSimd: false }))
     const controller = new AbortController()
@@ -217,5 +218,12 @@ function expectCode(action: () => unknown, code: string): void {
     throw new Error('Expected action to throw')
   } catch (error) {
     expect(error).toMatchObject({ code })
+  }
+}
+
+function runtime(): WasmDecoderRuntime {
+  return {
+    compile: async () => ({}) as WebAssembly.Module,
+    instantiate: async () => ({}) as WebAssembly.Instance,
   }
 }

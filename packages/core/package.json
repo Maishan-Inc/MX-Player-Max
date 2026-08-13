@@ -18,6 +18,8 @@
     "@mx-player-max/audio": "workspace:*",
     "@mx-player-max/capabilities": "workspace:*",
     "@mx-player-max/decoder-wasm": "workspace:*",
+    "@mx-player-max/decoder-wasm-vpx": "workspace:*",
+    "@mx-player-max/decoder-worker": "workspace:*",
     "@mx-player-max/decoder-webcodecs": "workspace:*",
     "@mx-player-max/demux": "workspace:*",
     "@mx-player-max/platform": "workspace:*",

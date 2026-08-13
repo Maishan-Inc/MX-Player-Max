@@ -33,14 +33,14 @@ Phase 11 已交付 `@mx-player-max/platform` 的可插拔平台增强、诊断�
 | `pnpm --filter @mx-player-max/platform typecheck` | passed |
 | `pnpm --filter @mx-player-max/platform test` | passed；12 tests |
 | `pnpm typecheck` | passed；17 个工作区项目完成 build + strict typecheck |
-| `pnpm test` | passed；437 tests |
+| `pnpm test` | 当阶段 passed；当前数量由 `docs/development/evidence/current-test-counts.json` 自动生成并由 CI 校验 |
 | `pnpm build` | passed；17 个工作区项目及 Demo production build |
 | `pnpm test:browser` | passed；12 tests，Chromium desktop/mobile、Firefox、WebKit |
 | `git diff --check` | passed |
 
-全仓 437 项测试分布为：types 21、audio 32、capabilities 17、decoder-wasm 32、
-decoder-webcodecs 57、demux 44、platform 12、postprocess 16、renderers 16、strategy 11、
-subtitles 46、core 109、sdk 4、ui 18、react 1、vue 1。
+本节原有全仓总数与分包数字会随后续 Phase 漂移，已停止手工维护。当前全仓总数、测试文件数
+和逐包分布统一读取 `docs/development/evidence/current-test-counts.json`；`pnpm test` 会在测试通过后
+比较该文件，数量变化必须通过 `pnpm test:update-counts` 显式更新并审查。
 
 Platform 12 项测试覆盖：全增强信号、全特性缺失、无 DOM 默认适配器、通用路径、候选不可
 创建/不可变、WebKit HEVC/HDR 已验证 Native 候选、Firefox #1918769 版本范围、版本上界、
