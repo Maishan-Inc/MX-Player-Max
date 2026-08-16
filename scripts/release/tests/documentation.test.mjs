@@ -28,9 +28,16 @@ test('distribution docs describe the Browser public surface and license', () => 
 })
 
 test('production documentation avoids unfixed CDN versions and stale claims', () => {
-  assert.doesNotMatch(combined, /@latest|github\.io|GitHub Pages/)
+  assert.doesNotMatch(combined, /@latest/)
   assert.doesNotMatch(combined, /所有 Codec 已支持|all codecs are supported/i)
   assert.doesNotMatch(combined, /Phase 12\s+(?:pending|计划在)/i)
+})
+
+test('GitHub Pages documentation preserves the Docker and isolation boundary', () => {
+  assert.match(combined, /https:\/\/maishan-inc\.github\.io\/MX-Player-Max\//)
+  assert.match(combined, /\.github\/workflows\/deploy-demo\.yml/)
+  assert.match(combined, /GitHub Pages 不提供 COOP\/COEP/)
+  assert.match(combined, /\/sdk\//)
 })
 
 test('integration docs retain the deployment security contract', () => {

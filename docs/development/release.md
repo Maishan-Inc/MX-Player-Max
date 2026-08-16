@@ -46,6 +46,29 @@ Smoke 使用 `mx-player-max-demo:phase-12-local` 镜像和带专用 label 的临
 隔离端点 `crossOriginIsolated === true` 和非隔离端点 `false`。当前发布清单不含 approved WASM，
 因此 smoke 不伪造 WASM 发布或解码证据。脚本只移除本次 ID/label 均匹配的容器。
 
+## GitHub Pages Demo
+
+`.github/workflows/deploy-demo.yml` 是独立的手动 workflow，输入 `version` 和 `deploy_pages`。它运行
+类型检查、工作区测试、Pages 构建、包/Release 合同与 Chromium 子路径 smoke，然后把
+`apps/demo/dist` 上传为 Pages Artifact。只有 `deploy_pages=true` 且仓库已在 Settings > Pages 中
+选择 GitHub Actions 时才执行部署；否则保留已验证 Artifact 并输出明确提示。
+
+```text
+apps/demo/dist/
+  index.html + assets + flower.webm + .nojekyll
+  sdk/
+    manifest-approved @mx-player-max/browser JS/CSS/maps
+    manifest.json
+```
+
+默认页面为 <https://maishan-inc.github.io/MX-Player-Max/>。`/sdk/` 是当前 Demo 的静态快照，不替代
+npm 固定版本与 SRI 发布。准备脚本只复制 release manifest 中 `publishable: true` 的 Browser 文件，
+并拒绝 excluded WASM、AI 模型和测试资产。
+
+GitHub Pages 不提供 COOP/COEP、CSP、CORP、自定义 MIME 合同或隔离/非隔离双端点，因此不能关闭
+WASM Threads、Docker runtime、真实 Safari 或 latest-two-stable 验收项。Docker 仍是这些环境合同
+的权威 Demo 部署方式。
+
 ## 版本策略
 
 - SDK 与包使用 SemVer。
@@ -56,5 +79,8 @@ Smoke 使用 `mx-player-max-demo:phase-12-local` 镜像和带专用 label 的临
 ## GitHub Actions 门禁
 
 普通 push/PR 只运行 CI 验证，不包含 publish step。Release workflow 的 `validate`、`package`、`consumer-smoke` 和 `artifact` 必须全部成功，才会解锁生产 job。Tag push 只执行验证链；实际发布必须在 `v*.*.*` tag 上手动 dispatch，并将 `publish` input 明确设为 `publish`，同时通过受保护的 `npm-production` environment 和 `NPM_TOKEN` secret。
+
+Pages Demo 与 SDK Release 分离：前者只能由 `deploy-demo.yml` 手动触发，后者继续由 `release.yml`
+控制。CI 和 Release workflow 不申请 Pages 写权限，Pages workflow 不包含 `npm publish` 或 npm token。
 
 本仓库不在开发环境执行真实 `npm publish`、GitHub Release 或 CDN 发布。

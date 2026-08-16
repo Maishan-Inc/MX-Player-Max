@@ -4,6 +4,9 @@
 
 ### Added
 
+- 手动 `deploy-demo.yml` GitHub Pages 流程：相对 base Demo、仓库子路径 Chromium smoke、
+  manifest 白名单 `/sdk/` Browser 产物、Artifact-only 模式及 Pages 未启用提示；Docker 继续承担
+  COOP/COEP、WASM Threads 和自定义响应头验证。
 - Phase 13 可重复质量语料：7 个合成媒体与 2 个字幕 fixture、来源/许可证/FFmpeg 命令、
   SHA-256/FFprobe 校验，以及不提交 30 分钟大文件的 seed-loop 生成策略。
 - Native/WebCodecs Playwright 媒体工程，覆盖非空像素、播放生命周期、连续 seek、字幕 cue、换源、

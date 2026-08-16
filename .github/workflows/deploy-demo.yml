@@ -1,0 +1,86 @@
+name: Deploy Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Demo version shown in the published workbench.
+        required: true
+        default: '0.1.0'
+        type: string
+      deploy_pages:
+        description: Deploy the verified artifact to GitHub Pages.
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  PNPM_VERSION: 10.14.0
+  NODE_VERSION: 22
+  VITE_APP_VERSION: ${{ inputs.version }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build:pages
+      - run: pnpm verify:packages
+      - run: pnpm test:release
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:pages
+      - name: Upload verified Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/demo/dist
+      - name: Explain artifact-only mode
+        if: ${{ !inputs.deploy_pages }}
+        run: echo "Demo was verified and uploaded as an artifact; GitHub Pages deployment was not requested."
+
+  pages:
+    if: ${{ inputs.deploy_pages }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check GitHub Pages
+        id: pages-check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${GITHUB_REPOSITORY}/pages" >/dev/null 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure GitHub Pages
+        if: steps.pages-check.outputs.enabled == 'true'
+        uses: actions/configure-pages@v6
+      - name: Deploy GitHub Pages
+        if: steps.pages-check.outputs.enabled == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v5
+      - name: Explain Pages setup
+        if: steps.pages-check.outputs.enabled != 'true'
+        run: |
+          echo "::warning::GitHub Pages is not enabled for this repository; the verified artifact was uploaded only."
+          echo "Enable Settings > Pages > Build and deployment > GitHub Actions, then rerun this workflow."

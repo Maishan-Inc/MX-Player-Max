@@ -23,11 +23,12 @@ const WASM_ASSETS = new Map([
   ['libvpx-vp8-threaded.wasm', fileURLToPath(new URL('libvpx-vp8-threaded.wasm', WASM_ASSET_DIRECTORY))],
 ])
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  base: mode === 'pages' ? './' : '/',
   plugins: [serveAcceptanceAssets(), serveQualityAssets(), serveSampleRanges(), react()],
   server: { host: true, port: 4173 },
   preview: { host: true, port: 4173 },
-})
+}))
 
 function serveQualityAssets(): Plugin {
   const install = (server: Pick<ViteDevServer | PreviewServer, 'middlewares'>): void => {

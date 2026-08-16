@@ -121,11 +121,22 @@ SDK 无法从 JavaScript 设置这些头。启用 COEP 后，页面全部跨域�
 - npm：主渠道，使用受保护 workflow 的 `pnpm publish -r --access public` 处理 workspace 版本。
 - ESM CDN：npm 发布后可供支持 ESM 的 CDN 使用；生产环境锁定精确版本并从 Manifest 复制 SRI。
 - IIFE CDN：Browser 包 `unpkg`/`jsdelivr` 字段指向 `mx-player-max.iife.min.js`，示例中的版本和 SRI 是 release-time 替换模板。
+- GitHub Pages Demo：手动发布 `apps/demo/dist`，并在 `/sdk/` 附带 manifest-approved Browser
+  JS/CSS/maps；它是展示快照，不是版本化 SDK 渠道。
 - GitHub Releases：后续用于离线包、哈希清单和经许可审查的二进制。
 - Docker/GHCR：只分发 Demo，不是 SDK 的安装前置。
 - 自托管：企业内网、离线审计和区域 CDN 的推荐方案。
 
 不提供 CJS 或 UMD 兼容层。SRI、SHA-256/SHA-384、IIFE/CSS 和 Worker/AudioWorklet 条目由 release manifest 生成；未审查 WASM/模型必须保持 excluded。
+
+Pages 默认地址为 <https://maishan-inc.github.io/MX-Player-Max/>，只由
+`.github/workflows/deploy-demo.yml` 手动更新。Pages 构建使用相对 base，使同一 Artifact 可位于仓库
+子路径或自定义域名根路径；应用运行时不硬编码 `/MX-Player-Max/`。准备脚本从 release manifest
+筛选 `@mx-player-max/browser` 文件，不复制整个包或工作区。
+
+GitHub Pages 不提供 COOP/COEP 或其他自定义响应头，不能建立 `crossOriginIsolated` 多线程 WASM
+环境。Docker/Nginx 继续负责隔离头、CSP/CORP、MIME、Range 和单线程降级对照；Pages 的成功加载
+不能替代 Docker smoke、真实浏览器矩阵或许可审批。
 
 ## 9. 安全与诊断
 

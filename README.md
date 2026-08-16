@@ -50,6 +50,15 @@ await handle.ready
 
 `@mx-player-max/browser` 只组合 SDK 和官方 UI，`destroy()` 按 UI -> SDK 顺序幂等清理。所有公开包使用 `PolyForm-Noncommercial-1.0.0`；商业使用需要单独授权。
 
+## 在线 Demo
+
+GitHub Pages Demo：<https://maishan-inc.github.io/MX-Player-Max/>
+
+公开页面由 `.github/workflows/deploy-demo.yml` 手动构建和部署，不随 push 自动更新。站点的
+`/sdk/` 目录同时提供 release manifest 白名单内的 Browser IIFE、ESM、CSS 和 source map；正式
+SDK 版本仍以 npm 发布为准。GitHub Pages 不提供 COOP/COEP 或自定义安全头，因此只作为静态展示，
+Docker 仍是 WASM Threads、跨源隔离和双端点降级的运行时环境。
+
 ## 包边界
 
 ```text
@@ -82,7 +91,9 @@ pnpm install
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm build:pages
 pnpm test:browser
+pnpm test:pages
 pnpm dev
 pnpm test:release
 pnpm verify:packages

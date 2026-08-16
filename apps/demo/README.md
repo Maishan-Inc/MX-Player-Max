@@ -23,4 +23,21 @@ docker compose up --build
 
 默认 `flower.webm` 是仓库内的 CC0 媒体样本。非空 poster 与媒体来源、SHA-256 和许可记录在 `public/ASSET-PROVENANCE.md`。
 
+## GitHub Pages
+
+公开静态 Demo 位于 <https://maishan-inc.github.io/MX-Player-Max/>。仓库维护者在 GitHub Actions
+中手动运行 `.github/workflows/deploy-demo.yml`，输入展示版本并选择是否部署；首次部署前需在
+Settings > Pages 中选择 GitHub Actions。页面 Artifact 还在 `/sdk/` 提供 manifest-approved
+Browser JS/CSS，但不包含 restricted WASM 或 AI 模型。
+
+本地构建与子路径 smoke：
+
+```bash
+pnpm build:pages
+pnpm test:pages
+```
+
+GitHub Pages 不提供 COOP/COEP、CSP、CORP 或 Docker 的隔离/非隔离双端点，不能验证 WASM Threads
+或替代 Nginx runtime smoke。远程媒体仍由浏览器直接访问，必须支持 HTTPS、CORS 和 Range。
+
 Playwright fixture 与 workbench 截图只构成自动化证据。真实 Chrome/Firefox 最新两个稳定大版本及 macOS Safari 的验证状态将在 Phase 12 验收记录中单独维护。

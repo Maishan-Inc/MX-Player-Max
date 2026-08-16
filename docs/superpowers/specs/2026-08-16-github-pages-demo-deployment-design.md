@@ -1,6 +1,6 @@
 # GitHub Pages Demo Deployment Design
 
-状态：用户已批准；待实现。
+状态：已实现并通过本地验证；真实 GitHub Pages 部署待手动运行 `deploy-demo.yml`。
 
 ## 1. 目标与范围
 

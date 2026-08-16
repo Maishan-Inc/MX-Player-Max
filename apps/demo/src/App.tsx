@@ -5,9 +5,10 @@ import type { MXPlayer as SdkPlayer } from '@mx-player-max/sdk'
 import type { PlaybackIntent, SourceDescriptor } from '@mx-player-max/types'
 import type { TheaterModeAdapter } from '@mx-player-max/ui'
 import { DiagnosticsPanel } from './components/DiagnosticsPanel'
+import { displayBuildVersion, REPOSITORY_URL, resolveDefaultMediaUrl } from './deployment'
 import { initializeDemoReveal } from './reveal'
 
-const DEFAULT_MEDIA = '/flower.webm'
+const BUILD_VERSION = displayBuildVersion(import.meta.env.VITE_APP_VERSION)
 
 class DemoTheaterMode implements TheaterModeAdapter {
   #active = false
@@ -26,14 +27,15 @@ class DemoTheaterMode implements TheaterModeAdapter {
 }
 
 export default function App() {
+  const defaultMediaUrl = resolveDefaultMediaUrl(import.meta.env.BASE_URL, window.location.href)
   const rootRef = useRef<HTMLElement>(null)
   const playerRef = useRef<MXPlayerComponentHandle>(null)
   const theaterMode = useMemo(() => new DemoTheaterMode(), [])
   const [theater, setTheater] = useState(false)
-  const [url, setUrl] = useState(DEFAULT_MEDIA)
+  const [url, setUrl] = useState(defaultMediaUrl)
   const [source, setSource] = useState<SourceDescriptor>(() => ({
     kind: 'url',
-    url: new URL(DEFAULT_MEDIA, window.location.href).href,
+    url: defaultMediaUrl,
   }))
   const [intent, setIntent] = useState<PlaybackIntent>('normal')
   const [message, setMessage] = useState('Default CC0 sample')
@@ -118,8 +120,8 @@ export default function App() {
     <main ref={rootRef} className={theater ? 'demo-shell is-theater' : 'demo-shell'}>
       <header className="topbar" data-demo-reveal>
         <div className="brand-block"><span className="brand-mark">MX</span><span><strong>Player Max</strong><small>Playback workbench</small></span></div>
-        <div className="runtime-status"><i aria-hidden="true" /><span>Phase 12 public API workbench</span></div>
-        <a href="https://github.com/" target="_blank" rel="noreferrer">Repository</a>
+        <div className="runtime-status"><i aria-hidden="true" /><span>MX Player Max {BUILD_VERSION}</span></div>
+        <a href={REPOSITORY_URL} target="_blank" rel="noreferrer">Repository</a>
       </header>
 
       <section className="workbench" data-demo-reveal>
