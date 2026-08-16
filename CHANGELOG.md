@@ -74,6 +74,8 @@
 
 ### Changed
 
+- `pnpm test:browser` 保留 UI/媒体项目并发，但在它们完成后串行运行 Chromium 与 Firefox 性能项目，
+  避免跨浏览器资源竞争污染性能门槛并导致默认命令偶发失败。
 - Range/container probe 保留协议与损坏错误码，不再把错误 200、Content-Range、断连或截断全部折叠为
   `NATIVE_NOT_SUPPORTED`；公共 SDK error 事件移除内部 cause，避免泄漏 URL、路径和平台错误。
 - Engine 创建的 Custom canvas 继承宿主尺寸，AI governor options 生效，seek 后迟到的 postprocess

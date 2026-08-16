@@ -1,6 +1,6 @@
 # Playwright Resource Isolation Design
 
-状态：用户已批准；待实现。
+状态：用户已批准；实现完成，默认浏览器测试连续三次通过。
 
 ## 1. 目标与范围
 

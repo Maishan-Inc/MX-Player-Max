@@ -1,5 +1,15 @@
 import { defineConfig } from '@playwright/test'
 
+const concurrentProjectNames = [
+  'chromium-desktop',
+  'chromium-mobile',
+  'firefox-simulated',
+  'webkit-simulated',
+  'media-chromium',
+  'media-firefox',
+  'media-webkit-automation',
+] as const
+
 export default defineConfig({
   testDir: '.',
   timeout: 45_000,
@@ -20,8 +30,8 @@ export default defineConfig({
     { name: 'media-chromium', testDir: './tests/browser/media', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
     { name: 'media-firefox', testDir: './tests/browser/media', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
     { name: 'media-webkit-automation', testDir: './tests/browser/media', timeout: 120_000, use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
-    { name: 'performance-chromium', testDir: './tests/browser/performance', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
-    { name: 'performance-firefox', testDir: './tests/browser/performance', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
+    { name: 'performance-chromium', dependencies: [...concurrentProjectNames], testDir: './tests/browser/performance', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+    { name: 'performance-firefox', dependencies: ['performance-chromium'], testDir: './tests/browser/performance', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
   ],
   webServer: {
     command: 'pnpm --dir apps/demo exec vite preview --host 127.0.0.1 --port 4175 --strictPort',

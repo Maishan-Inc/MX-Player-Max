@@ -50,6 +50,11 @@ UI 配置包含 Chromium 1440x900、Chromium mobile 390x844、Firefox 和 WebKit
 `media-chromium`、`media-firefox`、`media-webkit-automation`，性能工程含 Chromium/Firefox；
 WebKit 媒体结果始终标记 automation-only。Chromium desktop/mobile 提交稳定 UI baseline。
 
+默认 `pnpm test:browser` 先并发运行 UI 与媒体项目，再依次运行 `performance-chromium` 和
+`performance-firefox`。性能项目通过 Playwright project dependencies 隔离，避免同时启动的浏览器、
+媒体解码和计时器负载污染首帧、首字幕与 seek 指标。`fullyParallel: false` 只约束项目内测试，不能
+替代这层跨项目调度；不得通过放宽性能阈值或添加 retry 掩盖资源竞争。
+
 截图验收必须用视觉检查确认：
 
 - media/poster 像素非空；
