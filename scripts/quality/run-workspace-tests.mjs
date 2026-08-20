@@ -11,11 +11,13 @@ const evidencePath = path.join(root, 'docs/development/evidence/current-test-cou
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'mxp-test-counts-'))
 const workspaces = await findTestWorkspaces()
 const packages = []
+// Hosted CI runners have limited memory; avoid nested Vitest worker pools around WASM tests.
+const vitestStabilityArgs = ['--pool=forks', '--poolOptions.forks.singleFork']
 
 try {
   for (const workspace of workspaces) {
     const output = path.join(temporary, `${workspace.directory.replaceAll('/', '-')}.json`)
-    const result = spawnSync(process.execPath, [pnpmCli(), '--dir', workspace.directory, 'test', '--reporter=json', `--outputFile=${output}`], {
+    const result = spawnSync(process.execPath, [pnpmCli(), '--dir', workspace.directory, 'test', ...vitestStabilityArgs, '--reporter=json', `--outputFile=${output}`], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
