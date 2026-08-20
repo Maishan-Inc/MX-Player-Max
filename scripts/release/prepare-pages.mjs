@@ -6,6 +6,10 @@ import { assertManifest } from './manifest-schema.mjs'
 const workspaceRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const REQUIRED_DEMO_FILES = ['index.html', '.nojekyll', 'flower.webm']
 const RESTRICTED_ASSET_PATTERN = /\.(?:wasm|mxai|onnx|bin|data|model|weights|pth|pt|zip)$/i
+const PAGE_ASSET_PACKAGES = new Map([
+  ['@mx-player-max/browser', 'packages/browser'],
+  ['@mx-player-max/decoder-wasm-vpx', 'packages/decoder-wasm-vpx'],
+])
 
 export async function preparePagesArtifact({ root = workspaceRoot } = {}) {
   const resolvedRoot = path.resolve(root)
@@ -17,8 +21,8 @@ export async function preparePagesArtifact({ root = workspaceRoot } = {}) {
   for (const file of REQUIRED_DEMO_FILES) await requireFile(path.join(demoDist, file), `required Pages file is missing: ${file}`)
 
   const manifest = assertManifest(JSON.parse(await readFile(manifestPath, 'utf8')))
-  const assets = manifest.assets.filter((asset) => asset.packageName === '@mx-player-max/browser')
-  if (assets.length === 0) throw new Error('Release manifest contains no publishable Browser assets')
+  const assets = manifest.assets.filter((asset) => PAGE_ASSET_PACKAGES.has(asset.packageName))
+  if (!assets.some((asset) => asset.packageName === '@mx-player-max/browser')) throw new Error('Release manifest contains no publishable Browser assets')
 
   const sdkDirectory = path.join(demoDist, 'sdk')
   await rm(sdkDirectory, { recursive: true, force: true })
@@ -26,12 +30,15 @@ export async function preparePagesArtifact({ root = workspaceRoot } = {}) {
 
   const sdkFiles = []
   for (const asset of assets) {
-    const relativePath = browserAssetPath(asset.path)
-    const source = path.resolve(browserPackage, asset.path)
+    const packagePath = PAGE_ASSET_PACKAGES.get(asset.packageName)
+    if (packagePath === undefined) throw new Error(`Pages asset package is unsupported: ${asset.packageName}`)
+    const packageRoot = path.resolve(resolvedRoot, packagePath)
+    const relativePath = pagesAssetPath(asset)
+    const source = path.resolve(packageRoot, asset.path)
     const destination = path.resolve(sdkDirectory, relativePath)
-    if (!isWithin(browserDist, source)) throw new Error(`Browser asset escapes dist: ${asset.path}`)
+    if (!isWithin(packageRoot, source)) throw new Error(`Manifest asset escapes package: ${asset.path}`)
     if (!isWithin(sdkDirectory, destination)) throw new Error(`Browser asset escapes Pages SDK: ${asset.path}`)
-    await requireFile(source, `manifest-approved Browser asset is missing: ${asset.path}`)
+    await requireFile(source, `manifest-approved Pages asset is missing: ${asset.path}`)
     await mkdir(path.dirname(destination), { recursive: true })
     await cp(source, destination)
     sdkFiles.push(relativePath)
@@ -43,9 +50,10 @@ export async function preparePagesArtifact({ root = workspaceRoot } = {}) {
 
   const pagesFiles = await listFiles(demoDist)
   const restrictedNames = new Set(manifest.excluded.map((asset) => path.posix.basename(asset.path)))
+  const approvedBinaryFiles = new Set(sdkFiles.filter((file) => RESTRICTED_ASSET_PATTERN.test(file)).map((file) => `sdk/${file}`))
   for (const file of pagesFiles) {
     const name = path.posix.basename(file)
-    if (restrictedNames.has(name) || RESTRICTED_ASSET_PATTERN.test(file)) {
+    if (restrictedNames.has(name) || RESTRICTED_ASSET_PATTERN.test(file) && !approvedBinaryFiles.has(file)) {
       throw new Error(`restricted asset entered Pages output: ${file}`)
     }
   }
@@ -60,6 +68,11 @@ if (isMain(import.meta.url)) {
   console.log(`Pages artifact prepared with ${report.sdkFiles.length} Browser SDK file(s).`)
 }
 
+function pagesAssetPath(asset) {
+  if (asset.packageName === '@mx-player-max/decoder-wasm-vpx') return wasmAssetPath(asset.path)
+  return browserAssetPath(asset.path)
+}
+
 function browserAssetPath(value) {
   if (typeof value !== 'string') throw new Error('Browser manifest path must be a string')
   const portable = value.replaceAll('\\', '/')
@@ -69,6 +82,15 @@ function browserAssetPath(value) {
   const relativePath = portable.slice('dist/'.length)
   if (relativePath.length === 0 || path.posix.normalize(relativePath) !== relativePath) throw new Error(`Browser manifest path is invalid: ${value}`)
   return relativePath
+}
+
+function wasmAssetPath(value) {
+  if (typeof value !== 'string') throw new Error('WASM manifest path must be a string')
+  const portable = value.replaceAll('\\', '/')
+  if (!portable.startsWith('wasm/') || portable.includes('\0') || portable.split('/').includes('..') || path.posix.normalize(portable) !== portable) {
+    throw new Error(`WASM manifest path is invalid: ${value}`)
+  }
+  return portable
 }
 
 async function requireFile(filePath, message) {

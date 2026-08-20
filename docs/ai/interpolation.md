@@ -140,7 +140,7 @@ RIFE v4.x 包含：
 
 - 上游：[hzwer/Practical-RIFE](https://github.com/hzwer/Practical-RIFE)
 - 训练数据：Vimeo90K
-- 许可证：**必须在契约层阶段审查**——部分发布版本为研究/非商用授权，AGENTS.md §5 禁止发布未审查二进制
+- 许可证：锁定的 `hzwer/Practical-RIFE@17d8c7a1` archive 和仓库均为 MIT，仓库资产审核已通过；不得改用采用研究/非商用授权的第三方封装
 
 ## 性能预算
 

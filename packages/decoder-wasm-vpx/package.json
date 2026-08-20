@@ -1,7 +1,7 @@
 {
   "name": "@mx-player-max/decoder-wasm-vpx",
   "version": "0.1.0",
-  "description": "Restricted libvpx VP8 WASM decoder plugin for MX-Player-Max.",
+  "description": "Approved libvpx VP8 WASM decoder plugin for MX-Player-Max.",
   "publishConfig": { "access": "public" },
   "license": "PolyForm-Noncommercial-1.0.0",
   "repository": { "type": "git", "url": "git+https://github.com/Maishan-Inc/MX-Player-Max.git", "directory": "packages/decoder-wasm-vpx" },
@@ -12,7 +12,16 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "wasm/libvpx-vp8-single.wasm",
+    "wasm/libvpx-vp8-simd.wasm",
+    "wasm/PROVENANCE.md",
+    "third_party/libvpx/LICENSE",
+    "third_party/libvpx/PATENTS",
+    "README.md",
+    "LICENSE"
+  ],
   "sideEffects": false,
   "dependencies": {
     "@mx-player-max/decoder-wasm": "workspace:*",

@@ -25,7 +25,7 @@ describe('libvpx VP8 Manager variant fallback', () => {
     const plugin = createLibvpxVp8Plugin({ frameFactory })
     const manager = createWasmDecoderManager({
       baseUrl: 'https://wasm.test/vp8/', registry: createWasmDecoderRegistry([plugin]),
-      fetcher, cache: createMemoryWasmCache(), requireApprovedReview: false,
+      fetcher, cache: createMemoryWasmCache(),
     })
     const { packet, track } = await realPacket()
     const instance = await manager.load('vp8', track, capabilities({ isolated: true, simd: true }), {
@@ -51,7 +51,7 @@ describe('libvpx VP8 Manager variant fallback', () => {
     }) as typeof fetch
     const manager = createWasmDecoderManager({
       baseUrl: 'https://wasm.test/vp8/', registry: createWasmDecoderRegistry([createLibvpxVp8Plugin({ frameFactory: noopFactory() })]),
-      fetcher, cache: createMemoryWasmCache(), requireApprovedReview: false,
+      fetcher, cache: createMemoryWasmCache(),
     })
     const { track } = await realPacket()
     const instance = await manager.load('vp8', track, capabilities({ isolated: false, simd: false }))

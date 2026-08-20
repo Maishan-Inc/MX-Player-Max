@@ -11,6 +11,20 @@ const homepage = 'https://github.com/Maishan-Inc/MX-Player-Max#readme'
 const bugsUrl = 'https://github.com/Maishan-Inc/MX-Player-Max/issues'
 const license = 'PolyForm-Noncommercial-1.0.0'
 const cssPackages = new Set(['@mx-player-max/browser', '@mx-player-max/ui'])
+const vpxPackage = '@mx-player-max/decoder-wasm-vpx'
+const approvedVpxFiles = [
+  'wasm/libvpx-vp8-single.wasm',
+  'wasm/libvpx-vp8-simd.wasm',
+]
+const vpxPackageFiles = [
+  'dist',
+  ...approvedVpxFiles,
+  'wasm/PROVENANCE.md',
+  'third_party/libvpx/LICENSE',
+  'third_party/libvpx/PATENTS',
+  'README.md',
+  'LICENSE',
+]
 const errors = []
 const scheduledFileChecks = []
 
@@ -60,7 +74,7 @@ function verifyManifest(directory, manifest) {
   requireEqual(label, 'types', manifest.types, './dist/index.d.ts')
   requireEqual(label, 'publishConfig.access', manifest.publishConfig?.access, 'public')
 
-  const expectedFiles = ['dist', 'README.md', 'LICENSE']
+  const expectedFiles = label === vpxPackage ? vpxPackageFiles : ['dist', 'README.md', 'LICENSE']
   if (!Array.isArray(manifest.files) || JSON.stringify(manifest.files) !== JSON.stringify(expectedFiles)) {
     errors.push(`${label}: files must equal ${JSON.stringify(expectedFiles)}`)
   }
@@ -124,9 +138,13 @@ async function verifyTarball({ directory, manifest }, tempDirectory) {
   const fileNames = (report.files ?? []).map((entry) => entry.path)
   for (const fileName of fileNames) {
     if (isForbiddenTarballPath(fileName)) errors.push(`${label}: forbidden tarball file ${fileName}`)
-    if (isUnreviewedBinary(fileName)) errors.push(`${label}: unreviewed binary in tarball ${fileName}`)
+    if (isBinaryAsset(fileName) && (label !== vpxPackage || !approvedVpxFiles.includes(fileName))) {
+      errors.push(`${label}: unreviewed or excluded binary in tarball ${fileName}`)
+    }
   }
-  for (const required of ['package.json', 'README.md', 'LICENSE', 'dist/index.js', 'dist/index.d.ts']) {
+  const requiredFiles = ['package.json', 'README.md', 'LICENSE', 'dist/index.js', 'dist/index.d.ts']
+  if (label === vpxPackage) requiredFiles.push(...approvedVpxFiles, 'wasm/PROVENANCE.md', 'third_party/libvpx/LICENSE', 'third_party/libvpx/PATENTS')
+  for (const required of requiredFiles) {
     if (!fileNames.includes(required)) errors.push(`${label}: tarball is missing ${required}`)
   }
 
@@ -173,7 +191,7 @@ function isForbiddenTarballPath(fileName) {
     || /(^|\/)(?:\.tmp|tmp|temp)(\/|$)/i.test(fileName)
 }
 
-function isUnreviewedBinary(fileName) {
+function isBinaryAsset(fileName) {
   return /\.(?:wasm|mxai|onnx|bin|data|model|weights|pth|pt|zip)$/i.test(fileName)
 }
 

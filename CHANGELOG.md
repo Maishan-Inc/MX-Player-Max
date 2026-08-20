@@ -4,6 +4,9 @@
 
 ### Added
 
+- Phase 10.2 libvpx VP8 三个 WASM 变体完成项目所有者授权及许可证/专利审核；运行时默认审核门禁
+  直接接受 approved manifest，single/SIMD 以固定 SHA-256 进入 npm、Release、Browser Manifest
+  与 Pages 白名单，threaded 因缺少 pthread host glue 保持技术性排除。
 - 手动 `deploy-demo.yml` GitHub Pages 流程：相对 base Demo、仓库子路径 Chromium smoke、
   manifest 白名单 `/sdk/` Browser 产物、Artifact-only 模式及 Pages 未启用提示；Docker 继续承担
   COOP/COEP、WASM Threads 和自定义响应头验证。
@@ -21,14 +24,14 @@
   机器计数与文档漂移 CI；
   Docker 增加 CSP、隔离 80/非隔离 8080 双运行时静态合同。
 
-- Phase 10.2 restricted libvpx `v1.15.2` VP8 垂直切片：真实 single/SIMD/threaded WASM 资产、
+- Phase 10.2 libvpx `v1.15.2` VP8 垂直切片：真实 single/SIMD/threaded WASM 资产、
   MXWF I420 帧 ABI v1、真实媒体样本、WebAssembly compile/instantiate runtime 和供应链资料。
 - 后端无关 `@mx-player-max/decoder-worker` 控制面，以及 VP8 WASM Worker 对 Phase 2 packet、
   Phase 4 epoch/reset/flush/有界队列/背压/pull reader 的复用。
-- Core 仅在显式 `wasmBaseUrl` 下声明 restricted VP8，支持 WebCodecs 初始化失败原子回退 WASM；
+- Core 仅在显式 `wasmBaseUrl` 下声明 approved VP8，支持 WebCodecs 初始化失败原子回退 WASM；
   非隔离 single 和隔离 threaded -> SIMD 回退均通过真实 Chromium 渲染，Firefox single 通过。
-- Browser release manifest 显式排除三个 restricted VP8 WASM 变体，禁止未完成许可与专利审查的
-  二进制进入 publishable assets。
+- Browser release manifest 发布审核通过且哈希锁定的 single/SIMD，因 host glue 缺失显式排除
+  threaded，并继续禁止未完成许可与专利审查的新增二进制进入 publishable assets。
 
 - Phase 12 Demo 公开 API 诊断工作台：Probe、Decision、Runtime、Subtitles 四面板及 empty/loading/ready/failed 状态，只消费 SDK getter/event；source/intent 切换清理旧 epoch，未知能力保留 pending verification，GSAP 与 reduced-motion 不阻塞播放器生命周期。
 - Phase 12 Docker 演示站冻结依赖安装，区分 HTML、版本化静态资源和媒体缓存，并增加 COOP/COEP/nosniff、MIME、Range、404 与 `crossOriginIsolated` smoke。

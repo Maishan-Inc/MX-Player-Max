@@ -20,14 +20,17 @@ export const DEFAULT_RELEASE_ASSETS = [
   {
     packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-single.wasm', type: 'wasm',
     publishable: true, reviewStatus: 'approved', reason: 'license-and-patent-review-granted',
+    expectedSha256: 'd8de9e34abade1d60ebd4646d98681dacf3c688d2f38dc7b1e1c15c699f1c5ba',
   },
   {
     packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-simd.wasm', type: 'wasm',
     publishable: true, reviewStatus: 'approved', reason: 'license-and-patent-review-granted',
+    expectedSha256: '79e784506b25160e650c02d6d87213075188f98fda1e829a342ad4cad980853d',
   },
   {
     packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-threaded.wasm', type: 'wasm',
-    publishable: true, reviewStatus: 'approved', reason: 'license-and-patent-review-granted',
+    publishable: false, reviewStatus: 'approved', reason: 'threaded-host-glue-unavailable',
+    expectedSha256: '422c57f2634f6e24d2745b01dcf54a4cd2da0ba079fe60f85a0377041becb07f',
   },
 ]
 

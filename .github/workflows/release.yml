@@ -101,6 +101,11 @@ jobs:
             packages/browser/dist/manifest.json
             packages/browser/dist/*.js
             packages/browser/dist/*.css
+            packages/decoder-wasm-vpx/wasm/libvpx-vp8-single.wasm
+            packages/decoder-wasm-vpx/wasm/libvpx-vp8-simd.wasm
+            packages/decoder-wasm-vpx/wasm/PROVENANCE.md
+            packages/decoder-wasm-vpx/third_party/libvpx/LICENSE
+            packages/decoder-wasm-vpx/third_party/libvpx/PATENTS
 
   publish:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == 'publish' && startsWith(github.ref, 'refs/tags/v') }}

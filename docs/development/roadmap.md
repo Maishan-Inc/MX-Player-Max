@@ -54,9 +54,10 @@
 
 建立 Codec 插件注册、单线程/SIMD/多线程选择、WASM 哈希校验、懒加载、缓存和失败回退。先接入 libvpx、dav1d、libde265、OpenH264，再接入 VVdeC 和 FFmpeg 兜底。
 
-当前状态：10.2 已完成 restricted libvpx VP8 8-bit I420 单 Codec 垂直切片，包括真实 WASM、
+当前状态：10.2 已完成并审核通过 libvpx VP8 8-bit I420 单 Codec 垂直切片，包括真实 WASM、
 MXWF 帧 ABI、共享 Worker、Core Custom Pipeline、WebCodecs 原子回退和 Chromium/Firefox
-真实样本渲染。只有显式 `wasmBaseUrl` 才启用；Browser release manifest 明确排除三个变体。
+真实样本渲染。只有显式 `wasmBaseUrl` 才启用；Browser release manifest 发布 single/SIMD，
+并因 host glue 缺失技术性排除 threaded。
 10.3 其余视频 Codec、10.4 WASM 音频、10.5 FFmpeg 与独立许可/专利发布审查继续 pending。
 
 ## 阶段 11：浏览器平台优化
@@ -69,7 +70,7 @@ Chrome/Firefox/macOS Safari Codec 与系统能力验证继续作为环境门禁�
 
 ## 阶段 12：SDK、演示站与发布
 
-当前状态：自动化发布就绪已完成。Browser ESM/IIFE、公开 API 诊断工作台、统一发布元数据、Manifest/SHA/SRI、17 包 pack/consumer smoke、Docker 配置与 CI/Release 门禁均已交付。真实 Docker、latest-two-stable/物理 Safari、Codec/WASM 二进制审查和 npm/CDN 发布仍是明确的后续环境门禁；Phase 12 不重复实现控制逻辑。
+当前状态：自动化发布就绪已完成。Browser ESM/IIFE、公开 API 诊断工作台、统一发布元数据、Manifest/SHA/SRI、19 包 pack/consumer smoke、Docker 配置与 CI/Release 门禁均已交付。现有 libvpx VP8 WASM 审核已通过；真实 Docker、latest-two-stable/物理 Safari、未来 Codec 各自审查和真实 npm/CDN 发布仍是明确的后续环境门禁；Phase 12 不重复实现控制逻辑。
 
 ## 阶段 13：质量、安全与性能固化
 
@@ -79,5 +80,5 @@ postprocess 数值/资源/epoch 固化、明确 Range/Worker/Audio/GPU 错误、
 
 最终发布仍 pending：Chrome/Firefox latest-two-stable 和物理 macOS Safari 未执行；本地 30 分钟
 automation 已运行但启动、缓冲和帧丢失阈值未通过，独立音画漂移/CPU/功耗仍不可观测；本机无 Docker CLI，
-Phase 10.2 WASM 独立审批未通过。不得用 Playwright、
+Phase 10.2 WASM 审批已通过；当前阻塞项仅为实机、性能和 Docker 技术证据。不得用 Playwright、
 fake runtime 或短 smoke 填充这些行。完成后才进入 HLS/DASH、PGS/VobSub、移动端和 DRM 子项目。

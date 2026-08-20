@@ -60,6 +60,7 @@ Cache Storage 不可用时可以使用内存缓存。
 失败时才返回 `WASM_ALL_VARIANTS_FAILED`。聚合错误的 `attempts` 只包含插件 ID、变体、
 稳定错误码和安全摘要，不包含响应正文。
 
-当前仓库包含一个 `review.status === 'restricted'` 的 libvpx VP8 8-bit I420 开发切片；默认
-review gate 不会公布或加载它。OpenH264、dav1d、VP9、AV1、libde265、VVdeC、WASM 音频和
+当前仓库包含一个 `review.status === 'approved'` 的 libvpx VP8 8-bit I420 切片；默认
+review gate 会公布并允许加载它。`single`/`simd` 进入哈希锁定的发布资产，`threaded` 因缺少
+Emscripten pthread host glue 保持技术性排除。OpenH264、dav1d、VP9、AV1、libde265、VVdeC、WASM 音频和
 FFmpeg 均未接入。每个正式二进制仍必须在发布前完成独立供应链、许可证与专利审查。

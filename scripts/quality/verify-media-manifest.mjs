@@ -9,6 +9,7 @@ const failures = []
 const ids = new Set()
 const subtitleIds = new Set(manifest.subtitles.map((entry) => entry.id))
 const hashPattern = /^[a-f0-9]{64}$/
+const wasmEvidenceStatuses = new Set(['approved-pending-real-browser', 'not-covered-by-vp8-video-only-scope', 'not-implemented'])
 
 if (manifest.schemaVersion !== 1) failures.push('schemaVersion must equal 1')
 if (!manifest.license || !manifest.source || !manifest.generator?.version) failures.push('corpus provenance is incomplete')
@@ -34,7 +35,7 @@ for (const sample of manifest.samples) {
   if (!Array.isArray(sample.expectedPaths) || sample.expectedPaths.length === 0) failures.push(`${sample.id}: expectedPaths missing`)
   if (!sample.minimumReproduction) failures.push(`${sample.id}: minimum reproduction missing`)
   for (const subtitleId of sample.subtitleIds) if (!subtitleIds.has(subtitleId)) failures.push(`${sample.id}: unknown subtitle ${subtitleId}`)
-  if (sample.wasmStatus !== undefined && sample.wasmStatus !== 'blocked-by-phase-10') failures.push(`${sample.id}: invalid WASM evidence status`)
+  if (sample.wasmStatus !== undefined && !wasmEvidenceStatuses.has(sample.wasmStatus)) failures.push(`${sample.id}: invalid WASM evidence status`)
 }
 const dimensions = {
   containers: new Set(manifest.samples.map((sample) => sample.container)),

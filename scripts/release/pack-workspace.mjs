@@ -10,6 +10,8 @@ import { normalizePackageDist } from './normalize-esm.mjs'
 const workspaceRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const releaseTempRoot = path.join(workspaceRoot, '.release-tmp')
 const outputRoot = path.join(releaseTempRoot, 'release-pack')
+const vpxPackage = '@mx-player-max/decoder-wasm-vpx'
+const approvedVpxFiles = ['wasm/libvpx-vp8-single.wasm', 'wasm/libvpx-vp8-simd.wasm']
 
 export function validatePackedManifest(manifest, files) {
   const label = manifest.name ?? '<unknown package>'
@@ -30,6 +32,13 @@ export function validatePackedManifest(manifest, files) {
   }
   if (label === '@mx-player-max/vue') {
     if (manifest.dependencies?.vue !== undefined || manifest.peerDependencies?.vue === undefined) throw new Error(`${label}: Vue must be a peer dependency`)
+  }
+  if (label === vpxPackage) {
+    for (const required of [...approvedVpxFiles, 'wasm/PROVENANCE.md', 'third_party/libvpx/LICENSE', 'third_party/libvpx/PATENTS']) {
+      if (!files.includes(required)) throw new Error(`${label}: approved WASM distribution is missing ${required}`)
+    }
+    const excluded = files.filter((file) => file.endsWith('.wasm') && !approvedVpxFiles.includes(file))
+    if (excluded.length > 0) throw new Error(`${label}: unapproved or technically excluded WASM entered the tarball: ${excluded.join(', ')}`)
   }
 }
 

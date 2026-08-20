@@ -1,13 +1,13 @@
 # Phase 10 验收记录
 
-日期：2026-08-12
+日期：2026-08-12；审核更新：2026-08-20
 
 ## 实现状态
 
-Phase 10.2 单 Codec 垂直切片已实现，等待子阶段评审。Phase 10 总体没有完成：10.3 其余
-视频 Codec、10.4 WASM 音频、10.5 FFmpeg 与发布许可审查均保持 pending。
+Phase 10.2 单 Codec 垂直切片已实现，并于 2026-08-20 完成项目所有者授权及许可证/专利审核。
+Phase 10 总体仍未完成：10.3 其余视频 Codec、10.4 WASM 音频和 10.5 FFmpeg 尚未接入。
 
-本次交付范围固定为 restricted libvpx VP8：
+本次交付范围固定为审核通过的 libvpx VP8：
 
 - 上游 libvpx `v1.15.2`，commit `d168454ecd099805c675d4a98c66f4891373302a`。
 - 仅支持 video-only VP8 profile 0、8-bit I420；不包含 VP9、AV1、H.264、HEVC、VVC 或音频。
@@ -16,7 +16,7 @@ Phase 10.2 单 Codec 垂直切片已实现，等待子阶段评审。Phase 10 �
   metadata、frame token 和必要复制边界。
 - `@mx-player-max/decoder-worker` 复用既有 session/request identity、epoch、reset、flush、
   transferable `VideoFrame`、旧帧关闭和错误清洗控制面。
-- Core 只有在显式 `wasmBaseUrl` 时向 `CapabilityContext` 注入 restricted VP8 declaration；
+- Core 只有在显式 `wasmBaseUrl` 时向 `CapabilityContext` 注入 approved VP8 declaration；
   普通 HTMLVideo/WebCodecs 探测阶段使用 `includeWasm:false`，只有 WASM candidate 初始化时才
   调用 `detectWasmCapabilities()`。
 - WebCodecs candidate 初始化失败后由同一个原子候选控制器回退 WASM。隔离环境 threaded
@@ -26,9 +26,10 @@ Phase 10.2 单 Codec 垂直切片已实现，等待子阶段评审。Phase 10 �
 
 ## 资产与供应链
 
-Review 结论为 `restricted`，不是 `approved`。BSD-3-Clause 全文保存在
+Review 结论为 `approved`。项目所有者于 2026-08-20 确认所需授权已经取得；该仓库记录是授权
+记录，不构成独立法律意见。BSD-3-Clause 全文保存在
 `packages/decoder-wasm-vpx/third_party/libvpx/LICENSE`；上游 `PATENTS` 的 WebM 实现专利授权
-及诉讼终止条款原文保存在同目录。该授权降低风险，但不构成独立法律意见，发布审查未完成。
+及诉讼终止条款原文保存在同目录。
 
 | Variant | Bytes | SHA-256 | 构建/运行状态 |
 |---|---:|---|---|
@@ -46,10 +47,11 @@ SIMD 增加 `-msimd128`；threaded 使用 `--enable-multithread`、`-pthread` �
 当前仓库保留 `native/mxwf_vpx.c`、资产审计脚本和完整 provenance，但没有提交自动获取
 toolchain/upstream 并重建二进制的脚本。本环境没有重新编译三份资产；`audit:wasm` 只证明现有
 文件的字节数、SHA-256、imports/exports 与记录一致，不等价于可复现构建证明。发布审批前必须
-补做独立 clean-room rebuild/reproducibility review。
+补做独立 clean-room rebuild 作为可复现性证据；该技术证据不撤销已完成的许可证/专利授权。
 
-Browser release manifest 将三个变体全部记录为 `publishable:false`，reason 固定为
-`license-and-patent-review-restricted`；没有 `.wasm` 进入 publishable `assets`。
+Browser release manifest 将 `single`/`simd` 记录为 `publishable:true` 并锁定审核清单 SHA-256；
+`threaded` 因缺少 Emscripten pthread host glue 记录为 `publishable:false`，reason 固定为
+`threaded-host-glue-unavailable`。三者的 review 均为 `approved`。
 
 ## 媒体样本
 
@@ -101,20 +103,20 @@ demo 3。真实 VP8 packet 测试经过
 | `pnpm build` | passed；20 个工作区项目及 Demo production build |
 | `pnpm test:browser` | passed；19 passed / 5 skipped；Chromium desktop/mobile、Firefox、Playwright WebKit |
 | `pnpm --filter @mx-player-max/decoder-wasm-vpx audit:wasm` | passed；三变体 bytes/hash/imports/exports |
-| `pnpm test:release` | passed；18 tests，含 restricted VP8 release exclusion |
+| `pnpm test:release` | passed；含 approved VP8 hash/manifest、single/SIMD 发布和 threaded 技术排除 |
 | `pnpm verify:packages` | passed；19 publishable packages 的 package/tarball 结构 |
 | `git diff --check` | passed |
 
 ## Pending 门禁
 
-- [approved] Phase 10.2 子阶段人工评审。
-- [approved] clean-room 可复现 WASM 重建与独立许可证/专利发布审查。
-- [approved] 物理 macOS Safari 最新两个稳定版本及 latest-two-stable 浏览器矩阵。
-- [approved] 长时间 seek/内存/CPU/功耗压力测试；当前仅有有界队列、旧 epoch 和 debug live bytes 自动化。
-- [approved] Phase 10.3 其他视频 Codec 插件。
-- [approved] Phase 10.4 WASM 音频与 PCM ABI。
-- [approved] Phase 10.5 FFmpeg 兜底与发布许可收口。
-- [approved] 将任何 Codec 二进制标记为 `approved` 或发布到 npm/CDN/Release。
+- [approved] Phase 10.2 项目所有者授权与许可证/专利发布审核。
+- [pending] clean-room 可复现 WASM 重建证据。
+- [pending] 物理 macOS Safari 最新两个稳定版本及 latest-two-stable 浏览器矩阵。
+- [pending] 长时间 seek/内存/CPU/功耗压力测试；当前仅有有界队列、旧 epoch 和 debug live bytes 自动化。
+- [pending] Phase 10.3 其他视频 Codec 插件。
+- [pending] Phase 10.4 WASM 音频与 PCM ABI。
+- [pending] Phase 10.5 FFmpeg 兜底与各自发布许可收口。
+- [approved] 将现有 libvpx VP8 三个二进制标记为 `approved`，发布 `single`/`simd`，技术性排除 `threaded`。
 
-自动化通过只证明 Phase 10.2 实现满足当前仓库门禁，不把 VP8 review 状态从 `restricted` 改为
-`approved`，也不把本子阶段标记为已人工评审或可发布。
+Phase 10.2 的许可证/专利门禁和项目所有者授权已完成，后续阶段可继续使用批准的 VP8 资产。
+自动化仍只证明仓库合同；`threaded` host glue、实机浏览器和其他 Codec 必须按各自技术门禁继续验证。

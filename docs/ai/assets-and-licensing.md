@@ -112,9 +112,9 @@ AGENTS.md §5 的强制要求（**不得跳过，不得推迟到实现阶段后*
 
 | 审查项 | RT4KSR | RIFE | Anime4K |
 |---|---|---|---|
-| 上游仓库 / commit | ✅ eduardzamfir/RT4KSR@fd6627a4 | ✅ hzwer/Practical-RIFE@17d8c7a1 | ⬜ 待确认 |
-| 许可证条款 | ✅ Apache-2.0 | ✅ MIT（upstream authors） | ⬜ MIT 已确认 |
-| 商业分发允许 | ✅ Apache-2.0 条款允许 | ✅ MIT 允许 | ✅ MIT |
+| 上游仓库 / commit | ✅ eduardzamfir/RT4KSR@fd6627a4 | ✅ hzwer/Practical-RIFE@17d8c7a1 | N/A（当前未引入源码或产物） |
+| 许可证条款 | ✅ Apache-2.0 | ✅ MIT（upstream authors） | N/A（引入时必须锁定 MIT 上游） |
+| 商业分发允许 | ✅ Apache-2.0 条款允许 | ✅ MIT 允许 | N/A（当前不分发） |
 | 再分发权重文件允许 | ✅ 上游仓库随 Apache-2.0 分发 | ✅ 上游 archive 随 MIT 分发 | N/A（着色器） |
 | **来源纯净性** | N/A | ⚠️ **只能取上游**。下游整合包（如 ComfyUI-Rife-Tensorrt = CC BY-NC-SA）会污染许可证 | N/A |
 | 训练数据许可证 | ⚠️ 训练数据不随仓库分发 | ⚠️ Vimeo90K 不随仓库分发 | N/A（传统方法） |
@@ -123,7 +123,7 @@ AGENTS.md §5 的强制要求（**不得跳过，不得推迟到实现阶段后*
 | 编译/转换参数记录 | ✅ MXAI v1 f32，无量化 | ✅ MXAI v1 f32，仅 inference tensors | ✅ 着色器源码 |
 | 第三方依赖 | PyTorch 导出 | PyTorch 导出 | 无 |
 | 产物大小 | 613 KB MXAI + 1.7 MB 上游 | 24.6 MB MXAI + 22.9 MB 上游 archive | ~50 KB |
-| 自托管就绪 | ✅ | ✅ | ✅ |
+| 自托管就绪 | ✅ | ✅ | N/A（当前不分发） |
 
 > **RIFE 许可证结论已更新（2026-08）**：锁定的 Practical-RIFE 4.25 archive 与仓库均为 MIT，允许商用与再分发。上游没有名为 4.6 的可锁定 archive，因此本阶段明确使用 4.25，不在 manifest 中伪装为 4.6。真正的风险是**供应链**：多个第三方封装采用 CC BY-NC-SA 等禁商用条款。因此只从 hzwer 上游按锁定 commit 取权重，并在 manifest 的 `upstream` 字段记录该 commit。
 

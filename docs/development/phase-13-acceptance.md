@@ -10,10 +10,10 @@
 
 ## 前置门禁
 
-Phase 10.2 在当前工作树已有 restricted libvpx VP8 实现和真实 WASM，但
-`phase-10-acceptance.md` 仍记录独立许可证/专利审批、clean-room rebuild 和子阶段 review 未完成。
-因此本阶段真实媒体证据只覆盖 Native + WebCodecs。所有 WASM 播放、性能和分发行均为
-`blocked-by-phase-10`，fake runtime 和 restricted 本地回归不作为 Phase 13 真实平台证据。
+Phase 10.2 的 libvpx VP8 三个变体已于 2026-08-20 完成项目所有者授权和许可证/专利审核。
+`single`/`simd` 已进入受 manifest 控制的发布路径，`threaded` 仅因缺少 host glue 技术性排除。
+WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pending`；fake runtime 和本地自动化
+仍不冒充 latest-two-stable 或物理 Safari 证据。
 
 ## 自动化结果
 
@@ -22,7 +22,7 @@ Phase 10.2 在当前工作树已有 restricted libvpx VP8 实现和真实 WASM�
 | `pnpm typecheck` | passed；20 个 workspace package/app 构建并严格类型检查 |
 | `pnpm test` | passed；511/511 tests，93 test files；与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
-| `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 restricted Phase 10.2 WASM 为 3 passed/5 skipped，仅作低层回归且不计 Phase 13 证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
+| `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 approved Phase 10.2 WASM 为 3 passed/5 skipped，作为自动化回归但不替代实机证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
 | `pnpm quality:media` | passed；7 个媒体 + 2 个字幕 fixture，FFprobe 元数据和 SHA-256 一致 |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；26 tests，含数值 kernel、packed graph、真实 device-lost、epoch、fallback 和 pool 长时复用/容量边界 |
 | `pnpm test:update-counts` | 已由当前 `evidence/current-test-counts.json` 复核为 511/511 tests、93 test files |
@@ -32,9 +32,9 @@ Phase 10.2 在当前工作树已有 restricted libvpx VP8 实现和真实 WASM�
 | `pnpm quality:performance:collect && pnpm quality:performance` | passed；4 份 Playwright automation baseline 写入并通过 schema |
 | `pnpm quality:performance:collect -- --scenario=long-run-30m` | 已执行 Chromium/Firefox 隔离与非隔离四组完整 30 分钟运行；原始失败报告已在复核后清理，摘要保留如下，未作为通过基线提交 |
 | `pnpm quality:audit` | passed；7 个 AI/WASM 资产的 bytes/hash/license/review policy 一致 |
-| `pnpm --filter @mx-player-max/decoder-wasm-vpx audit:wasm` | passed；single/SIMD 零 imports，threaded 14 imports；全部 restricted |
+| `pnpm --filter @mx-player-max/decoder-wasm-vpx audit:wasm` | passed；single/SIMD 零 imports，threaded 14 imports；三者 review 全部 approved |
 | `pnpm verify:packages` | passed；19 个公开包的 metadata、README/API 和发布边界通过 |
-| `pnpm test:release` | passed；19/19，包括 CSP、双模式 Docker 静态合约、release 排除策略 |
+| `pnpm test:release` | passed；28/28，包括 CSP、双模式 Docker 静态合约、approved WASM 发布白名单和 threaded 技术排除 |
 | `pnpm test:quality` | passed；9/9，性能 schema 完整字段、数值域、四格矩阵和长跑 seed-hash 拒绝负例 |
 | `docker version` | pending；当前环境没有 Docker CLI，未执行 build 或 runtime smoke |
 
@@ -135,7 +135,8 @@ CPU 和功耗仍不可观测，不能因为运行满 30 分钟而标记通过。
 RIFE MXAI SHA-256 为 `665472...c56c`（MIT），RT4KSR MXAI 为 `c34a76...fba0`
 （Apache-2.0）；上游 archive/checkpoint、commit、许可证、转换命令、tensor 格式和 hash 均已核验。
 libvpx WASM single `d8de9e...c5ba`、SIMD `79e784...53d`、threaded `422c57...07f` 与清单
-一致，但独立许可证/专利/clean-room review 未完成，release manifest 全部排除。
+一致，许可证/专利审核和项目所有者授权已完成。release manifest 发布 single/SIMD，并以
+`threaded-host-glue-unavailable` 技术性排除 threaded；clean-room rebuild 仍是独立可复现性后续证据。
 
 Nginx 静态合同包含 CSP、CORP、COOP/COEP、`nosniff`、MIME、Range、404；80 端口为隔离模式，
 8080 为非隔离模式，用于单线程降级验证。`docker compose build` 和
@@ -147,14 +148,14 @@ Nginx 静态合同包含 CSP、CORP、COOP/COEP、`nosniff`、MIME、Range、404
 `tests/browser/evidence/real-browser-matrix.json` 的 Chrome latest/latest-1、Firefox
 latest/latest-1、物理 macOS Safari latest/latest-1 六行全部 pending，版本、OS、GPU、隔离状态和样本
 hash 均保持 null。当前没有真实 latest-two-stable 或物理 Safari 设备；Playwright Chromium/Firefox/
-WebKit 不填充这些行。WASM 六行全部 `blocked-by-phase-10`。
+WebKit 不填充这些行。WASM 六行已解除 Phase 10 阻塞，保持等待实机执行的 `pending`。
 
 ## 最终门禁结论
 
 - **P0/P1 真实浏览器回归：pending**，六个实机槽位未执行。
 - **无未解释内存增长和音画漂移：pending**，本地长跑已执行但启动/缓冲/帧丢失阈值未通过，独立 drift/CPU/power 仍不可观测。
 - **所有公开包 API 文档/变更记录：automation passed**，package verifier 与 README/CHANGELOG 门禁通过。
-- **所有 WASM 来源/hash/license：资料完整但发布审批 blocked-by-phase-10**。
+- **所有当前 libvpx VP8 WASM 来源/hash/license：审核与授权通过**；single/SIMD 可发布，threaded 技术性排除。
 - **Docker 可构建、非隔离单线程可运行：pending**，Docker CLI 缺失。
 
 因此 Phase 13 已交付可重复工具、自动化证据和精确 blocker，但尚不满足最终发布条件，不得发布。

@@ -1,0 +1,135 @@
+License approval transaction verification
+Date: 2026-08-20
+Workspace: F:\Kaifa\MX-Player-Max
+
+CHANGED BRANCH/FIELD
+libvpxVp8Manifest.review.status: restricted -> approved
+DEFAULT_RELEASE_ASSETS:
+- single: approved, publishable=true
+- simd: approved, publishable=true
+- threaded: approved, publishable=false, reason=threaded-host-glue-unavailable
+
+HASHES
+Original working-file SHA-256:
+8f6c7c426dc57bfe7c668df8524909658bc5f3b7c7a301cee4cd03ce24a8c5d1
+Modified working-file SHA-256:
+5d041c03de1a4d76ed28cd05bb6595ba36615ceb6516c9b997b822e9de42b0eb
+Restored rollback-copy SHA-256:
+8f6c7c426dc57bfe7c668df8524909658bc5f3b7c7a301cee4cd03ce24a8c5d1
+
+FOUR ARTIFACTS
+MODIFIED_FILE: F:\Kaifa\MX-Player-Max\.codex\license-approval-transaction\MODIFIED_FILE
+DIFF_FILE: F:\Kaifa\MX-Player-Max\.codex\license-approval-transaction\DIFF_FILE
+VERIFICATION.txt: F:\Kaifa\MX-Player-Max\.codex\license-approval-transaction\VERIFICATION.txt
+ROLLBACK.sh: F:\Kaifa\MX-Player-Max\.codex\license-approval-transaction\ROLLBACK.sh
+
+BASELINE
+Command:
+node scripts/quality/audit-supply-chain.mjs
+Input:
+Original workspace state; tests/security/assets.json contains 7 hashed assets, while the old
+release policy still expects all three libvpx VP8 variants to remain restricted.
+Literal output/result:
+Error: Restricted WASM is not excluded by release policy: packages/decoder-wasm-vpx/wasm/libvpx-vp8-single.wasm
+Exit status: 1
+Behavior/status:
+The audit blocks progress because source/release records disagree.
+
+MODIFIED
+Command:
+node scripts/quality/audit-supply-chain.mjs
+Input:
+Changed workspace; all three hashes are approved, single/SIMD are publishable, and threaded
+has the technical host-glue exclusion.
+Literal output/result:
+Supply-chain audit passed: 7 hashed assets; 3 WASM variants approved, 2 publishable, 1 technically excluded.
+Exit status: 0
+Behavior/status:
+The license/patent gate is approved and no longer blocks subsequent tasks.
+
+MODIFIED VALIDATION
+Command: pnpm typecheck
+Literal result: 20 of 21 workspace projects built and completed strict typecheck.
+Exit status: 0
+
+Command: pnpm test
+Literal output/result:
+Workspace tests passed and counts match evidence: 511 tests in 93 files.
+Exit status: 0
+
+Command: pnpm test:release
+Literal output/result:
+tests 28
+pass 28
+fail 0
+Exit status: 0
+
+Command: pnpm --filter @mx-player-max/decoder-wasm-vpx test
+Literal output/result:
+Test Files 4 passed (4)
+Tests 13 passed (13)
+Exit status: 0
+
+Command: pnpm --filter @mx-player-max/core test
+Literal output/result:
+Test Files 25 passed (25)
+Tests 128 passed (128)
+Exit status: 0
+
+Command: pnpm test:browser
+Literal output/result:
+8 skipped
+50 passed
+Exit status: 0
+
+Command: pnpm test:pages
+Literal output/result:
+1 passed
+Exit status: 0
+
+Command: pnpm verify:packages
+Literal output/result:
+Verified 19 publishable packages.
+Exit status: 0
+
+Command: pnpm release:pack
+Literal output/result:
+Packed 19 packages into .release-tmp/release-pack/tarballs.
+Exit status: 0
+
+Command: pnpm release:smoke
+Literal output/result:
+Packed consumer smoke passed 5 commands.
+Exit status: 0
+
+Command: pnpm quality:media
+Literal output/result:
+Verified 7 media samples and 2 subtitle fixtures.
+Exit status: 0
+
+Command: pnpm quality:browsers
+Literal output/result:
+Real-browser evidence schema passed: 6 rows remain explicitly pending; WASM review is approved and ready for execution.
+Exit status: 0
+
+ROLLBACK
+Command:
+& 'F:\Git\bin\bash.exe' .codex/license-approval-transaction/ROLLBACK.sh .release-tmp/rollback-copy-20260820
+Input:
+An isolated clone of HEAD with DIFF_FILE applied and the modified audit already passing.
+Literal output/result:
+Rollback restored the pre-approval project state.
+Exit status: 0
+
+RESTORED VERIFICATION
+Command:
+node .release-tmp/rollback-copy-20260820/scripts/quality/audit-supply-chain.mjs
+Input:
+The isolated clone after ROLLBACK.sh.
+Literal output/result:
+Error: Restricted WASM is not excluded by release policy: packages/decoder-wasm-vpx/wasm/libvpx-vp8-single.wasm
+Exit status: 1
+Restored behavior/status:
+The copy returned to review.status=restricted and the original SHA-256
+8f6c7c426dc57bfe7c668df8524909658bc5f3b7c7a301cee4cd03ce24a8c5d1.
+The primary workspace remains modified and approved.

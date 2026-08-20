@@ -564,7 +564,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         currentMedia = media
         const capabilities = await detectCapabilities({ includeWasm: false })
         const report = await probeMediaCapabilities(media, { snapshot: capabilities })
-        const wasmSession = createRestrictedWasmSession(options.wasmBaseUrl)
+        const wasmSession = createWasmSession(options.wasmBaseUrl)
         const context = createCapabilityContext(capabilities, report, wasmSession?.declarations)
         emit('capabilities', { context })
         const policy = createPlatformPolicy(capabilities)
@@ -1119,13 +1119,13 @@ function cloneBackendCandidate(candidate: Readonly<BackendCandidate>): BackendCa
   }
 }
 
-interface RestrictedWasmSession {
+interface WasmSession {
   readonly baseUrl: string
   readonly declarations: readonly WasmDecoderDeclaration[]
   supportsVideo(codec: string, track: TrackInfo): boolean
 }
 
-function createRestrictedWasmSession(baseUrl: string | undefined): RestrictedWasmSession | null {
+function createWasmSession(baseUrl: string | undefined): WasmSession | null {
   if (baseUrl === undefined) return null
   const marker = '__mx_player_max_wasm_base__.wasm'
   const resolvedMarker = resolveWasmAssetUrl(baseUrl, marker)
@@ -1134,7 +1134,7 @@ function createRestrictedWasmSession(baseUrl: string | undefined): RestrictedWas
   const registry = createWasmDecoderRegistry([plugin])
   return {
     baseUrl: normalizedBaseUrl,
-    declarations: registry.declarations({ requireApprovedReview: false }),
+    declarations: registry.declarations(),
     supportsVideo: (codec, track) => plugin.supports(codec, track),
   }
 }
@@ -1142,7 +1142,7 @@ function createRestrictedWasmSession(baseUrl: string | undefined): RestrictedWas
 function selectedWasmVideoTrack(
   tracks: readonly TrackInfo[],
   codec: string | null,
-  session?: RestrictedWasmSession | null,
+  session?: WasmSession | null,
 ): TrackInfo | null {
   if (codec === null || !session) return null
   return tracks.find((track) => track.kind === 'video' && session.supportsVideo(codec, track)) ?? null

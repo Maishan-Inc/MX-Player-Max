@@ -19,6 +19,9 @@ test('release workflow separates validation, packaging, consumer smoke, and arti
   assert.match(release, /release:pack/)
   assert.match(release, /release:smoke/)
   assert.match(release, /upload-artifact@v4/)
+  assert.match(release, /libvpx-vp8-single\.wasm/)
+  assert.match(release, /libvpx-vp8-simd\.wasm/)
+  assert.doesNotMatch(release, /packages\/decoder-wasm-vpx\/wasm\/libvpx-vp8-threaded\.wasm/)
   assert.doesNotMatch(release, /\bnpm\s+publish/)
 })
 

@@ -119,8 +119,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('MediaEngine restricted WASM backend', () => {
-  it('does not register a WASM declaration without explicit opt-in', async () => {
+describe('MediaEngine approved WASM backend', () => {
+  it('does not register a WASM declaration without an asset base URL', async () => {
     const pipeline = new TestPipeline()
     const engine = createMediaEngine({ createCustomPipeline: (options) => pipeline.attach(options) })
 

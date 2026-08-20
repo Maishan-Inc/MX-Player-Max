@@ -42,7 +42,7 @@ export async function runConsumerSmoke({ root = workspaceRoot } = {}) {
   await writeFile(path.join(resolvedConsumerRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8')
 
   const commands = [
-    ['pnpm', ['install', '--offline', '--ignore-scripts', '--no-frozen-lockfile']],
+    ['pnpm', ['install', '--prefer-offline', '--ignore-scripts', '--no-frozen-lockfile']],
     ['node', ['smoke.mjs']],
     ['pnpm', ['exec', 'tsc', '-p', 'tsconfig.json', '--noEmit']],
     ['node', ['iife-smoke.mjs']],

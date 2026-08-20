@@ -44,7 +44,27 @@ test('IIFE smoke rejects the wrong global name or incomplete public shape', () =
   assert.throws(() => validateBrowserGlobal({ MXPlayerMax: { create() {}, MXPlayer: class {} } }), /attachPlayerUi/)
 })
 
-test('package verification rejects browser model and WASM assets', async () => {
+test('package verification allows only approved libvpx WASM assets', async () => {
   const source = await readFile(new URL('../verify-packages.mjs', import.meta.url), 'utf8')
   assert.match(source, /wasm\|mxai\|onnx/)
+  assert.match(source, /libvpx-vp8-single\.wasm/)
+  assert.match(source, /libvpx-vp8-simd\.wasm/)
+  assert.doesNotMatch(source, /approvedVpxFiles[^\]]*threaded/s)
+})
+
+test('packed libvpx package requires approved assets and rejects threaded', () => {
+  const manifest = { name: '@mx-player-max/decoder-wasm-vpx', types: './dist/index.d.ts', exports: { '.': './dist/index.js' } }
+  const files = [
+    'dist/index.js', 'dist/index.d.ts',
+    'wasm/libvpx-vp8-single.wasm', 'wasm/libvpx-vp8-simd.wasm', 'wasm/PROVENANCE.md',
+    'third_party/libvpx/LICENSE', 'third_party/libvpx/PATENTS',
+  ]
+  assert.doesNotThrow(() => validatePackedManifest(manifest, files))
+  assert.throws(() => validatePackedManifest(manifest, [...files, 'wasm/libvpx-vp8-threaded.wasm']), /technically excluded WASM/)
+})
+
+test('consumer smoke prefers cache without requiring preseeded registry metadata', async () => {
+  const source = await readFile(new URL('../consumer-smoke.mjs', import.meta.url), 'utf8')
+  assert.match(source, /--prefer-offline/)
+  assert.doesNotMatch(source, /['"]--offline['"]/)
 })

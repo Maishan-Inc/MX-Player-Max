@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { DEFAULT_RELEASE_ASSETS } from '../release/generate-manifest.mjs'
 
 const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
 const audit = JSON.parse(await readFile(path.join(root, 'tests/security/assets.json'), 'utf8'))
@@ -11,7 +12,7 @@ const auditedPaths = new Set(audit.assets.map((asset) => asset.path))
 for (const asset of audit.assets) {
   if (!['ai-source', 'ai-model', 'wasm'].includes(asset.kind)) throw new Error(`Invalid asset kind: ${asset.kind}`)
   if (!['approved', 'restricted'].includes(asset.reviewStatus)) throw new Error(`Invalid review status: ${asset.path}`)
-  if (asset.kind === 'wasm' && asset.reviewStatus !== 'approved') throw new Error(`Phase 10 WASM must stay restricted: ${asset.path}`)
+  if (asset.kind === 'wasm' && asset.reviewStatus !== 'approved') throw new Error(`Phase 10 WASM review is not approved: ${asset.path}`)
   if (typeof asset.license !== 'string' || asset.license.length === 0) throw new Error(`Missing license: ${asset.path}`)
   if (typeof asset.upstream !== 'string' || !asset.upstream.startsWith('https://')) throw new Error(`Missing immutable upstream: ${asset.path}`)
   if (!/^[a-f0-9]{40}$/.test(asset.commit ?? '')) throw new Error(`Missing upstream commit: ${asset.path}`)
@@ -35,13 +36,22 @@ for (const asset of audit.assets) {
   if (license.trim().length < 100) throw new Error(`License text is incomplete: ${asset.path}`)
 }
 
-const manifestSource = await readFile(path.join(root, 'scripts/release/generate-manifest.mjs'), 'utf8')
 for (const asset of audit.assets.filter((entry) => entry.kind === 'wasm')) {
-  if (!manifestSource.includes(path.posix.basename(asset.path)) || !manifestSource.includes('license-and-patent-review-restricted')) {
-    throw new Error(`Restricted WASM is not excluded by release policy: ${asset.path}`)
+  const packageDir = path.posix.dirname(path.posix.dirname(asset.path))
+  const assetPath = asset.path.slice(`${packageDir}/`.length)
+  const releaseAsset = DEFAULT_RELEASE_ASSETS.find((entry) => entry.packageDir === packageDir && entry.path === assetPath)
+  if (!releaseAsset || releaseAsset.reviewStatus !== 'approved' || releaseAsset.expectedSha256 !== asset.sha256) {
+    throw new Error(`Approved WASM is not hash-locked in release policy: ${asset.path}`)
+  }
+  const threaded = path.posix.basename(asset.path) === 'libvpx-vp8-threaded.wasm'
+  if (threaded && (releaseAsset.publishable !== false || releaseAsset.reason !== 'threaded-host-glue-unavailable')) {
+    throw new Error(`Threaded WASM is not technically excluded by release policy: ${asset.path}`)
+  }
+  if (!threaded && (releaseAsset.publishable !== true || releaseAsset.reason !== 'license-and-patent-review-granted')) {
+    throw new Error(`Approved WASM is not publishable in release policy: ${asset.path}`)
   }
 }
-console.log(`Supply-chain audit passed: ${audit.assets.length} hashed assets; 3 WASM variants restricted.`)
+console.log(`Supply-chain audit passed: ${audit.assets.length} hashed assets; 3 WASM variants approved, 2 publishable, 1 technically excluded.`)
 
 function isWithin(parent, child) {
   const relative = path.relative(parent, child)

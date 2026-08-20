@@ -99,8 +99,9 @@ bufferedAhead、dropped frames、音画漂移、CPU、内存和功耗代理；�
 
 ## 7. 安全与分发证据
 
-- `pnpm quality:audit` 校验 AI source/MXAI/WASM bytes、SHA-256、许可证和 review status；Phase 10
-  WASM 必须保持 restricted 并从 Browser release manifest 排除。
+- `pnpm quality:audit` 校验 AI source/MXAI/WASM bytes、SHA-256、许可证和 review status；Phase 10.2
+  三个 libvpx VP8 WASM 均为 `approved`，`single`/`simd` 必须进入发布白名单，`threaded` 必须以
+  `threaded-host-glue-unavailable` 保持技术性排除。
 - 字幕 Overlay 只用 `textContent`，远程 URL 限 HTTP(S)，媒体响应不能作为 HTML/JS/SVG 执行；
   公共事件不得包含 URL query、本地路径或原始 platform cause。
 - Docker 80 端口是 COOP/COEP 隔离模式，8080 是非隔离模式；两者都要求 CSP、CORP、nosniff、

@@ -29,7 +29,7 @@ Phase 6  WebGPU/WebGL2/Canvas2D 渲染器（实现完成，浏览器验收待执
 Phase 7  AI 后处理（插帧与超分）
 Phase 8  SRT/ASS 字幕内核
 Phase 9  UI 包（控制条、字幕菜单、主题）
-Phase 10 WASM Decoder Manager          10.2 VP8 垂直切片已实现；10.3-10.5 与发布审查 pending
+Phase 10 WASM Decoder Manager          10.2 VP8 已实现并审核通过；10.3-10.5 尚未实现
 Phase 11 浏览器平台优化              实现完成，三浏览器真实环境验收待执行
 Phase 12 SDK、演示站与发布
 Phase 13 质量、安全和性能固化
@@ -310,11 +310,11 @@ Phase 13 质量、安全和性能固化
 目标：在 WebCodecs 不支持或不适合时提供模块化软件解码。
 
 状态：10.2 单 Codec 垂直切片实现完成，等待子阶段评审。Manager/Registry、真实 WebAssembly
-runtime、MXWF 帧 ABI v1、restricted libvpx v1.15.2 VP8 8-bit I420 插件、共享 Decoder Worker、
+runtime、MXWF 帧 ABI v1、approved libvpx v1.15.2 VP8 8-bit I420 插件、共享 Decoder Worker、
 Core Custom Pipeline、WebCodecs -> WASM 原子回退和 Chromium/Firefox 非隔离真实播放已交付；
 Chromium 隔离环境验证 threaded 初始化失败后自动回退 SIMD。10.3 Codec 横向扩展、10.4 WASM
-音频、10.5 FFmpeg 与发布许可收口保持 pending。VP8 资产 review 仍为 `restricted`，不得宣称
-可发布，也不得进入 Browser publishable assets。
+音频和 10.5 FFmpeg 尚未实现。VP8 三个资产 review 均为 `approved`；single/SIMD 进入 Browser
+publishable assets，threaded 因缺少 host glue 技术性排除。
 
 ### 任务
 
@@ -334,8 +334,8 @@ Chromium 隔离环境验证 threaded 初始化失败后自动回退 SIMD。10.3 
 - 帧输出使用 Codec 无关 MXWF ABI v1，保留 plane stride、visible/display rect、颜色 metadata 和
   timestamp/duration；`VideoFrame` 构造完成即释放 WASM frame token。
 - Worker 控制面复用 Phase 2/4 的 packet、epoch、reset、flush、FrameQueue、三重背压和 pull reader。
-- Browser release manifest 将三个 VP8 资产显式列为 `publishable:false`，reason 为
-  `license-and-patent-review-restricted`。
+- Browser release manifest 将 single/SIMD 列为 `publishable:true`，threaded 显式列为
+  `publishable:false`，reason 为 `threaded-host-glue-unavailable`。
 
 ### 退出条件
 

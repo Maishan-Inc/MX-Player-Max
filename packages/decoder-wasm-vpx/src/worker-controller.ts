@@ -51,7 +51,6 @@ export class LibvpxVp8WorkerBackend implements DecoderAdapterLike<LibvpxVp8Worke
       baseUrl: config.baseUrl,
       registry: createWasmDecoderRegistry([plugin]),
       cache: createMemoryWasmCache(),
-      requireApprovedReview: false,
       ...(this.#options.fetcher === undefined ? {} : { fetcher: this.#options.fetcher }),
     })
     this.#manager = manager

@@ -1,6 +1,6 @@
 # libvpx VP8 WASM provenance
 
-Review status: `Public`. These assets are repository development inputs and explicit self-hosted opt-in assets only. They are not approved for the Browser release manifest, npm publication, or release uploads.
+Review status: `Approved`. The project owner approved the three recorded variants for the repository license and patent gate on 2026-08-20. `single` and `simd` may be distributed through the hash-locked release manifest, npm package, Release artifact, and Pages artifact. `threaded` remains technically excluded from those artifacts until Emscripten pthread host glue is implemented.
 
 ## Source
 
@@ -9,7 +9,7 @@ Review status: `Public`. These assets are repository development inputs and expl
 - Commit: `d168454ecd099805c675d4a98c66f4891373302a`
 - License: BSD-3-Clause, preserved at `third_party/libvpx/LICENSE`
 - Patent statement: Google WebM implementation patent grant with termination clause, preserved at `third_party/libvpx/PATENTS`
-- Legal conclusion: the grant reduces risk but is not an independent legal opinion; publication review remains incomplete.
+- Authorization record: the project owner confirmed that the required license and patent authorization was obtained on 2026-08-20. This repository record is not independent legal advice.
 
 ## Toolchain
 

@@ -23,7 +23,20 @@ test('serves the Demo and publishable Browser SDK from a repository subpath', as
   expect(manifestResponse.status()).toBe(200)
   const manifest = await manifestResponse.json() as ReleaseManifest
   expect(manifest.assets.some((asset) => asset.packageName === '@mx-player-max/browser')).toBe(true)
-  expect(manifest.excluded.some((asset) => asset.publishable === false && asset.path.endsWith('.wasm'))).toBe(true)
+  expect(manifest.assets.filter((asset) => asset.packageName === '@mx-player-max/decoder-wasm-vpx').map((asset) => asset.path).sort()).toEqual([
+    'wasm/libvpx-vp8-simd.wasm',
+    'wasm/libvpx-vp8-single.wasm',
+  ])
+  expect(manifest.excluded).toContainEqual(expect.objectContaining({
+    path: 'wasm/libvpx-vp8-threaded.wasm',
+    publishable: false,
+    reason: 'threaded-host-glue-unavailable',
+  }))
+
+  const wasm = await request.get('sdk/wasm/libvpx-vp8-single.wasm')
+  expect(wasm.status()).toBe(200)
+  expect(wasm.headers()['content-type']).toContain('application/wasm')
+  expect((await wasm.body()).byteLength).toBe(113304)
 
   const iife = await request.get('sdk/mx-player-max.iife.min.js')
   expect(iife.status()).toBe(200)
@@ -31,6 +44,6 @@ test('serves the Demo and publishable Browser SDK from a repository subpath', as
 })
 
 interface ReleaseManifest {
-  readonly assets: readonly { readonly packageName: string }[]
-  readonly excluded: readonly { readonly path: string; readonly publishable: boolean }[]
+  readonly assets: readonly { readonly packageName: string; readonly path: string }[]
+  readonly excluded: readonly { readonly path: string; readonly publishable: boolean; readonly reason: string }[]
 }

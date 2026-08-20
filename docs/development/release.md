@@ -20,7 +20,7 @@ jsDelivr / npm ESM
 
 SDK 必须允许通过 `wasmBaseUrl` 自托管 WASM。发布前验证 JS、Worker、AudioWorklet 和 WASM 的 MIME、CORS、内容哈希和版本一致性。
 
-`pnpm release:pack` 生成 17 个公开包 tarball 和 pack report；`pnpm release:smoke` 只从这些 tarball 安装隔离消费者，验证 Node ESM、TypeScript declarations、Browser IIFE/CSS 与 React/Vue peer。`pnpm release:manifest` 输出 `packages/browser/dist/manifest.json`，其中的 SHA-256、SHA-384 和 SRI 与 tarball、Browser bundle 一起进入 workflow artifact。生成目录被忽略，不作为源码手工维护。
+`pnpm release:pack` 生成 19 个公开包 tarball 和 pack report；`pnpm release:smoke` 只从这些 tarball 安装 MX-Player-Max 包，并以 `--prefer-offline` 解析固定版本的外部 peer/dependency，验证 Node ESM、TypeScript declarations、Browser IIFE/CSS 与 React/Vue peer。`@mx-player-max/decoder-wasm-vpx` tarball 只包含已批准的 `single`/`simd` WASM 及其 provenance、BSD-3-Clause 和 PATENTS 文本，不包含 `threaded`。`pnpm release:manifest` 输出 `packages/browser/dist/manifest.json`，其中的 SHA-256、SHA-384 和 SRI 与 tarball、Browser bundle 一起进入 workflow artifact。生成目录被忽略，不作为源码手工维护。
 
 ## Docker 演示站
 
@@ -43,8 +43,8 @@ powershell -File scripts/release/docker-smoke.ps1
 
 Smoke 使用 `mx-player-max-demo:phase-12-local` 镜像和带专用 label 的临时容器，验证 CSP、HTML/静态
 资源安全头、JavaScript/CSS MIME、Nginx `application/wasm` 映射、Range、404，以及浏览器中的
-隔离端点 `crossOriginIsolated === true` 和非隔离端点 `false`。当前发布清单不含 approved WASM，
-因此 smoke 不伪造 WASM 发布或解码证据。脚本只移除本次 ID/label 均匹配的容器。
+隔离端点 `crossOriginIsolated === true` 和非隔离端点 `false`。发布清单包含已批准的 `single`/`simd`
+WASM，但 Docker smoke 只验证静态分发合同，不冒充真实解码或 threaded 支持证据。脚本只移除本次 ID/label 均匹配的容器。
 
 ## GitHub Pages Demo
 
@@ -58,12 +58,13 @@ apps/demo/dist/
   index.html + assets + flower.webm + .nojekyll
   sdk/
     manifest-approved @mx-player-max/browser JS/CSS/maps
+    wasm/libvpx-vp8-single.wasm + libvpx-vp8-simd.wasm
     manifest.json
 ```
 
 默认页面为 <https://maishan-inc.github.io/MX-Player-Max/>。`/sdk/` 是当前 Demo 的静态快照，不替代
-npm 固定版本与 SRI 发布。准备脚本只复制 release manifest 中 `publishable: true` 的 Browser 文件，
-并拒绝 excluded WASM、AI 模型和测试资产。
+npm 固定版本与 SRI 发布。准备脚本复制 release manifest 中受支持包的 `publishable: true` 文件，
+只允许已批准的 `single`/`simd` WASM，并拒绝 excluded `threaded`、AI 模型和测试资产。
 
 GitHub Pages 不提供 COOP/COEP、CSP、CORP、自定义 MIME 合同或隔离/非隔离双端点，因此不能关闭
 WASM Threads、Docker runtime、真实 Safari 或 latest-two-stable 验收项。Docker 仍是这些环境合同
