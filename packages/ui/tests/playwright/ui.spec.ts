@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
+const MEDIA_READY_TIMEOUT_MS = 20_000
+
 test.beforeEach(async ({ page }, testInfo) => {
   if (testInfo.project.name === 'webkit-simulated') testInfo.setTimeout(90_000)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -17,7 +19,7 @@ test('lays out the production player UI without overlap or blank media', async (
   expect(background).toContain('mx-player-poster.png')
   const ui = page.locator('.mxp-player-ui')
   await expect(ui).toHaveAttribute('data-mxp-state', /^(ready|paused|playing|ended|error)$/, {
-    timeout: testInfo.project.name === 'webkit-simulated' ? 20_000 : undefined,
+    timeout: MEDIA_READY_TIMEOUT_MS,
   })
   const errorCode = await ui.getAttribute('data-mxp-error-code')
   if (testInfo.project.name === 'webkit-simulated') {

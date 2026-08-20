@@ -403,7 +403,7 @@ Chromium 隔离环境验证 threaded 初始化失败后自动回退 SIMD。10.3 
 - [x] 完成 AI/WASM hash/license/build/review、CSP/CORP/COOP/COEP、字幕和事件隐私静态审计。
 - [x] 建立唯一 workspace test-count JSON 与文档漂移 CI 校验。
 - [ ] 执行 Chrome/Firefox/macOS Safari latest-two-stable 实机 P0/P1 矩阵。
-- [ ] 完成 30 分钟音画漂移、内存、CPU 与功耗代理运行。
+- [x] 执行 Chromium/Firefox 隔离与非隔离 30 分钟 automation 运行；结果未达启动/缓冲/帧丢失门禁，音画漂移、CPU 与功耗仍不可观测。
 - [ ] 在具备 Docker CLI 的环境完成双模式镜像 build/runtime smoke。
 - [ ] Phase 10.2 审批后补 WASM 实际播放、性能和分发证据。
 
@@ -416,7 +416,8 @@ Chromium 隔离环境验证 threaded 初始化失败后自动回退 SIMD。10.3 
 - Docker 镜像可构建，非隔离环境可以单线程运行。
 
 当前门禁结论见 `phase-13-acceptance.md`：自动化层已完成，但实机 latest-two-stable、物理 Safari、
-30 分钟、Docker runtime 和 Phase 10.2 审批未完成，因此 Phase 13 尚未达到最终发布状态。
+30 分钟 automation 已执行但未通过全部阈值；Docker runtime 和 Phase 10.2 审批未完成，因此
+Phase 13 尚未达到最终发布状态。
 
 ## 17. 每阶段的 Git 工作方式
 

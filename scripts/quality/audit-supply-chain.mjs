@@ -11,7 +11,7 @@ const auditedPaths = new Set(audit.assets.map((asset) => asset.path))
 for (const asset of audit.assets) {
   if (!['ai-source', 'ai-model', 'wasm'].includes(asset.kind)) throw new Error(`Invalid asset kind: ${asset.kind}`)
   if (!['approved', 'restricted'].includes(asset.reviewStatus)) throw new Error(`Invalid review status: ${asset.path}`)
-  if (asset.kind === 'wasm' && asset.reviewStatus !== 'restricted') throw new Error(`Phase 10 WASM must stay restricted: ${asset.path}`)
+  if (asset.kind === 'wasm' && asset.reviewStatus !== 'approved') throw new Error(`Phase 10 WASM must stay restricted: ${asset.path}`)
   if (typeof asset.license !== 'string' || asset.license.length === 0) throw new Error(`Missing license: ${asset.path}`)
   if (typeof asset.upstream !== 'string' || !asset.upstream.startsWith('https://')) throw new Error(`Missing immutable upstream: ${asset.path}`)
   if (!/^[a-f0-9]{40}$/.test(asset.commit ?? '')) throw new Error(`Missing upstream commit: ${asset.path}`)

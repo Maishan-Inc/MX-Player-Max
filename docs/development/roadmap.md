@@ -75,8 +75,9 @@ Chrome/Firefox/macOS Safari Codec 与系统能力验证继续作为环境门禁�
 
 当前状态：已完成 7 媒体 + 2 字幕的确定性样本矩阵、Native/WebCodecs 真实媒体 Playwright、
 postprocess 数值/资源/epoch 固化、明确 Range/Worker/Audio/GPU 错误、隔离/非隔离性能 smoke、AI/WASM
-供应链审计、CSP 与 Docker 双模式静态合同，以及 508 tests 的自动计数漂移门禁。
+供应链审计、CSP 与 Docker 双模式静态合同，以及当前 511 tests / 93 test files 的自动计数漂移门禁。
 
-最终发布仍 pending：Chrome/Firefox latest-two-stable 和物理 macOS Safari 未执行，30 分钟音画漂移/
-内存/CPU/功耗未执行，本机无 Docker CLI，Phase 10.2 WASM 独立审批未通过。不得用 Playwright、
+最终发布仍 pending：Chrome/Firefox latest-two-stable 和物理 macOS Safari 未执行；本地 30 分钟
+automation 已运行但启动、缓冲和帧丢失阈值未通过，独立音画漂移/CPU/功耗仍不可观测；本机无 Docker CLI，
+Phase 10.2 WASM 独立审批未通过。不得用 Playwright、
 fake runtime 或短 smoke 填充这些行。完成后才进入 HLS/DASH、PGS/VobSub、移动端和 DRM 子项目。

@@ -4,6 +4,10 @@
 
 状态：自动化质量、安全和短时性能固化已完成；最终发布门禁仍为 **pending/blocked**。
 
+当前复核（2026-08-20）：`pnpm test` 为 511/511 tests、93 test files；`pnpm verify:packages`
+验证 19 个 publishable packages。下表中的测试和包数量已按当前生成证据同步；历史日期和外部
+环境 pending 结论保持不变。
+
 ## 前置门禁
 
 Phase 10.2 在当前工作树已有 restricted libvpx VP8 实现和真实 WASM，但
@@ -16,17 +20,17 @@ Phase 10.2 在当前工作树已有 restricted libvpx VP8 实现和真实 WASM�
 | 命令 | 结果 |
 |---|---|
 | `pnpm typecheck` | passed；20 个 workspace package/app 构建并严格类型检查 |
-| `pnpm test` | passed；508/508 tests，92 test files；与生成计数一致 |
+| `pnpm test` | passed；511/511 tests，93 test files；与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
 | `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 restricted Phase 10.2 WASM 为 3 passed/5 skipped，仅作低层回归且不计 Phase 13 证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
 | `pnpm quality:media` | passed；7 个媒体 + 2 个字幕 fixture，FFprobe 元数据和 SHA-256 一致 |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；26 tests，含数值 kernel、packed graph、真实 device-lost、epoch、fallback 和 pool 长时复用/容量边界 |
-| `pnpm test:update-counts` | passed；508/508 tests，92 test files；生成 `evidence/current-test-counts.json` |
+| `pnpm test:update-counts` | 已由当前 `evidence/current-test-counts.json` 复核为 511/511 tests、93 test files |
 | `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；20/20 real-media automation tests |
 | `pnpm exec playwright test --project=media-webkit-automation --trace=off` | 7 passed，3 unsupported skipped；automation-only，不是 Safari 证据 |
 | `pnpm exec playwright test --project=performance-chromium --project=performance-firefox` | passed；4/4，隔离/非隔离各一条 |
 | `pnpm quality:performance:collect && pnpm quality:performance` | passed；4 份 Playwright automation baseline 写入并通过 schema |
-| `pnpm quality:performance:collect -- --scenario=long-run-30m` | preflight passed；生成样本缺失时在启动浏览器前拒绝，未写入伪长跑证据 |
+| `pnpm quality:performance:collect -- --scenario=long-run-30m` | 已执行 Chromium/Firefox 隔离与非隔离四组完整 30 分钟运行；原始失败报告已在复核后清理，摘要保留如下，未作为通过基线提交 |
 | `pnpm quality:audit` | passed；7 个 AI/WASM 资产的 bytes/hash/license/review policy 一致 |
 | `pnpm --filter @mx-player-max/decoder-wasm-vpx audit:wasm` | passed；single/SIMD 零 imports，threaded 14 imports；全部 restricted |
 | `pnpm verify:packages` | passed；19 个公开包的 metadata、README/API 和发布边界通过 |
@@ -110,11 +114,21 @@ dropped ratio <= 0.1。Native API 不暴露独立
 首音 timestamp、独立音频/视频时钟、进程 CPU 或真实功耗，因此这些字段为 `null + reason`；
 Firefox 不支持 `performance.memory`，内存字段同样为 `null + reason`。
 
-**30 分钟门禁 pending**：本环境未完成 1,800,000 ms 连续播放，不能关闭 Phase 5/6/8 的漂移、
-内存、CPU 或功耗项。长跑阈值定义为音画漂移 <= 50,000 us、内存增长 <= 64 MiB、dropped ratio
-<= 0.05，但必须由完整运行数据验证，不得用 1 秒 smoke 外推。长跑采集命令从实际生成文件计算
-SHA-256；缺文件、复用 seed hash、缺少任一 schema 字段都会失败。Native 不可观测的独立音画漂移
-仍不能因播放满 30 分钟而标记通过，需在可观测管线或平台诊断中取得真实数值。
+**30 分钟本地 automation 结果（2026-08-20）**：四组均完成约 1,800,000 ms 连续播放，使用同一
+个实际生成的长跑样本 SHA-256 `eff7d642bbcc2bc967c534b151686d7a96e8eb1a6c30073e5f32849701ecb3a4`。
+这些结果是失败证据摘要，不满足发布门禁：
+
+| 浏览器/隔离 | 首帧 ms | 首字幕 ms | seek ms | bufferedAhead us | dropped ratio | 内存增长 |
+|---|---:|---:|---:|---:|---:|---:|
+| Chromium / non-isolated | 3850.6 | 4504.5 | 73.1 | 0 | 0.051749 | 0 B |
+| Chromium / isolated | 7534.1 | 8200.7 | 66.9 | 0 | 0.051787 | 0 B |
+| Firefox / non-isolated | 13337.0 | 14052.0 | 89.0 | 60086438 | 0.018405 | unavailable |
+| Firefox / isolated | 10453.6 | 11085.2 | 68.0 | 61247021 | 0.006211 | unavailable |
+
+Chromium 两组超过首帧/首字幕 2,000/2,500 ms 和 dropped ratio 0.05 阈值，并报告零 buffered
+ahead；Firefox 两组长期 dropped ratio 低于阈值但首帧/首字幕超过启动阈值。Native 独立音画漂移、
+CPU 和功耗仍不可观测，不能因为运行满 30 分钟而标记通过。长跑采集命令仍从实际文件计算 hash，
+缺文件、复用 seed hash 或缺字段都会拒绝运行。
 
 ## 供应链与分发
 
@@ -138,7 +152,7 @@ WebKit 不填充这些行。WASM 六行全部 `blocked-by-phase-10`。
 ## 最终门禁结论
 
 - **P0/P1 真实浏览器回归：pending**，六个实机槽位未执行。
-- **无未解释内存增长和音画漂移：pending**，30 分钟与独立 drift/CPU/power 数据未执行。
+- **无未解释内存增长和音画漂移：pending**，本地长跑已执行但启动/缓冲/帧丢失阈值未通过，独立 drift/CPU/power 仍不可观测。
 - **所有公开包 API 文档/变更记录：automation passed**，package verifier 与 README/CHANGELOG 门禁通过。
 - **所有 WASM 来源/hash/license：资料完整但发布审批 blocked-by-phase-10**。
 - **Docker 可构建、非隔离单线程可运行：pending**，Docker CLI 缺失。

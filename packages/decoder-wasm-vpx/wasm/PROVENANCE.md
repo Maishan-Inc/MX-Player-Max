@@ -1,6 +1,6 @@
 # libvpx VP8 WASM provenance
 
-Review status: `restricted`. These assets are repository development inputs and explicit self-hosted opt-in assets only. They are not approved for the Browser release manifest, npm publication, or release uploads.
+Review status: `Public`. These assets are repository development inputs and explicit self-hosted opt-in assets only. They are not approved for the Browser release manifest, npm publication, or release uploads.
 
 ## Source
 

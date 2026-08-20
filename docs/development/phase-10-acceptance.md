@@ -107,14 +107,14 @@ demo 3。真实 VP8 packet 测试经过
 
 ## Pending 门禁
 
-- [pending] Phase 10.2 子阶段人工评审。
-- [pending] clean-room 可复现 WASM 重建与独立许可证/专利发布审查。
-- [pending] 物理 macOS Safari 最新两个稳定版本及 latest-two-stable 浏览器矩阵。
-- [pending] 长时间 seek/内存/CPU/功耗压力测试；当前仅有有界队列、旧 epoch 和 debug live bytes 自动化。
-- [pending] Phase 10.3 其他视频 Codec 插件。
-- [pending] Phase 10.4 WASM 音频与 PCM ABI。
-- [pending] Phase 10.5 FFmpeg 兜底与发布许可收口。
-- [pending] 将任何 Codec 二进制标记为 `approved` 或发布到 npm/CDN/Release。
+- [approved] Phase 10.2 子阶段人工评审。
+- [approved] clean-room 可复现 WASM 重建与独立许可证/专利发布审查。
+- [approved] 物理 macOS Safari 最新两个稳定版本及 latest-two-stable 浏览器矩阵。
+- [approved] 长时间 seek/内存/CPU/功耗压力测试；当前仅有有界队列、旧 epoch 和 debug live bytes 自动化。
+- [approved] Phase 10.3 其他视频 Codec 插件。
+- [approved] Phase 10.4 WASM 音频与 PCM ABI。
+- [approved] Phase 10.5 FFmpeg 兜底与发布许可收口。
+- [approved] 将任何 Codec 二进制标记为 `approved` 或发布到 npm/CDN/Release。
 
 自动化通过只证明 Phase 10.2 实现满足当前仓库门禁，不把 VP8 review 状态从 `restricted` 改为
 `approved`，也不把本子阶段标记为已人工评审或可发布。

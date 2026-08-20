@@ -6,6 +6,9 @@
 
 状态：自动化发布门禁通过；Docker 运行时和真实 latest-two-stable/物理 Safari 证据保持 pending。本阶段没有执行真实 `npm publish`、GitHub Release 或 CDN 发布。
 
+当前复核（2026-08-20）：工作区现有 19 个 publishable packages，`pnpm test` 为 511/511 tests、
+93 test files。下方 17 包和当阶段测试数字是 2026-08-12 的历史快照，不代表当前工作区总数。
+
 ## 变更提交
 
 - `fd43f8e feat(demo): add playback diagnostics workbench`

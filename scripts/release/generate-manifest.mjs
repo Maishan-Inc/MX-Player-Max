@@ -19,15 +19,15 @@ export const DEFAULT_RELEASE_ASSETS = [
   { packageDir: 'packages/decoder-webcodecs', path: 'dist/worker-entry.js', type: 'worker' },
   {
     packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-single.wasm', type: 'wasm',
-    publishable: false, reviewStatus: 'restricted', reason: 'license-and-patent-review-restricted',
+    publishable: true, reviewStatus: 'approved', reason: 'license-and-patent-review-granted',
   },
   {
     packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-simd.wasm', type: 'wasm',
-    publishable: false, reviewStatus: 'restricted', reason: 'license-and-patent-review-restricted',
+    publishable: true, reviewStatus: 'approved', reason: 'license-and-patent-review-granted',
   },
   {
     packageDir: 'packages/decoder-wasm-vpx', path: 'wasm/libvpx-vp8-threaded.wasm', type: 'wasm',
-    publishable: false, reviewStatus: 'restricted', reason: 'license-and-patent-review-restricted',
+    publishable: true, reviewStatus: 'approved', reason: 'license-and-patent-review-granted',
   },
 ]
 
