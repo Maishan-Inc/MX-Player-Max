@@ -56,14 +56,46 @@ interface PlayerUiController {
 | 字段 | 类型/默认 | 说明 |
 |---|---|---|
 | `theme` | `dark | light | system`，默认 `dark` | 设置 `data-mxp-theme` 并选择 CSS token |
-| `features` | `PlayerUiFeatureOptions` | 分别启用下一集、音量、字幕、PiP、剧场、设置、统计、关于、全屏和预览 |
-| `labels` | `Partial<PlayerUiLabels>` | 替换可见文本、tooltip 与 ARIA label |
+| `locale` | `en | zh-CN | zh-TW | ja | auto`，默认 `en` | 选择内置文案包；`auto` 依次读取宿主 `<html lang>`、`navigator.languages`、`navigator.language` |
+| `features` | `PlayerUiFeatureOptions` | 分别启用下一集、音量、字幕、PiP、剧场、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项和排查项 |
+| `labels` | `Partial<PlayerUiLabels>` | 在所选 locale 之上逐条覆盖可见文本、tooltip 与 ARIA label |
+| `share` | `PlayerUiShareOptions` | 右键菜单复制项使用的地址；UI 不从引擎内部推导媒体地址 |
 | `autoHideDelayMs` | `2500` | 允许范围 500-30000 ms |
 | `nextEpisode` | callback + unavailable behavior | 只把命令交给宿主，不管理播放列表 |
 | `theaterMode` | `TheaterModeAdapter` | 宿主拥有的 get/set/subscribe 状态 |
 | `onError` | `(summary) => void` | 只返回 `UI_*` code 与 recoverable，不泄露原始异常 |
 
-默认开启下一集、音量、字幕、PiP、设置、统计、关于、全屏和预览；剧场模式默认关闭。下一集没有 callback 时可选择 disabled 或 hidden。
+默认开启下一集、音量、字幕、PiP、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项和排查项；剧场模式默认关闭。下一集没有 callback 时可选择 disabled 或 hidden。
+
+### 语言包
+
+`en`、`zh-CN`、`zh-TW`、`ja` 四个包由类型强制完整：缺少任何一个 key 是编译错误，不会出现英文串漏进本地化界面。包与协商函数从公共入口导出：
+
+```ts
+import {
+  PLAYER_UI_LOCALES,
+  PLAYER_UI_LOCALE_CODES,
+  playerUiLabels,
+  matchPlayerUiLocale,
+  resolvePlayerUiLocale,
+  detectPlayerUiLocale,
+} from '@mx-player-max/ui'
+```
+
+`matchPlayerUiLocale()` 对无法匹配的标签返回 `null`；`resolvePlayerUiLocale()` 回退 `en`；`detectPlayerUiLocale()` 按偏好顺序取第一个命中项。`zh`、`zh-Hans-CN` 归到 `zh-CN`，`zh-Hant`、`zh-TW`、`zh-HK`、`zh-MO` 归到 `zh-TW`。挂载后的根节点带 `data-mxp-locale`。
+
+### PlayerUiShareOptions
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `videoUrl` | `pageUrl`，再回退宿主 `location.href` | 复制视频网址使用的地址 |
+| `pageUrl` | 宿主 `location.href` | 复制嵌入代码与调试信息中的页面地址 |
+| `embedUrl` | `pageUrl` | iframe `src` |
+| `timeParam` | `t` | 复制当前时间时写入的查询参数，单位为整秒 |
+| `embedWidth` / `embedHeight` | `560` / `315` | iframe 尺寸 |
+| `title` | `MX Player Max` | iframe `title` |
+
+嵌入代码对 URL 与标题做 HTML 属性转义，无法解析的地址原样返回而不是被改写。
 
 ## 4. PlaybackSnapshot
 
@@ -154,10 +186,48 @@ UI 不解析 SRT/ASS，不读取 cue 正文，不建立自己的 localStorage ke
 
 - 进度支持 click、pointer capture drag、80 ms 连续 seek、release flush、Home/End、Arrow 与 Page 键。
 - 预览在 fine pointer 悬停 100 ms 后请求；移动会 abort 旧请求，触摸布局只保留正常 seek。
-- 字幕、设置、统计、关于共用一个主浮层状态机；任何时刻最多一个。
+- 字幕、设置、关于、排查播放问题共用一个主浮层状态机；任何时刻最多一个。
+- 详细统计信息是独立的非模态浮层，可以与浮层、菜单和正常播放同时存在。
 - Escape、外部 pointerdown 关闭；打开后焦点进入面板，关闭后恢复到 trigger。
 - 播放中自动隐藏；pointer、keyboard、focus、menu、drag 期间保持显示。
 - 快捷键为 Space、方向键、F、M、C；表单、range、button、menu/dialog/contenteditable 内抑制。
+- Escape 的优先级为：右键菜单 → 浮层 → 迷你播放器。
+
+## 8.1 右键菜单
+
+菜单监听共享宿主而不是 UI 根节点：播放 surface 是根节点的兄弟元素，根节点中心对指针透明，只有挂在宿主上才能接住 video/canvas 区域的右键。`features.contextMenu: false` 时恢复浏览器原生菜单。
+
+分三组，空组连同分隔线一起消失：
+
+| 组 | 条目 | 行为 |
+|---|---|---|
+| 播放 | 循环播放、迷你播放器 | 循环是 `menuitemcheckbox`，切换后菜单保持打开 |
+| 复制 | 复制视频网址、复制当前时间的视频网址、复制嵌入代码 | 走 `share` 配置，写入剪贴板后提示 toast |
+| 诊断 | 复制调试信息、排查播放问题、详细统计信息 | 调试信息是 JSON，排查项打开浮层，统计信息切换非模态浮层 |
+
+再次右键把菜单移动到新位置而不是留下旧副本。菜单支持 ArrowUp/ArrowDown/Home/End/Tab 循环移动焦点，Escape 关闭并把焦点交回根节点。
+
+循环通过公共 SDK 契约实现：`ended` 快照到达时 `seek(0)` 再 `play()`，Native 与 Custom 两条管线行为一致；重入保护确保一次结束只触发一次重启。迷你播放器不开新窗口，只在宿主与根节点上写 `data-mxp-mini`，由样式表把宿主停靠到视口角落。宿主祖先不得留下 `transform`、`filter` 或 `will-change`，否则会成为 fixed 定位的包含块。
+
+## 8.2 详细统计信息
+
+浮层每秒刷新，并跟随 `playbackchange` 重绘，11 行全部来自公共 API：
+
+| 行 | 来源 |
+|---|---|
+| 视频 ID / sCPN | `share.videoUrl` 或 `media` 身份的 11 位派生 ID，加每个 session 生成的 16 位客户端 nonce |
+| 视口 / 帧数 | 根节点 client 尺寸；帧数取 `nativeStats` 或 `customVideoStats` + `rendererStats` |
+| 当前 / 最佳分辨率 | 视频轨尺寸与帧率；最佳值按视口 × devicePixelRatio |
+| 音量 / 归一化 | 快照音量与静音，附采样率、声道与自定义音频 transport |
+| 编解码器 | 视频与音频轨的 codec 与 track id |
+| 色彩 | 视频轨 `color.primaries / transfer`，附位深与 HDR 格式 |
+| 连接速度 | 采样窗口内的峰值吞吐；无采样时回退 `navigator.connection.downlink` |
+| 网络活动 | 缓冲前沿推进量 × 声明码率的估算值，附最近 40 个采样的柱状图 |
+| 缓冲健康度 | `bufferedAhead`，以 30 s 为满刻度，低于 2 s 且正在播放时转为警告色 |
+| 调试串 | backend、state、时间、缓冲区间、renderer、时钟源、解码队列、epoch、速率的单行 token |
+| 日期 | 按所选 locale 的 `Intl.DateTimeFormat` |
+
+SDK 不暴露字节计数器，所以网络活动与连接速度是派生估算而不是实测流量。停靠为迷你播放器时该浮层隐藏。排查播放问题在同一批数据上给出 findings：丢帧比例、缓冲饥饿、引擎错误码、音频时钟缺失、WASM 软解，并提供可复制的环境报告。
 
 ## 9. CSS 契约
 
@@ -166,6 +236,8 @@ import '@mx-player-max/ui/style.css'
 ```
 
 包不会运行时注入 `<style>`。所有 UI 类名以 `mxp-` 开头，公开视觉参数以 `--mxp-*` 开头。默认视觉为单色 chrome：`--mxp-accent` 在 dark 主题为白、light 主题为黑，`--mxp-scrim` 提供控制栏底部遮罩，`--mxp-control-size` 基线 36 px 圆形按钮。`<=760px` 隐藏音量 slider 与剧场按钮，`<=420px` 重排控制行；focus-visible 与 `prefers-reduced-motion` 由样式表实现。覆盖任一 token 即可换色，不需要 fork 样式表。
+
+诊断浮层是唯一离开单色语言的表面，它自带 `--mxp-stats-bg`、`--mxp-stats-meter`、`--mxp-stats-graph`、`--mxp-stats-warn` 四个 token，其余表面仍然只用单色 token。停靠状态由 `.mxp-player-host[data-mxp-mini="true"]` 提供，宿主可以覆盖 inset 与宽度改变停靠角。
 
 SDK/UI/React/Vue 入口是 ESM + declarations；Browser 另外发布 `./iife`、`./iife.min` 和 `./style.css`。IIFE 全局名为 `MXPlayerMax`，固定版本 URL 和 SRI 从 release manifest 取得。
 
@@ -179,4 +251,4 @@ SDK/UI/React/Vue 入口是 ESM + declarations；Browser 另外发布 `./iife`、
 
 UI 稳定错误码：`UI_DESTROYED`、`UI_INVALID_CONTAINER`、`UI_INVALID_OPTIONS`、`UI_OPERATION_FAILED`。公共 UI/播放错误不包含 URL query、字幕全文、DOMException、内部 stack 或宿主异常 message。
 
-当前明确不包含真实 Codec WASM/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码或 Document PiP。IIFE 只代表 Browser 的 SDK + UI 组合，不代表所有 Codec 已支持。
+当前明确不包含真实 Codec WASM/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码或 Document PiP。迷你播放器是页内停靠，不是 Document Picture-in-Picture。IIFE 只代表 Browser 的 SDK + UI 组合，不代表所有 Codec 已支持。

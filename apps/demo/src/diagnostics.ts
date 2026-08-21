@@ -19,9 +19,11 @@ export type DiagnosticState<T> =
   | { readonly status: 'failed'; readonly error: string; readonly value: T | null }
 
 export interface SupportPresentation {
-  readonly label: 'Supported' | 'Unsupported' | 'Pending verification'
-  readonly tone: 'supported' | 'unsupported' | 'unknown'
+  readonly tone: SupportTone
 }
+
+/** Capability evidence tone. The panel maps it onto localized copy. */
+export type SupportTone = 'supported' | 'unsupported' | 'unknown'
 
 export interface ProbeDiagnostics {
   readonly browser: string
@@ -56,9 +58,9 @@ export function failedDiagnostic<T>(error: string, value: T | null = null): Diag
 }
 
 export function supportPresentation(value: CapabilitySupport | boolean): SupportPresentation {
-  if (value === true || value === 'supported') return { label: 'Supported', tone: 'supported' }
-  if (value === false || value === 'unsupported') return { label: 'Unsupported', tone: 'unsupported' }
-  return { label: 'Pending verification', tone: 'unknown' }
+  if (value === true || value === 'supported') return { tone: 'supported' }
+  if (value === false || value === 'unsupported') return { tone: 'unsupported' }
+  return { tone: 'unknown' }
 }
 
 export function probeDiagnostics(context: CapabilityContext): ProbeDiagnostics {
@@ -104,7 +106,8 @@ export function decisionDiagnostic(trace: PlaybackDecisionTrace): DiagnosticStat
   return readyDiagnostic(trace)
 }
 
-export function secondsFromMicros(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return 'Pending'
+/** Returns `null` for an unusable reading so the caller can supply localized copy. */
+export function secondsFromMicros(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value)) return null
   return `${(value / 1_000_000).toFixed(2)} s`
 }

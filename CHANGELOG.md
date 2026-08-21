@@ -4,6 +4,41 @@
 
 ### Added
 
+- 播放器 chrome 四语言文案包（`en`、`zh-CN`、`zh-TW`、`ja`）与 `locale` 选项：类型强制每个包
+  完整，`auto` 依次读取 `<html lang>`、`navigator.languages`、`navigator.language`，`zh-Hans*` 与
+  `zh-Hant/TW/HK/MO` 分别归入简繁包；`labels` 仍可在包之上逐条覆盖。公共入口导出
+  `PLAYER_UI_LOCALES`、`PLAYER_UI_LOCALE_CODES`、`playerUiLabels`、`matchPlayerUiLocale`、
+  `resolvePlayerUiLocale`、`detectPlayerUiLocale`。
+- 播放器右键菜单：循环播放、迷你播放器、复制视频网址、复制当前时间的视频网址、复制嵌入代码、
+  复制调试信息、排查播放问题、详细统计信息。菜单挂在共享宿主上，因此 video/canvas 区域的右键
+  也能命中；分三组并自动折叠空组，支持方向键/Home/End/Tab 循环与 Escape 关闭，再次右键移动到
+  新位置。循环走公共 SDK 契约（`ended` 时 `seek(0)` + `play()`），Native 与 Custom 行为一致。
+- 迷你播放器：仅在宿主与根节点写 `data-mxp-mini`，由样式表把宿主停靠到视口角落，不开新窗口、
+  不移动引擎 surface，Escape 退出，`destroy()` 与 `detach()` 归还宿主属性。
+- 详细统计信息非模态浮层：视频 ID/sCPN、视口/帧数、当前/最佳分辨率、音量/归一化、编解码器、
+  色彩、连接速度、网络活动、缓冲健康度、调试串、日期共 11 行，每秒刷新且跟随 `playbackchange`；
+  连接速度与网络活动是缓冲前沿 × 声明码率的派生估算（SDK 不暴露字节计数器），日期按所选 locale
+  用 `Intl.DateTimeFormat` 渲染。浮层自带 `--mxp-stats-*` token，停靠迷你播放器时隐藏。
+- 排查播放问题浮层与「复制调试信息」：在同一批公共遥测上给出丢帧比例、缓冲饥饿、引擎错误码、
+  音频时钟缺失与 WASM 软解 findings，并输出可复制的 JSON 环境报告。
+- `PlayerUiShareOptions`：`videoUrl`/`pageUrl`/`embedUrl`/`timeParam`/`embedWidth`/`embedHeight`/
+  `title`。UI 不从引擎内部推导媒体地址；嵌入代码对 URL 与标题做 HTML 属性转义，无法解析的地址
+  原样返回。
+- Demo 四语言化：`apps/demo/src/i18n.ts` 承载全部文案（含代码示例内的注释），顶栏加入语言切换器，
+  选择持久化到 `localStorage` 并同步 `<html lang>`、`document.title` 与 description meta。
+  `landing.ts` 与 `diagnostics.ts` 改为返回与语言无关的 reason/tone，由展示层映射文案。
+
+### Changed
+
+- Demo 顶栏品牌改为 FREEANIME.ORG 式字标：`MX Player Max` 单行显示、中间词反色 chip、区分大小写，
+  移除旧的 `MX` 方块与 `Modular web media engine` 副标题。
+- Demo 顶栏获得独立层叠上下文，语言下拉不再被播放器 surface 遮挡。
+
+### Fixed
+
+- Demo 入场动画的 `will-change` 由常驻 CSS 改为动画期间的作用域规则：常驻 `will-change: transform`
+  会让每个 section 成为 fixed 定位的包含块，迷你播放器因此停靠到 section 而不是视口。
+
 - Phase 10.2 libvpx VP8 三个 WASM 变体完成项目所有者授权及许可证/专利审核；运行时默认审核门禁
   直接接受 approved manifest，single/SIMD 以固定 SHA-256 进入 npm、Release、Browser Manifest
   与 Pages 白名单，threaded 因缺少 pthread host glue 保持技术性排除。

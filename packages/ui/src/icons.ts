@@ -1,5 +1,6 @@
 import {
   Captions,
+  Check,
   Maximize,
   Minimize,
   Pause,
@@ -19,6 +20,7 @@ type IconNode = Parameters<typeof createElement>[0]
 
 const ICONS = {
   captions: Captions,
+  check: Check,
   close: X,
   fullscreen: Maximize,
   fullscreenExit: Minimize,

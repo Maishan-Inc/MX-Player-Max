@@ -6,6 +6,9 @@ export interface TheaterModeAdapter {
   subscribe(listener: (active: boolean) => void): () => void
 }
 
+/** Locales shipped with the player chrome. `auto` resolves the host language at attach time. */
+export type PlayerUiLocale = 'en' | 'zh-CN' | 'zh-TW' | 'ja'
+
 export interface PlayerUiFeatureOptions {
   readonly nextEpisode?: boolean
   readonly volume?: boolean
@@ -17,11 +20,34 @@ export interface PlayerUiFeatureOptions {
   readonly about?: boolean
   readonly fullscreen?: boolean
   readonly preview?: boolean
+  /** Right-click menu on the player surface. Disabling it restores the browser menu. */
+  readonly contextMenu?: boolean
+  readonly loop?: boolean
+  readonly miniPlayer?: boolean
+  /** Copy video URL, copy URL at current time and copy embed code menu entries. */
+  readonly share?: boolean
+  /** Copy debug info and the troubleshooting report. */
+  readonly troubleshoot?: boolean
 }
 
 export interface NextEpisodeControlOptions {
   readonly onRequest?: () => void | Promise<void>
   readonly unavailableBehavior?: 'disabled' | 'hidden'
+}
+
+/**
+ * Addresses the context menu copies. The UI never derives a media address from the engine
+ * internals; anything not supplied here falls back to the hosting page URL.
+ */
+export interface PlayerUiShareOptions {
+  readonly videoUrl?: string
+  readonly pageUrl?: string
+  readonly embedUrl?: string
+  readonly embedWidth?: number
+  readonly embedHeight?: number
+  /** Query parameter carrying the start offset in whole seconds. Defaults to `t`. */
+  readonly timeParam?: string
+  readonly title?: string
 }
 
 export interface PlayerUiLabels {
@@ -69,6 +95,43 @@ export interface PlayerUiLabels {
   readonly seeking: string
   readonly error: string
   readonly unknownDuration: string
+  /* Right-click menu */
+  readonly contextMenu: string
+  readonly loop: string
+  readonly miniPlayer: string
+  readonly exitMiniPlayer: string
+  readonly copyVideoUrl: string
+  readonly copyVideoUrlAtTime: string
+  readonly copyEmbedCode: string
+  readonly copyDebugInfo: string
+  readonly troubleshoot: string
+  readonly copied: string
+  readonly copyFailed: string
+  /* Stats for nerds rows */
+  readonly statsVideoId: string
+  readonly statsViewport: string
+  readonly statsResolution: string
+  readonly statsVolume: string
+  readonly statsCodecs: string
+  readonly statsColor: string
+  readonly statsConnection: string
+  readonly statsNetwork: string
+  readonly statsBufferHealth: string
+  readonly statsMystery: string
+  readonly statsDate: string
+  /** Frame counter template. `{dropped}` and `{total}` are substituted. */
+  readonly statsFrames: string
+  readonly statsUnknown: string
+  /* Troubleshooting report */
+  readonly troubleshootHealthy: string
+  readonly troubleshootFindings: string
+  readonly troubleshootDroppedFrames: string
+  readonly troubleshootBuffering: string
+  readonly troubleshootError: string
+  readonly troubleshootNoAudioClock: string
+  readonly troubleshootSoftwareDecode: string
+  readonly troubleshootEnvironment: string
+  readonly troubleshootCopyReport: string
 }
 
 export interface PlayerUiErrorSummary {
@@ -78,8 +141,11 @@ export interface PlayerUiErrorSummary {
 
 export interface PlayerUiOptions {
   readonly theme?: 'dark' | 'light' | 'system'
+  /** Built-in label pack. `auto` follows the host document language. Defaults to `en`. */
+  readonly locale?: PlayerUiLocale | 'auto'
   readonly features?: PlayerUiFeatureOptions
   readonly labels?: Readonly<Partial<PlayerUiLabels>>
+  readonly share?: PlayerUiShareOptions
   readonly autoHideDelayMs?: number
   readonly nextEpisode?: NextEpisodeControlOptions
   readonly theaterMode?: TheaterModeAdapter
@@ -93,16 +159,28 @@ export interface PlayerUiController {
   destroy(): void
 }
 
-export type PlayerUiPlayer = Pick<MXPlayer, 'playback' | 'state' | 'play' | 'pause' | 'seek' | 'setVolume' | 'setMuted' | 'setPlaybackRate' | 'requestFullscreen' | 'exitFullscreen' | 'requestPictureInPicture' | 'exitPictureInPicture' | 'subtitleTracks' | 'selectedSubtitleTrack' | 'subtitleState' | 'subtitleStyle' | 'setSubtitleStyle' | 'resetSubtitleStyle' | 'selectSubtitleTrack' | 'on' | 'off' | 'requestPreview'>
+type PlayerUiRequiredPlayer = Pick<MXPlayer, 'playback' | 'state' | 'play' | 'pause' | 'seek' | 'setVolume' | 'setMuted' | 'setPlaybackRate' | 'requestFullscreen' | 'exitFullscreen' | 'requestPictureInPicture' | 'exitPictureInPicture' | 'subtitleTracks' | 'selectedSubtitleTrack' | 'subtitleState' | 'subtitleStyle' | 'setSubtitleStyle' | 'resetSubtitleStyle' | 'selectSubtitleTrack' | 'on' | 'off' | 'requestPreview'>
+
+/**
+ * Read-only telemetry the statistics overlay and the troubleshooting report consume. It is
+ * optional so a host may pass a reduced player object; every reader guards for absence.
+ */
+type PlayerUiTelemetryPlayer = Partial<Pick<MXPlayer, 'media' | 'selection' | 'nativeStats' | 'customVideoStats' | 'customAudioStats' | 'audioClock' | 'rendererKind' | 'rendererStats'>>
+
+export type PlayerUiPlayer = PlayerUiRequiredPlayer & PlayerUiTelemetryPlayer
 
 export const DEFAULT_LABELS: PlayerUiLabels = {
   play: 'Play', pause: 'Pause', replay: 'Replay', nextEpisode: 'Next episode', mute: 'Mute', unmute: 'Unmute', volume: 'Volume',
-  seek: 'Seek', subtitles: 'Subtitles', pictureInPicture: 'Picture in picture', exitPictureInPicture: 'Exit picture in picture', theater: 'Theater mode', exitTheater: 'Exit theater mode', settings: 'Settings', statistics: 'Statistics', about: 'About',
+  seek: 'Seek', subtitles: 'Subtitles', pictureInPicture: 'Picture in picture', exitPictureInPicture: 'Exit picture in picture', theater: 'Theater mode', exitTheater: 'Exit theater mode', settings: 'Settings', statistics: 'Stats for nerds', about: 'About',
   fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', close: 'Close', subtitleOff: 'Off', subtitleTracks: 'Subtitle tracks', subtitleStyle: 'Subtitle style', fontFamily: 'Font family', fontSize: 'Font size', alignment: 'Alignment', horizontalPosition: 'Horizontal position', subtitlePosition: 'Vertical position', subtitleColor: 'Text color', outlineColor: 'Outline color', outlineWidth: 'Outline width', bold: 'Bold', italic: 'Italic', underline: 'Underline', embeddedTrack: 'Embedded', localTrack: 'Local file', remoteTrack: 'Remote URL', reset: 'Reset', playbackRate: 'Playback rate', noSubtitles: 'No subtitle tracks', loading: 'Loading', buffering: 'Buffering', seeking: 'Seeking', error: 'Playback error', unknownDuration: 'Live',
+  contextMenu: 'Player menu', loop: 'Loop', miniPlayer: 'Miniplayer', exitMiniPlayer: 'Exit miniplayer', copyVideoUrl: 'Copy video URL', copyVideoUrlAtTime: 'Copy video URL at current time', copyEmbedCode: 'Copy embed code', copyDebugInfo: 'Copy debug info', troubleshoot: 'Troubleshoot playback issue', copied: 'Copied to the clipboard', copyFailed: 'The clipboard is unavailable',
+  statsVideoId: 'Video ID / sCPN', statsViewport: 'Viewport / Frames', statsResolution: 'Current / Optimal Res', statsVolume: 'Volume / Normalized', statsCodecs: 'Codecs', statsColor: 'Color', statsConnection: 'Connection Speed', statsNetwork: 'Network Activity', statsBufferHealth: 'Buffer Health', statsMystery: 'Mystery Text', statsDate: 'Date', statsFrames: '{dropped} dropped of {total}', statsUnknown: 'n/a',
+  troubleshootHealthy: 'No playback problem was detected.', troubleshootFindings: 'Findings', troubleshootDroppedFrames: 'Frames are being dropped. Lower the resolution, close other GPU-heavy tabs, or switch the playback intent back to Normal.', troubleshootBuffering: 'Playback is starving for data. Check the connection and confirm the server answers HTTP Range requests with 206 Partial Content.', troubleshootError: 'The engine reported an error. The code below identifies the failing stage.', troubleshootNoAudioClock: 'No audio clock is running, so video timing follows the media wall clock and may drift.', troubleshootSoftwareDecode: 'A WASM decoder is active. Hardware decoding is unavailable for this codec in this browser.', troubleshootEnvironment: 'Environment', troubleshootCopyReport: 'Copy report',
 }
 
 export const DEFAULT_FEATURES: Required<PlayerUiFeatureOptions> = {
   nextEpisode: true, volume: true, subtitles: true, pictureInPicture: true, theater: false, settings: true, statistics: true, about: true, fullscreen: true, preview: true,
+  contextMenu: true, loop: true, miniPlayer: true, share: true, troubleshoot: true,
 }
 
 export const UiErrorCodes = {

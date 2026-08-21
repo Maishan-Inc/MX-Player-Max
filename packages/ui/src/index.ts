@@ -9,10 +9,20 @@ export type {
   PlayerUiErrorSummary,
   PlayerUiFeatureOptions,
   PlayerUiLabels,
+  PlayerUiLocale,
   PlayerUiOptions,
+  PlayerUiShareOptions,
   TheaterModeAdapter,
 } from './contracts'
 export { DEFAULT_FEATURES, DEFAULT_LABELS, PlayerUiError, UiErrorCodes } from './contracts'
+export {
+  detectPlayerUiLocale,
+  matchPlayerUiLocale,
+  playerUiLabels,
+  resolvePlayerUiLocale,
+  PLAYER_UI_LOCALE_CODES,
+  PLAYER_UI_LOCALES,
+} from './locales'
 
 export function createPlayerUi(player: MXPlayer, options: PlayerUiOptions = {}): PlayerUiController {
   return new PlayerUiControllerImpl(player, options)

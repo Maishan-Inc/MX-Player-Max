@@ -19,10 +19,12 @@ import { DecisionPanel } from './DecisionPanel'
 import { ProbePanel } from './ProbePanel'
 import { RuntimePanel } from './RuntimePanel'
 import { SubtitlePanel } from './SubtitlePanel'
+import type { DemoDiagnosticsCopy } from '../i18n'
 
 interface DiagnosticsPanelProps {
   readonly player: MXPlayer | null
   readonly resetKey: string
+  readonly copy: DemoDiagnosticsCopy
 }
 
 interface DiagnosticsSnapshot {
@@ -39,7 +41,7 @@ const EMPTY: DiagnosticsSnapshot = {
   subtitles: emptyDiagnostic(),
 }
 
-export function DiagnosticsPanel({ player, resetKey }: DiagnosticsPanelProps) {
+export function DiagnosticsPanel({ player, resetKey, copy }: DiagnosticsPanelProps) {
   const [snapshot, setSnapshot] = useState<DiagnosticsSnapshot>(EMPTY)
 
   useEffect(() => {
@@ -105,13 +107,13 @@ export function DiagnosticsPanel({ player, resetKey }: DiagnosticsPanelProps) {
   }, [player, resetKey])
 
   return (
-    <section className="diagnostics" aria-label="Playback diagnostics" data-demo-reveal>
-      <div className="diagnostics-title"><span>Public API telemetry</span><strong>Playback diagnostics</strong></div>
+    <section className="diagnostics" aria-label={copy.sectionLabel} data-demo-reveal>
+      <div className="diagnostics-title"><span>{copy.eyebrow}</span><strong>{copy.title}</strong></div>
       <div className="diagnostics-grid">
-        <ProbePanel state={snapshot.probe} resetKey={resetKey} />
-        <DecisionPanel state={snapshot.decision} resetKey={resetKey} />
-        <RuntimePanel state={snapshot.runtime} resetKey={resetKey} />
-        <SubtitlePanel state={snapshot.subtitles} resetKey={resetKey} />
+        <ProbePanel state={snapshot.probe} resetKey={resetKey} copy={copy} />
+        <DecisionPanel state={snapshot.decision} resetKey={resetKey} copy={copy} />
+        <RuntimePanel state={snapshot.runtime} resetKey={resetKey} copy={copy} />
+        <SubtitlePanel state={snapshot.subtitles} resetKey={resetKey} copy={copy} />
       </div>
     </section>
   )

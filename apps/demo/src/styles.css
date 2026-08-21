@@ -45,18 +45,27 @@ a { color: inherit; text-decoration: none; }
 :where(button, input, select, a, label.file-action):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.topbar { min-height: 68px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 22px; padding: 0 clamp(16px, 4vw, 56px); border-bottom: 1px solid var(--line-soft); }
+/* The bar owns a stacking context above the main column so the language dropdown is never
+   covered by the player surface, which the SDK layers with its own z-indexes. */
+.topbar { position: relative; z-index: 60; min-height: 68px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 22px; padding: 0 clamp(16px, 4vw, 56px); border-bottom: 1px solid var(--line-soft); }
 .topbar > .brand-block { justify-self: start; }
 .topbar > .runtime-status { justify-self: center; }
 .topbar > .topbar-actions { justify-self: end; }
 .brand-block { min-width: 0; display: inline-flex; align-items: center; gap: 10px; }
-.brand-mark { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; color: var(--text); font-size: 11px; font-weight: 900; }
-.brand-block strong, .brand-block small { display: block; }
-.brand-block strong { font-size: 14px; font-weight: 800; letter-spacing: -.01em; }
-.brand-block small { margin-top: 2px; color: var(--dim); font-size: 10.5px; }
+/* Wordmark in the FREEANIME.ORG idiom: tight bold type with the middle word inverted into a
+   solid chip. The casing is content, so it is written out rather than transformed in CSS. */
+.brand-wordmark { display: inline-flex; align-items: baseline; color: var(--text); font-size: 21px; font-weight: 800; letter-spacing: -.035em; white-space: nowrap; }
+.brand-chip { margin: 0 1px; padding: 0 5px; background: var(--text); color: var(--bg); }
 .runtime-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .runtime-status i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #8cffb0; box-shadow: 0 0 0 3px rgba(140, 255, 176, .08); }
 .topbar-actions { display: flex; align-items: center; gap: 18px; }
+.lang-switch { position: relative; }
+.lang-trigger { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--text); font-size: 11px; font-weight: 800; }
+.lang-trigger:hover { background: var(--line-soft); }
+.lang-menu { position: absolute; z-index: 1; right: 0; top: calc(100% + 6px); min-width: 152px; margin: 0; padding: 4px; list-style: none; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-raised); box-shadow: 0 16px 40px rgba(0, 0, 0, .38); }
+.lang-menu button { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text); font-size: 12px; text-align: left; }
+.lang-menu button:hover { background: var(--line-soft); }
+.lang-menu button[aria-selected="true"] { font-weight: 800; }
 .icon-button { width: 32px; height: 32px; display: inline-grid; place-items: center; border: 0; border-radius: 5px; background: transparent; color: var(--text); padding: 0; }
 .icon-button:hover { background: var(--line-soft); }
 .github-link { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; font-weight: 700; }
@@ -181,7 +190,10 @@ a { color: inherit; text-decoration: none; }
 .candidate-list small { color: var(--dim); text-transform: uppercase; }
 
 .site-footer { display: flex; justify-content: space-between; gap: 20px; padding: 19px clamp(16px, 4vw, 56px); border-top: 1px solid var(--line-soft); color: var(--dim); font-size: 11px; }
-[data-demo-reveal] { will-change: transform, opacity; }
+/* Compositing hint for the entrance animation only. Left on permanently it would make every
+   revealed section the containing block for fixed descendants, which anchors the SDK's docked
+   miniplayer to the section instead of the viewport. */
+[data-demo-revealing] [data-demo-reveal] { will-change: transform, opacity; }
 
 /* Theater mode keeps only the player: the SDK asks for it through the TheaterModeAdapter. */
 .app-shell.is-theater .topbar,
@@ -238,7 +250,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-demo-reveal] { will-change: auto; }
   .player-stage, .why-card, .how-step, .faq-item, .faq-question, .faq-chevron, .faq-answer, .faq-answer > p,
   .integration-tabs button, .integration-code-head button, .diagnostic-panel { transition: none; }
 }

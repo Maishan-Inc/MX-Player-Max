@@ -16,15 +16,50 @@ import {
   type PlayerUiErrorSummary,
   type PlayerUiFeatureOptions,
   type PlayerUiLabels,
+  type PlayerUiLocale,
   type PlayerUiOptions,
   type PlayerUiPlayer,
+  type PlayerUiShareOptions,
   type TheaterModeAdapter,
 } from './contracts'
+import { detectPlayerUiLocale, playerUiLabels, resolvePlayerUiLocale } from './locales'
+import { buildStatsRows, NETWORK_SAMPLE_COUNT, type StatsInput, type StatsRow } from './stats'
+import { buildDebugInfo, buildEmbedCode, createCpn, resolveVideoUrl, resolveVideoUrlAtTime, shortMediaId } from './share'
+import { buildTroubleshootReport } from './troubleshoot'
 import { createPlayerIcon, type PlayerIconName } from './icons'
 import { CleanupScope, isElement } from './lifecycle'
 
-type OverlayName = 'settings' | 'statistics' | 'about' | 'subtitles'
+type OverlayName = 'settings' | 'about' | 'subtitles' | 'troubleshoot'
 type IconButton = HTMLButtonElement
+
+interface MenuItemSpec {
+  readonly id: string
+  readonly label: string
+  readonly checkable?: boolean
+  readonly checked?: boolean
+  readonly separatorBefore?: boolean
+  readonly run: () => void
+}
+
+interface MenuState {
+  element: HTMLElement | null
+  keydown: (() => void) | null
+}
+
+/** Rolling download estimate, in bytes per sampling window, newest last. */
+interface NetworkState {
+  samples: number[]
+  totalBytes: number
+  lastBufferedEnd: number | null
+}
+
+interface StatsState {
+  element: HTMLElement | null
+  body: HTMLElement | null
+  timer: ReturnType<typeof setInterval> | null
+  cpn: string
+  sessionEpoch: number
+}
 
 interface SeekState {
   active: boolean
@@ -61,12 +96,24 @@ const PREVIEW_WIDTH = 160
 const PREVIEW_HEIGHT = 90
 const PREVIEW_EDGE_INSET = (PREVIEW_WIDTH / 2) + 1
 const INTERACTION_THROTTLE_MS = 80
+const STATS_INTERVAL_MS = 1_000
+const TOAST_DURATION_MS = 2_200
+const MENU_EDGE_INSET = 6
 
 export class PlayerUiControllerImpl implements PlayerUiController {
   readonly #player: PlayerUiPlayer
   #options: PlayerUiOptions = {}
   #labels: PlayerUiLabels = DEFAULT_LABELS
+  #locale: PlayerUiLocale = 'en'
   #features: Required<PlayerUiFeatureOptions> = { ...DEFAULT_FEATURES }
+  #share: PlayerUiShareOptions | undefined
+  #loop = false
+  #loopRestarting = false
+  #mini = false
+  #menu: MenuState = { element: null, keydown: null }
+  #network: NetworkState = { samples: [], totalBytes: 0, lastBufferedEnd: null }
+  #stats: StatsState = { element: null, body: null, timer: null, cpn: '', sessionEpoch: -1 }
+  #toastTimer: ReturnType<typeof setTimeout> | null = null
   #host: HTMLElement | null = null
   #root: HTMLElement | null = null
   #scope = new CleanupScope()
@@ -112,6 +159,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     theater: IconButton
     settings: IconButton
     fullscreen: IconButton
+    toast: HTMLElement
   } | null = null
 
   constructor(player: PlayerUiPlayer, options: PlayerUiOptions = {}) {
@@ -134,6 +182,10 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     this.#detachInternal()
     this.#host = container
     this.#host.classList.add('mxp-player-host')
+    if (this.#options.locale === 'auto') {
+      this.#locale = this.#resolveLocale('auto')
+      this.#labels = { ...playerUiLabels(this.#locale), ...(this.#options.labels ?? {}) }
+    }
     this.#root = this.#buildRoot(container.ownerDocument ?? document)
     this.#host.appendChild(this.#root)
     this.#attached = true
@@ -176,15 +228,38 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     if (delay !== undefined && (!Number.isFinite(delay) || delay < 500 || delay > 30_000)) throw new PlayerUiError(UiErrorCodes.UI_INVALID_OPTIONS, 'The auto-hide delay is outside the supported range')
     this.#options = {
       ...(options.theme === undefined ? {} : { theme: options.theme }),
+      ...(options.locale === undefined ? {} : { locale: options.locale }),
       ...(options.features === undefined ? {} : { features: { ...options.features } }),
       ...(options.labels === undefined ? {} : { labels: { ...options.labels } }),
+      ...(options.share === undefined ? {} : { share: { ...options.share } }),
       ...(delay === undefined ? {} : { autoHideDelayMs: delay }),
       ...(options.nextEpisode === undefined ? {} : { nextEpisode: { ...options.nextEpisode } }),
       ...(options.theaterMode === undefined ? {} : { theaterMode: options.theaterMode }),
       ...(options.onError === undefined ? {} : { onError: options.onError }),
     }
-    this.#labels = { ...DEFAULT_LABELS, ...(options.labels ?? {}) }
+    this.#locale = this.#resolveLocale(options.locale)
+    this.#labels = { ...playerUiLabels(this.#locale), ...(options.labels ?? {}) }
     this.#features = { ...DEFAULT_FEATURES, ...(options.features ?? {}) }
+    this.#share = this.#options.share
+  }
+
+  /**
+   * `auto` reads the host document and browser preferences; anything else is normalized so
+   * `zh`, `zh-Hant-HK` and `ja-JP` all land on a shipped pack instead of silently using English.
+   */
+  #resolveLocale(requested: PlayerUiOptions['locale']): PlayerUiLocale {
+    if (requested === undefined) return 'en'
+    if (requested !== 'auto') return resolvePlayerUiLocale(requested)
+    const doc = this.#host?.ownerDocument ?? (typeof document === 'undefined' ? null : document)
+    const view = doc?.defaultView ?? null
+    const preferences: (string | null | undefined)[] = []
+    const documentLanguage = doc?.documentElement?.lang
+    if (documentLanguage) preferences.push(documentLanguage)
+    const navigatorLanguages = view?.navigator?.languages
+    if (Array.isArray(navigatorLanguages)) preferences.push(...navigatorLanguages)
+    const navigatorLanguage = view?.navigator?.language
+    if (navigatorLanguage) preferences.push(navigatorLanguage)
+    return detectPlayerUiLocale(preferences)
   }
 
   #buildRoot(document: Document): HTMLElement {
@@ -195,6 +270,9 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     root.setAttribute('aria-label', 'Media player')
     root.dataset.mxpTheme = this.#options.theme ?? 'dark'
     root.dataset.mxpVisible = 'true'
+    root.dataset.mxpLoop = String(this.#loop)
+    root.dataset.mxpMini = String(this.#mini)
+    root.dataset.mxpLocale = this.#locale
 
     const status = document.createElement('div')
     status.className = 'mxp-status-layer'
@@ -204,6 +282,13 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     statusMessage.setAttribute('aria-live', 'polite')
     status.append(statusMessage)
     root.append(status)
+
+    const toast = document.createElement('div')
+    toast.className = 'mxp-toast'
+    toast.setAttribute('role', 'status')
+    toast.setAttribute('aria-live', 'polite')
+    toast.hidden = true
+    root.append(toast)
 
     const controls = document.createElement('div')
     controls.className = 'mxp-control-shell'
@@ -265,7 +350,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     controls.append(progressWrap, preview, row)
     root.append(controls)
 
-    this.#elements = { controls, status, statusMessage, progress, progressWrap, progressTrack, played, buffered, thumb, preview, previewImage, previewTime, time, play, next, mute, volume, subtitles, pip, theater, settings, fullscreen }
+    this.#elements = { controls, status, statusMessage, progress, progressWrap, progressTrack, played, buffered, thumb, preview, previewImage, previewTime, time, play, next, mute, volume, subtitles, pip, theater, settings, fullscreen, toast }
     this.#wireRoot(root)
     return root
   }
@@ -325,6 +410,15 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     root.addEventListener('pointerleave', () => this.#setPointerActive(false))
     root.addEventListener('focusin', () => this.#setFocusActive(true))
     root.addEventListener('focusout', (event) => { const next = event.relatedTarget; if (!(next instanceof Node) || !root.contains(next)) this.#setFocusActive(false) })
+    // The playback surface is a sibling of this root, not a descendant, and the root's centre is
+    // pointer-transparent. The menu therefore listens on the shared host so a right-click on the
+    // video or canvas reaches it just like one on the control bar.
+    const host = this.#host
+    if (host) {
+      const contextmenu = (event: MouseEvent): void => this.#handleContextMenu(event)
+      host.addEventListener('contextmenu', contextmenu)
+      this.#scope.add(() => host.removeEventListener('contextmenu', contextmenu))
+    }
   }
 
   #subscribe(): void {
@@ -339,12 +433,15 @@ export class PlayerUiControllerImpl implements PlayerUiController {
         this.#cancelSubtitleDrag()
         this.#clearPreview()
         this.#closeOverlay(false, false)
+        this.#closeMenu(false)
+        this.#resetNetwork()
         this.#subtitleResume = null
         this.#pendingSubtitleSelection = null
         this.#lastSubtitleTrackId = this.#player.selectedSubtitleTrack
       }
       this.#snapshot = snapshot
       this.#observeSubtitlePause(snapshot)
+      this.#applyLoop(snapshot)
       this.#render()
     }))
     this.#scope.add(this.#player.on('subtitletrackchange', () => {
@@ -364,9 +461,12 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     this.#scope.add(this.#player.on('error', ({ error }) => { if (epoch === this.#epoch && !this.#destroyed) this.#reportSdkError(error) }))
     const document = root.ownerDocument
     const outside = (event: PointerEvent): void => {
-      if (!this.#overlay || !this.#root) return
+      if (!this.#root) return
       const target = event.target
-      if (target instanceof Node && !this.#root.contains(target)) this.#closeOverlay(true)
+      const inside = target instanceof Node && this.#root.contains(target)
+      if (inside) return
+      if (this.#menu.element) this.#closeMenu(false)
+      if (this.#overlay) this.#closeOverlay(true)
     }
     document.addEventListener('pointerdown', outside)
     this.#scope.add(() => document.removeEventListener('pointerdown', outside))
@@ -444,6 +544,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     elements.subtitles.dataset.mxpActive = String(subtitlesActive)
     elements.subtitles.setAttribute('aria-pressed', String(subtitlesActive))
     this.#renderStatus()
+    this.#renderStats()
     this.#scheduleHide()
   }
 
@@ -640,14 +741,14 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     panel.replaceChildren()
     const header = panel.ownerDocument.createElement('div'); header.className = 'mxp-panel-header'
     const title = panel.ownerDocument.createElement('h2'); title.className = 'mxp-panel-title'
-    title.textContent = name === 'settings' ? this.#labels.settings : name === 'statistics' ? this.#labels.statistics : name === 'about' ? this.#labels.about : this.#labels.subtitles
+    title.textContent = name === 'settings' ? this.#labels.settings : name === 'about' ? this.#labels.about : name === 'troubleshoot' ? this.#labels.troubleshoot : this.#labels.subtitles
     const close = this.#iconButton(panel.ownerDocument, 'close', this.#labels.close, 'close')
     close.addEventListener('click', () => this.#closeOverlay(true))
     header.append(title, close); panel.append(header)
     const content = panel.ownerDocument.createElement('div'); content.className = 'mxp-panel-content'; panel.append(content)
     if (name === 'settings') this.#renderSettings(content)
-    else if (name === 'statistics') this.#renderStatistics(content)
     else if (name === 'about') this.#renderAbout(content)
+    else if (name === 'troubleshoot') this.#renderTroubleshoot(content)
     else this.#renderSubtitles(content)
   }
 
@@ -659,15 +760,40 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     rate.addEventListener('change', () => { void this.#run(() => { this.#player.setPlaybackRate(Number(rate.value)) }) })
     section.append(rate)
     if (this.#features.subtitles) { const subtitle = content.ownerDocument.createElement('button'); subtitle.type = 'button'; subtitle.textContent = this.#labels.subtitles; subtitle.addEventListener('click', () => this.#openOverlay('subtitles', subtitle)); section.append(subtitle) }
-    if (this.#features.statistics) { const stats = content.ownerDocument.createElement('button'); stats.type = 'button'; stats.textContent = this.#labels.statistics; stats.addEventListener('click', () => this.#openOverlay('statistics', stats)); section.append(stats) }
+    if (this.#features.statistics) { const stats = content.ownerDocument.createElement('button'); stats.type = 'button'; stats.textContent = this.#labels.statistics; stats.addEventListener('click', () => { this.#closeOverlay(true); this.#setStatsOpen(true) }); section.append(stats) }
+    if (this.#features.troubleshoot) { const help = content.ownerDocument.createElement('button'); help.type = 'button'; help.textContent = this.#labels.troubleshoot; help.addEventListener('click', () => this.#openOverlay('troubleshoot', help)); section.append(help) }
     if (this.#features.about) { const about = content.ownerDocument.createElement('button'); about.type = 'button'; about.textContent = this.#labels.about; about.addEventListener('click', () => this.#openOverlay('about', about)); section.append(about) }
   }
 
-  #renderStatistics(content: HTMLElement): void {
-    const grid = content.ownerDocument.createElement('div'); grid.className = 'mxp-stat-grid'
-    const entries: Array<[string, string]> = [['State', this.#snapshot.state], ['Time', formatTime(this.#snapshot.currentTime)], ['Duration', formatTime(this.#snapshot.duration, this.#labels.unknownDuration)], ['Buffered ahead', formatTime(this.#snapshot.bufferedAhead)], ['Volume', `${Math.round(this.#snapshot.volume * 100)}%`], ['Rate', `${this.#snapshot.playbackRate}x`], ['Session', String(this.#snapshot.sessionEpoch)]]
-    for (const [key, value] of entries) { const label = content.ownerDocument.createElement('span'); label.textContent = key; const strong = content.ownerDocument.createElement('strong'); strong.textContent = value; grid.append(label, strong) }
-    content.append(grid)
+  #renderTroubleshoot(content: HTMLElement): void {
+    const doc = content.ownerDocument
+    const report = buildTroubleshootReport(this.#statsInput(), this.#labels, this.#userAgent())
+    const findings = this.#section(content, this.#labels.troubleshootFindings)
+    if (report.findings.length === 0) {
+      const healthy = doc.createElement('p'); healthy.className = 'mxp-caption'; healthy.textContent = this.#labels.troubleshootHealthy
+      findings.append(healthy)
+    } else {
+      const list = doc.createElement('ul'); list.className = 'mxp-finding-list'
+      for (const finding of report.findings) {
+        const item = doc.createElement('li')
+        const code = doc.createElement('code'); code.textContent = finding.code
+        const message = doc.createElement('span'); message.textContent = finding.message
+        item.append(code, message)
+        list.append(item)
+      }
+      findings.append(list)
+    }
+    const environment = this.#section(content, this.#labels.troubleshootEnvironment)
+    const grid = doc.createElement('div'); grid.className = 'mxp-stat-grid'
+    for (const [key, value] of report.environment) {
+      const label = doc.createElement('span'); label.textContent = key
+      const strong = doc.createElement('strong'); strong.textContent = value
+      grid.append(label, strong)
+    }
+    environment.append(grid)
+    const copy = doc.createElement('button'); copy.type = 'button'; copy.textContent = this.#labels.troubleshootCopyReport
+    copy.addEventListener('click', () => { void this.#copyText(this.#debugInfo()) })
+    environment.append(copy)
   }
 
   #renderAbout(content: HTMLElement): void {
@@ -1054,8 +1180,458 @@ export class PlayerUiControllerImpl implements PlayerUiController {
   #revokePreviewUrl(): void { if (this.#preview.url) { URL.revokeObjectURL(this.#preview.url); this.#preview.urls = this.#preview.urls.filter((value) => value !== this.#preview.url); this.#preview.url = null } }
   #clearPreview(): void { this.#hidePreview(); for (const url of this.#preview.urls) URL.revokeObjectURL(url); this.#preview.urls = [] }
 
+  /* ---------------------------------------------------------------- context menu */
+
+  #handleContextMenu(event: MouseEvent): void {
+    if (!this.#features.contextMenu) return
+    event.preventDefault()
+    event.stopPropagation()
+    // Right-clicking again moves the menu to the new position instead of leaving a stale copy.
+    this.#openMenu(event.clientX, event.clientY)
+  }
+
+  /** Groups are rendered in order and separated by a rule; empty groups collapse away. */
+  #menuItems(): readonly MenuItemSpec[] {
+    const playback: MenuItemSpec[] = []
+    if (this.#features.loop) playback.push({ id: 'loop', label: this.#labels.loop, checkable: true, checked: this.#loop, run: () => this.#toggleLoop() })
+    if (this.#features.miniPlayer) playback.push({ id: 'mini', label: this.#mini ? this.#labels.exitMiniPlayer : this.#labels.miniPlayer, run: () => this.#toggleMiniPlayer() })
+    const share: MenuItemSpec[] = []
+    if (this.#features.share) {
+      share.push({ id: 'copy-url', label: this.#labels.copyVideoUrl, run: () => { void this.#copyText(resolveVideoUrl(this.#share, this.#pageUrl())) } })
+      share.push({ id: 'copy-url-at-time', label: this.#labels.copyVideoUrlAtTime, run: () => { void this.#copyText(resolveVideoUrlAtTime(this.#share, this.#pageUrl(), this.#snapshot.currentTime)) } })
+      share.push({ id: 'copy-embed', label: this.#labels.copyEmbedCode, run: () => { void this.#copyText(buildEmbedCode(this.#share, this.#pageUrl())) } })
+    }
+    const debug: MenuItemSpec[] = []
+    if (this.#features.troubleshoot) {
+      debug.push({ id: 'copy-debug', label: this.#labels.copyDebugInfo, run: () => { void this.#copyText(this.#debugInfo()) } })
+      debug.push({ id: 'troubleshoot', label: this.#labels.troubleshoot, run: () => this.#openTroubleshoot() })
+    }
+    if (this.#features.statistics) debug.push({ id: 'stats', label: this.#labels.statistics, run: () => this.#setStatsOpen(!this.#statsOpen()) })
+    const items: MenuItemSpec[] = []
+    for (const group of [playback, share, debug]) {
+      const [first, ...rest] = group
+      if (!first) continue
+      items.push(items.length === 0 ? first : { ...first, separatorBefore: true })
+      items.push(...rest)
+    }
+    return items
+  }
+
+  #openMenu(clientX: number, clientY: number): void {
+    const root = this.#root
+    if (!root) return
+    this.#closeMenu(false)
+    const items = this.#menuItems()
+    if (items.length === 0) return
+    const doc = root.ownerDocument
+    const menu = doc.createElement('div')
+    menu.className = 'mxp-context-menu'
+    menu.setAttribute('role', 'menu')
+    menu.setAttribute('aria-label', this.#labels.contextMenu)
+    menu.tabIndex = -1
+    for (const item of items) {
+      if (item.separatorBefore === true) {
+        const separator = doc.createElement('div')
+        separator.className = 'mxp-menu-separator'
+        separator.setAttribute('role', 'separator')
+        menu.append(separator)
+      }
+      menu.append(this.#menuButton(doc, item))
+    }
+    root.append(menu)
+    this.#menu.element = menu
+    this.#positionMenu(menu, clientX, clientY)
+    this.#connectMenuKeyboard(doc)
+    this.#showControls()
+    const first = this.#menuButtons()[0]
+    if (first) first.focus()
+    else menu.focus()
+  }
+
+  #menuButton(doc: Document, item: MenuItemSpec): HTMLButtonElement {
+    const button = doc.createElement('button')
+    button.type = 'button'
+    button.className = 'mxp-menu-item'
+    button.dataset.mxpMenuItem = item.id
+    button.setAttribute('role', item.checkable === true ? 'menuitemcheckbox' : 'menuitem')
+    if (item.checkable === true) button.setAttribute('aria-checked', String(item.checked === true))
+    const check = doc.createElement('span')
+    check.className = 'mxp-menu-check'
+    check.setAttribute('aria-hidden', 'true')
+    if (item.checkable === true && item.checked === true) check.append(createPlayerIcon(doc, 'check'))
+    const label = doc.createElement('span')
+    label.className = 'mxp-menu-label'
+    label.textContent = item.label
+    button.append(check, label)
+    // A checkable entry keeps the menu open so the new state is visible; the rest dismiss it.
+    button.addEventListener('click', () => {
+      item.run()
+      if (item.checkable === true) this.#syncMenuChecks()
+      else this.#closeMenu(true)
+    })
+    return button
+  }
+
+  #syncMenuChecks(): void {
+    const menu = this.#menu.element
+    const button = menu?.querySelector<HTMLButtonElement>('[data-mxp-menu-item="loop"]')
+    if (!button) return
+    button.setAttribute('aria-checked', String(this.#loop))
+    const check = button.querySelector<HTMLElement>('.mxp-menu-check')
+    if (check) check.replaceChildren(...(this.#loop ? [createPlayerIcon(button.ownerDocument, 'check')] : []))
+  }
+
+  #positionMenu(menu: HTMLElement, clientX: number, clientY: number): void {
+    const root = this.#root
+    if (!root) return
+    const rootRect = root.getBoundingClientRect()
+    const menuRect = menu.getBoundingClientRect()
+    const maxLeft = Math.max(MENU_EDGE_INSET, rootRect.width - menuRect.width - MENU_EDGE_INSET)
+    const maxTop = Math.max(MENU_EDGE_INSET, rootRect.height - menuRect.height - MENU_EDGE_INSET)
+    menu.style.setProperty('--mxp-menu-left', `${clamp(clientX - rootRect.left, MENU_EDGE_INSET, maxLeft)}px`)
+    menu.style.setProperty('--mxp-menu-top', `${clamp(clientY - rootRect.top, MENU_EDGE_INSET, maxTop)}px`)
+  }
+
+  #menuButtons(): HTMLButtonElement[] {
+    const menu = this.#menu.element
+    return menu === null ? [] : [...menu.querySelectorAll<HTMLButtonElement>('.mxp-menu-item:not(:disabled)')]
+  }
+
+  #connectMenuKeyboard(doc: Document): void {
+    this.#menu.keydown?.()
+    const keydown = (event: KeyboardEvent): void => {
+      if (!this.#menu.element) return
+      if (event.key === 'Escape') { event.preventDefault(); this.#closeMenu(true); return }
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End' && event.key !== 'Tab') return
+      event.preventDefault()
+      this.#moveMenuFocus(event.key, event.shiftKey)
+    }
+    doc.addEventListener('keydown', keydown)
+    this.#menu.keydown = (): void => doc.removeEventListener('keydown', keydown)
+  }
+
+  #moveMenuFocus(key: string, shift: boolean): void {
+    const buttons = this.#menuButtons()
+    if (buttons.length === 0) return
+    const active = this.#menu.element?.ownerDocument.activeElement ?? null
+    const index = buttons.findIndex((button) => button === active)
+    const step = key === 'ArrowUp' || (key === 'Tab' && shift) ? -1 : 1
+    const next = key === 'Home'
+      ? 0
+      : key === 'End'
+        ? buttons.length - 1
+        : index < 0
+          ? (step > 0 ? 0 : buttons.length - 1)
+          : (index + step + buttons.length) % buttons.length
+    buttons[next]?.focus()
+  }
+
+  #closeMenu(restoreFocus: boolean): void {
+    this.#menu.keydown?.()
+    this.#menu.keydown = null
+    const menu = this.#menu.element
+    this.#menu.element = null
+    if (!menu) return
+    const root = this.#root
+    const active = root?.ownerDocument.activeElement ?? null
+    const hadFocus = active !== null && menu.contains(active)
+    menu.remove()
+    if (restoreFocus && hadFocus && root) root.focus()
+    this.#scheduleHide()
+  }
+
+  /* ------------------------------------------------------- loop and mini player */
+
+  #toggleLoop(): void {
+    this.#loop = !this.#loop
+    if (this.#root) this.#root.dataset.mxpLoop = String(this.#loop)
+    if (this.#loop) this.#applyLoop(this.#snapshot)
+  }
+
+  /**
+   * Repeat is driven from the public SDK contract rather than a media element attribute, so it
+   * behaves identically on the native and custom pipelines. The guard keeps the burst of `ended`
+   * snapshots that arrive before the seek lands from queueing several restarts.
+   */
+  #applyLoop(snapshot: PlaybackSnapshot): void {
+    if (!this.#loop || snapshot.state !== 'ended' || this.#loopRestarting) return
+    this.#loopRestarting = true
+    const sessionEpoch = this.#sessionEpoch
+    void this.#run(async () => {
+      if (sessionEpoch !== this.#sessionEpoch) return
+      await this.#player.seek(0)
+      await this.#player.play()
+    }).then(() => { this.#loopRestarting = false })
+  }
+
+  #toggleMiniPlayer(): void { this.#setMiniPlayer(!this.#mini) }
+
+  /**
+   * The miniplayer is an in-page docked surface, not a separate window: it only flips a data
+   * attribute on the host and the UI root, which the stylesheet turns into a floating frame.
+   */
+  #setMiniPlayer(active: boolean): void {
+    if (this.#mini === active) return
+    this.#mini = active
+    if (this.#host) {
+      if (active) this.#host.dataset.mxpMini = 'true'
+      else delete this.#host.dataset.mxpMini
+    }
+    if (this.#root) this.#root.dataset.mxpMini = String(active)
+    this.#showControls()
+  }
+
+  /* ------------------------------------------------------------------- clipboard */
+
+  async #copyText(value: string): Promise<void> {
+    const clipboard = this.#view()?.navigator?.clipboard
+    if (!clipboard || typeof clipboard.writeText !== 'function') { this.#showToast(this.#labels.copyFailed, 'error'); return }
+    try {
+      await clipboard.writeText(value)
+      this.#showToast(this.#labels.copied, 'normal')
+    } catch {
+      this.#showToast(this.#labels.copyFailed, 'error')
+      this.#reportUiError()
+    }
+  }
+
+  #showToast(text: string, tone: 'normal' | 'error'): void {
+    const toast = this.#elements?.toast
+    if (!toast) return
+    toast.textContent = text
+    toast.dataset.mxpTone = tone
+    toast.hidden = false
+    if (this.#toastTimer !== null) clearTimeout(this.#toastTimer)
+    this.#toastTimer = setTimeout(() => {
+      this.#toastTimer = null
+      const current = this.#elements?.toast
+      if (current) { current.hidden = true; current.textContent = '' }
+    }, TOAST_DURATION_MS)
+  }
+
+  /* -------------------------------------------------------------- stats for nerds */
+
+  #statsOpen(): boolean { return this.#stats.element !== null }
+
+  #setStatsOpen(open: boolean): void {
+    if (open === this.#statsOpen()) return
+    if (!open) { this.#closeStats(); return }
+    const root = this.#root
+    if (!root) return
+    const doc = root.ownerDocument
+    const panel = doc.createElement('section')
+    panel.className = 'mxp-stats-overlay'
+    panel.dataset.mxpStats = 'true'
+    panel.setAttribute('aria-label', this.#labels.statistics)
+    const close = doc.createElement('button')
+    close.type = 'button'
+    close.className = 'mxp-stats-close'
+    close.textContent = '[X]'
+    close.setAttribute('aria-label', this.#labels.close)
+    close.addEventListener('click', () => this.#closeStats())
+    const body = doc.createElement('div')
+    body.className = 'mxp-stats-body'
+    panel.append(close, body)
+    root.append(panel)
+    this.#stats.element = panel
+    this.#stats.body = body
+    this.#sampleNetwork()
+    this.#renderStats()
+    this.#stats.timer = setInterval(() => this.#tickStats(), STATS_INTERVAL_MS)
+  }
+
+  #closeStats(): void {
+    if (this.#stats.timer !== null) clearInterval(this.#stats.timer)
+    this.#stats.timer = null
+    this.#stats.element?.remove()
+    this.#stats.element = null
+    this.#stats.body = null
+  }
+
+  #tickStats(): void {
+    if (this.#destroyed || !this.#root) { this.#closeStats(); return }
+    this.#sampleNetwork()
+    this.#renderStats()
+  }
+
+  #renderStats(): void {
+    const body = this.#stats.body
+    if (!body) return
+    const doc = body.ownerDocument
+    body.replaceChildren(...buildStatsRows(this.#statsInput()).map((row) => this.#statsRow(doc, row)))
+  }
+
+  #statsRow(doc: Document, row: StatsRow): HTMLElement {
+    const line = doc.createElement('div')
+    line.className = 'mxp-stats-row'
+    line.dataset.mxpStatsRow = row.key
+    if (row.tone === 'warn') line.dataset.mxpTone = 'warn'
+    const label = doc.createElement('span')
+    label.className = 'mxp-stats-label'
+    label.textContent = row.label
+    const value = doc.createElement('span')
+    value.className = 'mxp-stats-value'
+    if (row.kind === 'meter') {
+      const meter = doc.createElement('span')
+      meter.className = 'mxp-stats-meter'
+      const fill = doc.createElement('span')
+      fill.className = 'mxp-stats-meter-fill'
+      fill.style.setProperty('--mxp-stats-fill', `${(row.ratio ?? 0) * 100}%`)
+      meter.append(fill)
+      value.append(meter, this.#statsNumber(doc, row.value))
+    } else if (row.kind === 'graph') {
+      const graph = doc.createElement('span')
+      graph.className = 'mxp-stats-graph'
+      for (const sample of row.samples ?? []) {
+        const bar = doc.createElement('span')
+        bar.className = 'mxp-stats-bar'
+        bar.style.setProperty('--mxp-stats-bar', `${Math.max(2, sample * 100)}%`)
+        graph.append(bar)
+      }
+      value.append(graph, this.#statsNumber(doc, row.value))
+    } else {
+      value.textContent = row.value
+    }
+    line.append(label, value)
+    return line
+  }
+
+  #statsNumber(doc: Document, text: string): HTMLElement {
+    const element = doc.createElement('span')
+    element.className = 'mxp-stats-number'
+    element.textContent = text
+    return element
+  }
+
+  #statsInput(): StatsInput {
+    this.#ensureCpn()
+    const root = this.#root
+    const view = this.#view()
+    return {
+      labels: this.#labels,
+      locale: this.#locale,
+      snapshot: this.#snapshot,
+      media: this.#telemetry(() => this.#player.media),
+      selection: this.#telemetry(() => this.#player.selection),
+      nativeStats: this.#telemetry(() => this.#player.nativeStats),
+      customVideoStats: this.#telemetry(() => this.#player.customVideoStats),
+      customAudioStats: this.#telemetry(() => this.#player.customAudioStats),
+      audioClock: this.#telemetry(() => this.#player.audioClock),
+      rendererKind: this.#telemetry(() => this.#player.rendererKind),
+      rendererStats: this.#telemetry(() => this.#player.rendererStats),
+      viewport: { width: root?.clientWidth ?? 0, height: root?.clientHeight ?? 0, devicePixelRatio: view?.devicePixelRatio ?? 1 },
+      videoId: shortMediaId(this.#mediaSeed()),
+      cpn: this.#stats.cpn,
+      connectionKbps: this.#connectionKbps(),
+      networkSamples: [...this.#network.samples],
+      networkBytes: this.#network.totalBytes,
+      now: Date.now(),
+    }
+  }
+
+  /** Optional telemetry getters may be absent on a reduced player object. */
+  #telemetry<T>(read: () => T | null | undefined): T | null {
+    try { return read() ?? null } catch { return null }
+  }
+
+  #view(): (Window & typeof globalThis) | null {
+    return this.#root?.ownerDocument.defaultView ?? this.#host?.ownerDocument.defaultView ?? null
+  }
+
+  #pageUrl(): string {
+    const configured = this.#share?.pageUrl
+    if (typeof configured === 'string' && configured.length > 0) return configured
+    return this.#view()?.location?.href ?? ''
+  }
+
+  #userAgent(): string {
+    return this.#view()?.navigator?.userAgent ?? 'unknown'
+  }
+
+  #debugInfo(): string {
+    return buildDebugInfo(this.#statsInput(), this.#userAgent(), this.#pageUrl())
+  }
+
+  #openTroubleshoot(): void {
+    const root = this.#root
+    if (!root) return
+    this.#openOverlay('troubleshoot', this.#elements?.settings ?? root)
+  }
+
+  #ensureCpn(): void {
+    if (this.#stats.sessionEpoch === this.#sessionEpoch && this.#stats.cpn.length > 0) return
+    this.#stats.sessionEpoch = this.#sessionEpoch
+    this.#stats.cpn = createCpn(() => this.#random())
+  }
+
+  #random(): number {
+    const crypto = this.#view()?.crypto
+    if (crypto && typeof crypto.getRandomValues === 'function') {
+      const buffer = new Uint32Array(1)
+      crypto.getRandomValues(buffer)
+      return (buffer[0] ?? 0) / 0x1_0000_0000
+    }
+    return Math.random()
+  }
+
+  /** A stable identity for the loaded media, preferring the address the host configured. */
+  #mediaSeed(): string {
+    const configured = this.#share?.videoUrl ?? this.#share?.pageUrl
+    if (typeof configured === 'string' && configured.length > 0) return configured
+    const media = this.#telemetry(() => this.#player.media)
+    if (media) return `${media.container}|${media.mimeType ?? ''}|${media.size ?? 0}|${media.duration ?? 0}`
+    return this.#pageUrl()
+  }
+
+  #estimatedBitrate(): number {
+    const media = this.#telemetry(() => this.#player.media)
+    if (!media) return 0
+    let declared = 0
+    for (const track of media.tracks) {
+      const bitrate = track.bitrate
+      if (typeof bitrate === 'number' && Number.isFinite(bitrate) && bitrate > 0) declared += bitrate
+    }
+    if (declared > 0) return declared
+    const duration = media.duration
+    if (media.size !== null && duration !== null && duration > 0) return (media.size * 8) / (duration / 1_000_000)
+    return 0
+  }
+
+  /**
+   * The public SDK contract exposes no byte counters, so download volume is derived: how far the
+   * buffered horizon advanced since the previous sample, multiplied by the declared bitrate.
+   */
+  #sampleNetwork(): void {
+    const ranges = this.#snapshot.buffered
+    const last = ranges[ranges.length - 1]
+    const end = last ? last.end : (this.#snapshot.currentTime ?? 0) + this.#snapshot.bufferedAhead
+    const previous = this.#network.lastBufferedEnd
+    this.#network.lastBufferedEnd = end
+    const bitrate = this.#estimatedBitrate()
+    const advanced = previous === null ? 0 : Math.max(0, end - previous)
+    const bytes = bitrate > 0 ? (advanced / 1_000_000) * (bitrate / 8) : 0
+    this.#network.samples.push(bytes)
+    while (this.#network.samples.length > NETWORK_SAMPLE_COUNT) this.#network.samples.shift()
+    this.#network.totalBytes += bytes
+  }
+
+  #resetNetwork(): void {
+    this.#network = { samples: [], totalBytes: 0, lastBufferedEnd: null }
+  }
+
+  #connectionKbps(): number | null {
+    const peak = this.#network.samples.reduce((largest, value) => value > largest ? value : largest, 0)
+    if (peak > 0) return (peak * 8) / (STATS_INTERVAL_MS / 1000) / 1000
+    const navigatorWithConnection = this.#view()?.navigator as (Navigator & { connection?: { downlink?: number } }) | undefined
+    const downlink = navigatorWithConnection?.connection?.downlink
+    return typeof downlink === 'number' && Number.isFinite(downlink) && downlink > 0 ? downlink * 1000 : null
+  }
+
   #handleShortcut(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.#menu.element) { event.preventDefault(); this.#closeMenu(true); return }
     if (event.key === 'Escape' && this.#overlay) { event.preventDefault(); this.#closeOverlay(true); return }
+    if (event.key === 'Escape' && this.#mini) { event.preventDefault(); this.#setMiniPlayer(false); return }
+    if (this.#menu.element) return
     if (event.key === 'Tab' && this.#overlay) { this.#trapOverlayFocus(event); return }
     if (this.#overlay) return
     if (isTextInput(event.target)) return
@@ -1097,13 +1673,41 @@ export class PlayerUiControllerImpl implements PlayerUiController {
 
   #setPointerActive(active: boolean): void { this.#pointerActive = active; if (active) this.#showControls(); else this.#scheduleHide() }
   #setFocusActive(active: boolean): void { this.#focusActive = active; if (active) this.#showControls(); else this.#scheduleHide() }
-  #hasInteraction(): boolean { return this.#pointerActive || this.#focusActive || this.#overlay !== null || this.#seek.active || this.#subtitleDrag.active }
+  #hasInteraction(): boolean { return this.#pointerActive || this.#focusActive || this.#overlay !== null || this.#menu.element !== null || this.#seek.active || this.#subtitleDrag.active }
   #showControls(): void { if (this.#root) this.#root.dataset.mxpVisible = 'true'; this.#scheduleHide() }
   #scheduleHide(): void { if (this.#hideTimer !== null) clearTimeout(this.#hideTimer); this.#hideTimer = null; if (!this.#root || this.#snapshot.state !== 'playing' || this.#hasInteraction()) return; this.#hideTimer = setTimeout(() => { if (this.#root && this.#snapshot.state === 'playing' && !this.#hasInteraction()) this.#root.dataset.mxpVisible = 'false' }, this.#options.autoHideDelayMs ?? DEFAULT_AUTO_HIDE_MS) }
 
   #connectTheater(adapter: TheaterModeAdapter): void { this.#theaterUnsubscribe?.(); try { this.#theaterUnsubscribe = adapter.subscribe(() => this.#render()) } catch { this.#theaterUnsubscribe = null } }
 
-  #detachInternal(removeHostClass = true): void { if (this.#hideTimer !== null) clearTimeout(this.#hideTimer); this.#hideTimer = null; this.#pointerActive = false; this.#focusActive = false; this.#cancelSeek(); this.#cancelSubtitleDrag(); this.#clearPreview(); this.#scope.close(); this.#scope = new CleanupScope(); this.#theaterUnsubscribe?.(); this.#theaterUnsubscribe = null; this.#closeOverlay(false, false); this.#subtitleResume = null; this.#pendingSubtitleSelection = null; this.#root?.remove(); if (removeHostClass && this.#host) this.#host.classList.remove('mxp-player-host'); this.#root = null; this.#elements = null; this.#attached = false }
+  #detachInternal(removeHostClass = true): void {
+    if (this.#hideTimer !== null) clearTimeout(this.#hideTimer)
+    this.#hideTimer = null
+    if (this.#toastTimer !== null) clearTimeout(this.#toastTimer)
+    this.#toastTimer = null
+    this.#pointerActive = false
+    this.#focusActive = false
+    this.#cancelSeek()
+    this.#cancelSubtitleDrag()
+    this.#clearPreview()
+    this.#closeMenu(false)
+    this.#closeStats()
+    this.#setMiniPlayer(false)
+    this.#scope.close()
+    this.#scope = new CleanupScope()
+    this.#theaterUnsubscribe?.()
+    this.#theaterUnsubscribe = null
+    this.#closeOverlay(false, false)
+    this.#subtitleResume = null
+    this.#pendingSubtitleSelection = null
+    this.#root?.remove()
+    if (this.#host) {
+      delete this.#host.dataset.mxpMini
+      if (removeHostClass) this.#host.classList.remove('mxp-player-host')
+    }
+    this.#root = null
+    this.#elements = null
+    this.#attached = false
+  }
   #ensureAlive(): void { if (this.#destroyed) throw new PlayerUiError(UiErrorCodes.UI_DESTROYED, 'The player UI has been destroyed') }
 }
 

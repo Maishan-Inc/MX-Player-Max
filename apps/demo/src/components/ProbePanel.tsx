@@ -1,45 +1,53 @@
-import type { DiagnosticState, ProbeDiagnostics } from '../diagnostics'
+import type { DemoDiagnosticsCopy } from '../i18n'
+import type { CapabilitySupport } from '@mx-player-max/types'
+import type { DiagnosticState, ProbeDiagnostics, SupportTone } from '../diagnostics'
 import { supportPresentation } from '../diagnostics'
 
 interface ProbePanelProps {
   readonly state: DiagnosticState<ProbeDiagnostics>
   readonly resetKey: string
+  readonly copy: DemoDiagnosticsCopy
 }
 
-export function ProbePanel({ state, resetKey }: ProbePanelProps) {
+export function ProbePanel({ state, resetKey, copy }: ProbePanelProps) {
   const value = state.status === 'ready' ? state.value : state.status === 'failed' ? state.value : null
+  const toneText = (tone: SupportTone): string =>
+    tone === 'supported' ? copy.supported : tone === 'unsupported' ? copy.unsupported : copy.unknown
+  const evidence = (input: CapabilitySupport | boolean): { readonly tone: SupportTone; readonly text: string } => {
+    const tone = supportPresentation(input).tone
+    return { tone, text: toneText(tone) }
+  }
   return (
     <section className="diagnostic-panel" data-testid="probe-panel" data-status={state.status} data-reset-key={resetKey}>
-      <PanelHeading index="01" title="Probe" status={state.status} />
+      <header className="diagnostic-heading"><span>01</span><h2>{copy.probeTitle}</h2><i data-tone={state.status}>{state.status}</i></header>
       {value ? (
         <dl className="diagnostic-list">
-          <Metric label="Browser" value={value.browser} />
-          <Metric label="Platform" value={value.platform} />
-          <SupportMetric label="Native media" value={value.nativePlayable} />
-          <SupportMetric label="WebCodecs" value={value.webCodecsPlayable} />
-          <SupportMetric label="WebGPU" value={value.webGpu} />
-          <SupportMetric label="WASM threads" value={value.wasmThreads} />
-          <SupportMetric label="Cross-origin isolated" value={value.crossOriginIsolated} />
+          <Metric label={copy.probeBrowser} value={value.browser} />
+          <Metric label={copy.probePlatform} value={value.platform} />
+          <SupportMetric label={copy.probeNativeMedia} evidence={evidence(value.nativePlayable)} />
+          <SupportMetric label={copy.probeWebCodecs} evidence={evidence(value.webCodecsPlayable)} />
+          <SupportMetric label={copy.probeWebGpu} evidence={evidence(value.webGpu)} />
+          <SupportMetric label={copy.probeWasmThreads} evidence={evidence(value.wasmThreads)} />
+          <SupportMetric label={copy.probeIsolated} evidence={evidence(value.crossOriginIsolated)} />
         </dl>
-      ) : <PanelPlaceholder state={state.status} />}
+      ) : (
+        <p className="diagnostic-placeholder">
+          {state.status === 'loading' ? copy.probeLoading : state.status === 'failed' ? copy.probeFailed : copy.probeEmpty}
+        </p>
+      )}
     </section>
   )
 }
 
-function SupportMetric({ label, value }: { readonly label: string; readonly value: Parameters<typeof supportPresentation>[0] }) {
-  const presentation = supportPresentation(value)
-  return <Metric label={label} value={presentation.label} support={presentation.tone} />
+interface SupportEvidence {
+  readonly tone: SupportTone
+  readonly text: string
+}
+
+function SupportMetric({ label, evidence }: { readonly label: string; readonly evidence: SupportEvidence }) {
+  return <Metric label={label} value={evidence.text} support={evidence.tone} />
 }
 
 function Metric({ label, value, support }: { readonly label: string; readonly value: string; readonly support?: string }) {
   return <div><dt>{label}</dt><dd data-support={support}>{value}</dd></div>
-}
-
-function PanelHeading({ index, title, status }: { readonly index: string; readonly title: string; readonly status: string }) {
-  return <header className="diagnostic-heading"><span>{index}</span><h2>{title}</h2><i data-tone={status}>{status}</i></header>
-}
-
-function PanelPlaceholder({ state }: { readonly state: string }) {
-  const copy = state === 'loading' ? 'Collecting public capability evidence' : state === 'failed' ? 'Probe did not complete' : 'Waiting for a media source'
-  return <p className="diagnostic-placeholder">{copy}</p>
 }

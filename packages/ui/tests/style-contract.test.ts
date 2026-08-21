@@ -36,4 +36,18 @@ describe('@mx-player-max/ui stylesheet contract', () => {
     expect(controller).not.toMatch(/@mx-player-max\/(core|audio|subtitles|renderers|decoder|demux)/)
     expect(controller).not.toMatch(/HTMLVideoElement|HTMLCanvasElement|AudioContext|VideoFrame|GPUTexture|localStorage/)
   })
+
+  // The right-click menu, the docked miniplayer and the diagnostic sheet are the only surfaces
+  // allowed outside the bottom control shell, and the sheet is the only coloured one.
+  it('publishes the menu, miniplayer and statistics surfaces with their own tokens', () => {
+    expect(css).toContain('.mxp-context-menu')
+    expect(css).toContain('.mxp-menu-separator')
+    expect(css).toContain('.mxp-stats-overlay')
+    expect(css).toContain('.mxp-stats-meter-fill')
+    expect(css).toContain('.mxp-stats-graph')
+    expect(css).toContain('.mxp-toast')
+    expect(css).toContain('--mxp-stats-meter:')
+    expect(css).toContain('--mxp-stats-warn:')
+    expect(css).toContain('.mxp-player-host[data-mxp-mini="true"]')
+  })
 })

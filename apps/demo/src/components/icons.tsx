@@ -103,6 +103,14 @@ export function CheckIcon({ size }: IconProps) {
   )
 }
 
+export function LanguagesIcon({ size }: IconProps) {
+  return (
+    <Glyph size={size}>
+      <path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1m14 20-5-10-5 10M14 18h6" />
+    </Glyph>
+  )
+}
+
 export function GithubMark() {
   return (
     <svg className="github-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">

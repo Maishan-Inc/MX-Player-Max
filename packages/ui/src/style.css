@@ -23,6 +23,12 @@
   --mxp-panel-radius: 9px;
   --mxp-auto-hide-ms: 3000ms;
   --mxp-safe-bottom: 12%;
+  /* The diagnostic overlay is the one surface that leaves the monochrome language: the meters
+     have to be readable at a glance, so they carry their own three-value palette. */
+  --mxp-stats-bg: rgba(0, 0, 0, 0.86);
+  --mxp-stats-meter: #35d2e8;
+  --mxp-stats-graph: #6ee787;
+  --mxp-stats-warn: #e2c57b;
 }
 
 [data-mxp-theme="light"] {
@@ -41,6 +47,10 @@
   --mxp-scrim: linear-gradient(transparent, rgba(255, 255, 255, 0.42) 22%, rgba(255, 255, 255, 0.94));
   --mxp-danger: #a72e23;
   --mxp-focus: #000000;
+  --mxp-stats-bg: rgba(255, 255, 255, 0.92);
+  --mxp-stats-meter: #0f7c8c;
+  --mxp-stats-graph: #17683a;
+  --mxp-stats-warn: #8a5b00;
 }
 
 [data-mxp-theme="system"] {
@@ -88,7 +98,10 @@
 .mxp-control-shell,
 .mxp-status-layer,
 .mxp-overlay-backdrop,
-.mxp-preview {
+.mxp-preview,
+.mxp-context-menu,
+.mxp-stats-overlay,
+.mxp-toast {
   pointer-events: auto;
 }
 
@@ -363,6 +376,137 @@
 .mxp-stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; color: var(--mxp-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .mxp-stat-grid strong { color: var(--mxp-fg); font-weight: 700; }
 .mxp-caption { color: var(--mxp-muted); font-size: 11px; }
+.mxp-finding-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.mxp-finding-list li { display: grid; gap: 3px; color: var(--mxp-fg); font-size: 11.5px; line-height: 1.45; }
+.mxp-finding-list code { color: var(--mxp-danger); font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size: 10.5px; font-weight: 700; }
+
+/* Copy feedback. One line, centred, above the control shell so it never covers the rail. */
+.mxp-toast {
+  position: absolute;
+  z-index: 26;
+  left: 50%;
+  bottom: 76px;
+  max-width: min(86%, 420px);
+  padding: 7px 12px;
+  transform: translateX(-50%);
+  border: 1px solid var(--mxp-line);
+  border-radius: 7px;
+  background: var(--mxp-panel);
+  color: var(--mxp-fg);
+  font-size: 12px;
+  font-weight: 650;
+  text-align: center;
+  backdrop-filter: blur(14px);
+}
+
+.mxp-toast[hidden] { display: none; }
+.mxp-toast[data-mxp-tone="error"] { color: var(--mxp-danger); }
+
+/* Right-click menu. Positioned from the pointer, clamped inside the player by the controller. */
+.mxp-context-menu {
+  position: absolute;
+  z-index: 28;
+  left: var(--mxp-menu-left, 8px);
+  top: var(--mxp-menu-top, 8px);
+  min-width: 218px;
+  max-width: min(320px, calc(100% - 16px));
+  padding: 5px;
+  border: 1px solid var(--mxp-line);
+  border-radius: var(--mxp-panel-radius);
+  background: var(--mxp-panel);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(14px);
+}
+
+.mxp-menu-separator { height: 1px; margin: 4px 2px; background: var(--mxp-line-soft); }
+
+.mxp-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 32px;
+  padding: 0 9px 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mxp-fg);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mxp-menu-item:hover { background: var(--mxp-hover); }
+.mxp-menu-check { width: 16px; height: 16px; flex: 0 0 16px; display: inline-grid; place-items: center; }
+.mxp-menu-check .mxp-icon-svg { width: 15px; height: 15px; stroke-width: 2.4; }
+.mxp-menu-label { min-width: 0; flex: 1 1 auto; }
+
+/* Stats for nerds. A non-modal diagnostic sheet: it stays open while the player is used. */
+.mxp-stats-overlay {
+  position: absolute;
+  z-index: 25;
+  left: 12px;
+  top: 12px;
+  width: min(430px, calc(100% - 24px));
+  max-height: calc(100% - 92px);
+  overflow: auto;
+  padding: 9px 10px;
+  border: 1px solid var(--mxp-line-soft);
+  border-radius: 7px;
+  background: var(--mxp-stats-bg);
+  color: var(--mxp-fg);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.mxp-stats-close {
+  position: absolute;
+  z-index: 2;
+  right: 6px;
+  top: 5px;
+  min-height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mxp-muted);
+  padding: 0 3px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mxp-stats-close:hover { color: var(--mxp-fg); background: var(--mxp-hover); }
+.mxp-stats-body { display: grid; grid-template-columns: minmax(88px, auto) minmax(0, 1fr); gap: 2px 10px; padding-right: 26px; }
+.mxp-stats-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
+.mxp-stats-label { color: var(--mxp-muted); text-align: right; white-space: nowrap; }
+.mxp-stats-value { min-width: 0; display: flex; align-items: center; gap: 8px; color: var(--mxp-fg); overflow-wrap: anywhere; }
+.mxp-stats-row[data-mxp-tone="warn"] .mxp-stats-number { color: var(--mxp-stats-warn); }
+.mxp-stats-number { flex: 0 0 auto; font-weight: 700; white-space: nowrap; }
+
+.mxp-stats-meter { position: relative; flex: 1 1 auto; height: 11px; min-width: 60px; overflow: hidden; border-radius: 2px; background: var(--mxp-line-soft); }
+.mxp-stats-meter-fill { position: absolute; inset: 0 auto 0 0; width: var(--mxp-stats-fill, 0%); background: var(--mxp-stats-meter); }
+.mxp-stats-row[data-mxp-tone="warn"] .mxp-stats-meter-fill { background: var(--mxp-stats-warn); }
+.mxp-stats-graph { flex: 1 1 auto; height: 16px; min-width: 60px; display: flex; align-items: flex-end; gap: 1px; border-radius: 2px; background: var(--mxp-line-soft); }
+.mxp-stats-bar { flex: 1 1 0; height: var(--mxp-stats-bar, 2%); min-height: 1px; background: var(--mxp-stats-graph); }
+
+/* Miniplayer. The host docks to a corner of the viewport; the engine surface is untouched. */
+.mxp-player-host[data-mxp-mini="true"] {
+  position: fixed;
+  z-index: 2147483000;
+  inset: auto 16px 16px auto;
+  width: min(400px, calc(100vw - 32px));
+  height: auto;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+/* The diagnostic sheet is sized for the full player, so it stays out of the docked frame. */
+.mxp-player-ui[data-mxp-mini="true"] .mxp-stats-overlay { display: none; }
 
 .mxp-tooltip {
   position: absolute;
@@ -424,6 +568,8 @@
   .mxp-icon-button { --mxp-control-size: 34px; }
   .mxp-time-readout { min-width: 100px; font-size: 11px; }
   .mxp-preview { display: none; }
+  .mxp-stats-overlay { left: 8px; top: 8px; width: calc(100% - 16px); font-size: 10px; }
+  .mxp-toast { bottom: 64px; }
 }
 
 @container (max-width: 420px) {
@@ -433,6 +579,10 @@
   .mxp-control-row .mxp-control-group:last-child { order: 2; }
   .mxp-time-readout { order: 0; min-width: 0; width: 100%; }
   .mxp-panel { width: calc(100% - 4px); }
+  .mxp-stats-body { grid-template-columns: minmax(0, 1fr); padding-right: 22px; }
+  .mxp-stats-row { grid-template-columns: minmax(0, 1fr); }
+  .mxp-stats-label { text-align: left; }
+  .mxp-context-menu { min-width: 0; width: calc(100% - 16px); max-width: none; }
 }
 
 @media (max-width: 760px) {
@@ -444,6 +594,8 @@
   .mxp-icon-button { --mxp-control-size: 34px; }
   .mxp-time-readout { min-width: 100px; font-size: 11px; }
   .mxp-preview { display: none; }
+  .mxp-stats-overlay { left: 8px; top: 8px; width: calc(100% - 16px); font-size: 10px; }
+  .mxp-toast { bottom: 64px; }
 }
 
 @media (max-width: 420px) {
@@ -453,6 +605,10 @@
   .mxp-control-row .mxp-control-group:last-child { order: 2; }
   .mxp-time-readout { order: 0; min-width: 0; width: 100%; }
   .mxp-panel { width: calc(100% - 4px); }
+  .mxp-stats-body { grid-template-columns: minmax(0, 1fr); padding-right: 22px; }
+  .mxp-stats-row { grid-template-columns: minmax(0, 1fr); }
+  .mxp-stats-label { text-align: left; }
+  .mxp-context-menu { min-width: 0; width: calc(100% - 16px); max-width: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
