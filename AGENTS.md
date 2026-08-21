@@ -4,13 +4,14 @@
 
 MX-Player-Max 是面向桌面 Chrome/Chromium、Firefox 和 Safari 的模块化 Web 媒体引擎与播放器 SDK。项目目标不是只做一个页面播放器，而是建立可以复用于视频编辑器、监控回放、云游戏串流和在线转码预览的媒体能力层。
 
-当前仓库从零开始，采用 pnpm Monorepo，SDK 对外提供原生 JavaScript/TypeScript API，并预留 React 与 Vue 适配层。演示站点是独立应用，使用 Docker 部署，不以 GitHub Pages 作为运行环境。
+当前仓库从零开始，采用 pnpm Monorepo，SDK 对外提供原生 JavaScript/TypeScript API，并预留 React 与 Vue 适配层。演示站点是独立应用，使用 Docker 部署；同一份产物也可以由手动触发的 `deploy-demo` workflow 发布到 GitHub Pages，Pages 不作为 SDK 的正式发布渠道。
 
 ## 2. 已确认的产品决策
 
 - 首阶段优先完成架构、接口和可替换模块，不追求一次性接入全部 Codec。
 - 交付形态为 Monorepo SDK + 独立高端演示站。
-- 演示站使用 GSAP，但视觉设计不得复制 MX-Player-Pro 的页面结构和样式。
+- 演示站使用 GSAP，布局、排版与间距对齐 MX-Player-Pro 的落地页结构；品牌、文案与播放器 chrome 使用 Max 自己的一套。详见 `ADR-0006`。
+- 播放器 chrome 的视觉语言对齐 MXAnime-CMS 内置的 MX-Player：黑白单色、控制栏底部遮罩、圆形 36 px 按钮、全宽细进度轨、毛玻璃深色浮层。详见 `ADR-0006`。
 - 首阶段桌面优先：Chrome/Chromium、Firefox、macOS Safari 的最新两个稳定大版本；移动端在桌面管线稳定后进入兼容阶段。
 - 首阶段处理本地文件与支持 CORS/HTTP Range 的远程文件；HLS/DASH/直播只保留扩展接口。
 - 普通播放优先使用 HTMLVideo 原生路径。

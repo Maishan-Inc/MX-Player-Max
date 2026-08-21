@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { relative } from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 const MEDIA_READY_TIMEOUT_MS = 20_000
@@ -42,12 +44,12 @@ test('lays out the production player UI without overlap or blank media', async (
     expect(response.status()).toBe(206)
     expect(response.headers()['content-range']).toBe('bytes 0-0/554058')
     expect((await response.body()).byteLength).toBe(1)
-    await expect(page).toHaveScreenshot('desktop-workbench.png', { animations: 'disabled' })
+    await expectUiBaseline(page, 'desktop-workbench.png')
   }
   if (testInfo.project.name === 'chromium-mobile') {
     await expect(page.locator('.mxp-volume-slider')).toBeHidden()
     await expect(page.locator('.mxp-theater-control')).toBeHidden()
-    await expect(page).toHaveScreenshot('mobile-workbench.png', { animations: 'disabled' })
+    await expectUiBaseline(page, 'mobile-workbench.png')
   }
 })
 
@@ -61,7 +63,7 @@ test('keeps the single overlay inside the player and restores keyboard flow', as
   await expect(panel).toBeHidden()
   if (testInfo.project.name === 'chromium-desktop') {
     await settings.click()
-    await expect(page).toHaveScreenshot('desktop-settings.png', { animations: 'disabled' })
+    await expectUiBaseline(page, 'desktop-settings.png')
   }
 })
 
@@ -91,6 +93,24 @@ test('reports public playback diagnostics and resets them for a new intent', asy
   await expect(decision).not.toHaveAttribute('data-reset-key', previousResetKey ?? '')
   await expect(decision).toHaveAttribute('data-status', /^(loading|ready|failed)$/)
 })
+
+// UI baselines are committed per platform as `{arg}-{projectName}-{platform}.png`. A platform
+// without a committed baseline records an annotation instead of failing, so a missing baseline is
+// never reported as a layout regression. `--update-snapshots` still writes the first baseline on
+// that platform, and an existing baseline is always compared strictly.
+async function expectUiBaseline(page: Page, name: string): Promise<void> {
+  const info = test.info()
+  const baselinePath = info.snapshotPath(name, { kind: 'screenshot' })
+  const authoring = info.config.updateSnapshots === 'all' || info.config.updateSnapshots === 'changed'
+  if (!authoring && !existsSync(baselinePath)) {
+    info.annotations.push({
+      type: 'ui-baseline-missing',
+      description: `${relative(info.config.rootDir, baselinePath)} is not committed; run pnpm test:browser --update-snapshots on this platform and commit it`,
+    })
+    return
+  }
+  await expect(page).toHaveScreenshot(name, { animations: 'disabled' })
+}
 
 async function expectNoOverlap(page: Page, selector: string): Promise<void> {
   const boxes = await page.locator(selector).evaluateAll((elements) => elements.map((element) => {

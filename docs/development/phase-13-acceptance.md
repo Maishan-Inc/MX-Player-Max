@@ -4,7 +4,7 @@
 
 状态：自动化质量、安全和短时性能固化已完成；最终发布门禁仍为 **pending/blocked**。
 
-当前复核（2026-08-20）：`pnpm test` 为 511/511 tests、93 test files；`pnpm verify:packages`
+当前复核（2026-08-21）：`pnpm test` 为 519/519 tests、94 test files；`pnpm verify:packages`
 验证 19 个 publishable packages。下表中的测试和包数量已按当前生成证据同步；历史日期和外部
 环境 pending 结论保持不变。
 
@@ -20,12 +20,12 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | 命令 | 结果 |
 |---|---|
 | `pnpm typecheck` | passed；20 个 workspace package/app 构建并严格类型检查 |
-| `pnpm test` | passed；511/511 tests，93 test files；与生成计数一致 |
+| `pnpm test` | passed；519/519 tests，94 test files；与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
 | `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 approved Phase 10.2 WASM 为 3 passed/5 skipped，作为自动化回归但不替代实机证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
 | `pnpm quality:media` | passed；7 个媒体 + 2 个字幕 fixture，FFprobe 元数据和 SHA-256 一致 |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；26 tests，含数值 kernel、packed graph、真实 device-lost、epoch、fallback 和 pool 长时复用/容量边界 |
-| `pnpm test:update-counts` | 已由当前 `evidence/current-test-counts.json` 复核为 511/511 tests、93 test files |
+| `pnpm test:update-counts` | 已由当前 `evidence/current-test-counts.json` 复核为 519/519 tests、94 test files |
 | `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；20/20 real-media automation tests |
 | `pnpm exec playwright test --project=media-webkit-automation --trace=off` | 7 passed，3 unsupported skipped；automation-only，不是 Safari 证据 |
 | `pnpm exec playwright test --project=performance-chromium --project=performance-firefox` | passed；4/4，隔离/非隔离各一条 |

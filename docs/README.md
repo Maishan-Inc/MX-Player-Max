@@ -50,3 +50,4 @@
 - `decisions/ADR-0003-ai-post-processing.md`
 - `decisions/ADR-0004-engine-and-optional-ui.md`：引擎与可选 UI 包分离，及其对 UMD 产物的约束。
 - `decisions/ADR-0005-platform-policy-and-issue-rules.md`：平台增强、诊断与可过期负向评分规则。
+- `decisions/ADR-0006-demo-and-player-visual-alignment.md`：演示站视觉对齐 MX-Player-Pro 落地页结构，播放器 chrome 对齐 MXAnime-CMS 内置 MX-Player。

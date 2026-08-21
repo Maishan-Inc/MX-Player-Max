@@ -1,32 +1,46 @@
+/* Monochrome player chrome aligned with the MXAnime-CMS built-in MX-Player: white-on-black
+   controls over a bottom scrim, circular 36 px buttons, a full-bleed hairline progress rail
+   that grows on hover, and blurred dark panels. Class names stay `mxp-*` and public tokens
+   stay `--mxp-*`; the light theme mirrors the same monochrome language inverted. */
 :root {
-  --mxp-fg: #f6f7f9;
-  --mxp-muted: #b5bcc7;
-  --mxp-panel: #15191f;
-  --mxp-panel-strong: #0d1015;
-  --mxp-line: rgba(255, 255, 255, 0.18);
-  --mxp-track: rgba(255, 255, 255, 0.28);
-  --mxp-track-fill: #f6f7f9;
-  --mxp-accent: #68c5b4;
-  --mxp-danger: #ff9d8d;
-  --mxp-focus: #8bd9ff;
-  --mxp-control-size: 40px;
+  --mxp-fg: #ffffff;
+  --mxp-muted: rgba(255, 255, 255, 0.72);
+  --mxp-panel: rgba(10, 10, 10, 0.96);
+  --mxp-panel-strong: #111111;
+  --mxp-line: rgba(255, 255, 255, 0.22);
+  --mxp-line-soft: rgba(255, 255, 255, 0.12);
+  --mxp-track: rgba(255, 255, 255, 0.25);
+  --mxp-track-buffered: rgba(255, 255, 255, 0.5);
+  --mxp-track-fill: #ffffff;
+  --mxp-accent: #ffffff;
+  --mxp-accent-ink: #000000;
+  --mxp-hover: rgba(255, 255, 255, 0.18);
+  --mxp-scrim: linear-gradient(transparent, rgba(0, 0, 0, 0.34) 22%, rgba(0, 0, 0, 0.92));
+  --mxp-danger: #ff7883;
+  --mxp-focus: #ffffff;
+  --mxp-control-size: 36px;
   --mxp-icon-size: 20px;
-  --mxp-panel-radius: 6px;
+  --mxp-panel-radius: 9px;
   --mxp-auto-hide-ms: 3000ms;
   --mxp-safe-bottom: 12%;
 }
 
 [data-mxp-theme="light"] {
-  --mxp-fg: #19202a;
-  --mxp-muted: #566273;
-  --mxp-panel: #f5f7fa;
-  --mxp-panel-strong: #e7ebf0;
-  --mxp-line: rgba(20, 28, 38, 0.2);
-  --mxp-track: rgba(20, 28, 38, 0.25);
-  --mxp-track-fill: #19202a;
-  --mxp-accent: #14796d;
+  --mxp-fg: #000000;
+  --mxp-muted: rgba(0, 0, 0, 0.68);
+  --mxp-panel: rgba(250, 250, 250, 0.96);
+  --mxp-panel-strong: #ffffff;
+  --mxp-line: rgba(0, 0, 0, 0.22);
+  --mxp-line-soft: rgba(0, 0, 0, 0.12);
+  --mxp-track: rgba(0, 0, 0, 0.25);
+  --mxp-track-buffered: rgba(0, 0, 0, 0.42);
+  --mxp-track-fill: #000000;
+  --mxp-accent: #000000;
+  --mxp-accent-ink: #ffffff;
+  --mxp-hover: rgba(0, 0, 0, 0.12);
+  --mxp-scrim: linear-gradient(transparent, rgba(255, 255, 255, 0.42) 22%, rgba(255, 255, 255, 0.94));
   --mxp-danger: #a72e23;
-  --mxp-focus: #005a82;
+  --mxp-focus: #000000;
 }
 
 [data-mxp-theme="system"] {
@@ -50,6 +64,7 @@
   font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   pointer-events: none;
   user-select: none;
+  touch-action: manipulation;
   z-index: 20;
   isolation: isolate;
 }
@@ -68,6 +83,8 @@
   visibility: hidden;
 }
 
+.mxp-player-ui[data-mxp-visible="false"] .mxp-control-shell { transform: translateY(6px); }
+
 .mxp-control-shell,
 .mxp-status-layer,
 .mxp-overlay-backdrop,
@@ -76,40 +93,44 @@
 }
 
 .mxp-control-shell {
-  padding: 0 14px 12px;
-  transition: opacity 160ms ease, visibility 160ms ease;
+  display: grid;
+  gap: 0;
+  padding: 48px 14px 3px;
+  background: var(--mxp-scrim);
+  transform: translateY(0);
+  transition: opacity 150ms ease, transform 150ms ease, visibility 150ms ease;
 }
 
+/* The rail is full-bleed: it bridges the control shell padding so the played fill reaches
+   both edges of the player, exactly like the MXAnime-CMS progress bar. */
 .mxp-progress-wrap {
   position: relative;
-  height: 24px;
-  display: flex;
-  align-items: center;
+  width: calc(100% + 28px);
+  height: 12px;
+  margin: 0 -14px;
+  display: grid;
+  align-items: end;
 }
 
 .mxp-progress-track {
   position: absolute;
-  inset: 0 0 auto;
-  top: 10px;
-  height: 4px;
+  inset: auto 0 0;
+  height: 3px;
   border: 0;
-  border-radius: 3px;
+  border-radius: 0;
   background: var(--mxp-track);
+  overflow: hidden;
   cursor: pointer;
-  transition: height 120ms ease, top 120ms ease;
+  transition: height 120ms ease;
 }
 
 .mxp-progress-wrap:hover .mxp-progress-track,
-.mxp-progress-wrap:focus-within .mxp-progress-track {
-  top: 9px;
-  height: 6px;
-}
+.mxp-progress-wrap:focus-within .mxp-progress-track { height: 5px; }
 
 .mxp-progress-buffered,
 .mxp-progress-played {
   position: absolute;
   inset: 0;
-  border-radius: inherit;
   pointer-events: none;
   overflow: hidden;
 }
@@ -118,70 +139,62 @@
   position: absolute;
   inset: 0 auto 0 var(--mxp-range-start, 0%);
   width: var(--mxp-range-width, 0%);
-  border-radius: inherit;
 }
 
-.mxp-progress-buffered .mxp-progress-segment { background: rgba(255, 255, 255, 0.3); }
-.mxp-progress-played .mxp-progress-segment { background: var(--mxp-accent); }
+.mxp-progress-buffered .mxp-progress-segment { background: var(--mxp-track-buffered); }
+.mxp-progress-played .mxp-progress-segment { background: var(--mxp-track-fill); }
 
 .mxp-progress-input {
   position: absolute;
   inset: 0;
   width: 100%;
-  height: 24px;
-  opacity: 0;
-  cursor: pointer;
+  height: 12px;
   margin: 0;
+  opacity: 0;
+  accent-color: var(--mxp-accent);
+  cursor: pointer;
   pointer-events: none;
 }
 
 .mxp-progress-input:focus-visible { opacity: 0.16; }
 
-.mxp-progress-thumb {
-  position: absolute;
-  top: 6px;
-  left: var(--mxp-progress-pct, 0%);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--mxp-accent);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
+/* The rail itself carries the position; MXAnime-CMS shows no separate thumb. */
+.mxp-progress-thumb { display: none; }
 
 .mxp-control-row {
-  min-height: 48px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  padding-bottom: 3px;
 }
 
 .mxp-control-group {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .mxp-icon-button {
   position: relative;
   width: var(--mxp-control-size);
   height: var(--mxp-control-size);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   flex: 0 0 var(--mxp-control-size);
+  display: grid;
+  place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: 50%;
+  padding: 0;
   color: var(--mxp-fg);
   background: transparent;
   cursor: pointer;
   font: inherit;
 }
 
-.mxp-icon-button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
-.mxp-icon-button[data-mxp-active="true"] { color: var(--mxp-accent); background: rgba(104, 197, 180, 0.15); }
+.mxp-icon-button:hover:not(:disabled),
+.mxp-icon-button[data-mxp-active="true"] { background: var(--mxp-hover); }
 .mxp-icon-button:disabled { cursor: not-allowed; opacity: 0.42; }
 .mxp-icon { width: var(--mxp-icon-size); height: var(--mxp-icon-size); display: inline-grid; place-items: center; }
 .mxp-icon-svg { width: 100%; height: 100%; stroke-width: 2; }
@@ -189,16 +202,22 @@
 .mxp-volume-slider,
 .mxp-rate-slider,
 .mxp-style-slider {
+  margin: 0;
   accent-color: var(--mxp-accent);
-  width: 96px;
+  cursor: pointer;
 }
 
+.mxp-volume-slider { width: 84px; height: 22px; }
+.mxp-rate-slider, .mxp-style-slider { width: 100%; }
+
 .mxp-time-readout {
-  min-width: 88px;
+  min-width: 126px;
+  flex: 0 0 auto;
   color: var(--mxp-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-align: center;
-  font-variant-numeric: tabular-nums;
 }
 
 .mxp-status-layer {
@@ -207,18 +226,20 @@
   display: flex;
   justify-content: center;
   pointer-events: none;
-  transition: opacity 160ms ease, visibility 160ms ease;
+  transition: opacity 150ms ease, visibility 150ms ease;
 }
 
 .mxp-status-message {
   max-width: min(90%, 420px);
   padding: 8px 12px;
-  border-radius: 4px;
-  background: rgba(13, 16, 21, 0.82);
-  color: var(--mxp-fg);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.84);
+  color: #ffffff;
+  font-size: 13px;
   text-align: center;
 }
 
+[data-mxp-theme="light"] .mxp-status-message { background: rgba(255, 255, 255, 0.9); color: #000000; }
 .mxp-status-message[data-mxp-tone="error"] { color: var(--mxp-danger); }
 .mxp-status-message[hidden] { display: none; }
 
@@ -229,48 +250,142 @@
   justify-content: flex-end;
   align-items: flex-end;
   padding: 14px;
-  background: rgba(0, 0, 0, 0.28);
+  background: transparent;
 }
 
 .mxp-panel {
-  width: min(340px, calc(100% - 28px));
-  max-height: min(78%, 500px);
+  position: relative;
+  z-index: 2;
+  width: min(370px, calc(100% - 28px));
+  max-height: min(78%, 430px);
   overflow: auto;
-  padding: 16px;
+  padding: 8px;
   border: 1px solid var(--mxp-line);
   border-radius: var(--mxp-panel-radius);
   background: var(--mxp-panel);
   color: var(--mxp-fg);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(14px);
 }
 
-.mxp-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
-.mxp-panel-title { margin: 0; font-size: 16px; font-weight: 650; }
-.mxp-panel-content { display: grid; gap: 12px; }
-.mxp-panel-section { display: grid; gap: 8px; }
-.mxp-panel-label { color: var(--mxp-muted); font-size: 12px; }
+.mxp-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 1px 3px 7px; }
+.mxp-panel-title { margin: 0; font-size: 13px; font-weight: 750; }
+.mxp-panel-content { display: grid; gap: 0; }
+.mxp-panel-section { display: grid; gap: 8px; padding: 9px 7px; border-top: 1px solid var(--mxp-line-soft); }
+.mxp-panel-section:first-child { border-top: 0; }
+.mxp-panel-label { color: var(--mxp-muted); font-size: 11px; font-weight: 750; }
+
 .mxp-panel select,
 .mxp-panel input[type="number"],
-.mxp-panel input[type="text"] { width: 100%; box-sizing: border-box; min-height: 34px; border: 1px solid var(--mxp-line); border-radius: 4px; background: var(--mxp-panel-strong); color: var(--mxp-fg); padding: 6px 8px; }
-.mxp-panel button:not(.mxp-icon-button) { min-height: 34px; border: 1px solid var(--mxp-line); border-radius: 4px; background: var(--mxp-panel-strong); color: var(--mxp-fg); padding: 6px 10px; cursor: pointer; }
-.mxp-panel button:not(.mxp-icon-button):hover { border-color: var(--mxp-accent); }
-.mxp-subtitle-track { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.mxp-subtitle-track[data-mxp-selected="true"] { border-color: var(--mxp-accent); background: rgba(104, 197, 180, 0.12); }
-.mxp-subtitle-track[data-mxp-pending="true"] { border-style: dashed; }
-.mxp-subtitle-track-status { color: var(--mxp-muted); font-size: 12px; }
-.mxp-subtitle-editor-guide { position: absolute; z-index: 1; left: var(--mxp-subtitle-x, 50%); top: var(--mxp-subtitle-y, 86%); width: 72%; height: var(--mxp-subtitle-guide-height, 26px); transform: translate(-50%, -50%); border: 1px dashed var(--mxp-accent); border-radius: 3px; pointer-events: auto; cursor: move; touch-action: none; }
-.mxp-subtitle-handle { position: absolute; left: 50%; width: 34px; height: 6px; transform: translateX(-50%); background: var(--mxp-accent); border-radius: 3px; pointer-events: auto; cursor: ns-resize; touch-action: none; }
+.mxp-panel input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 32px;
+  border: 1px solid var(--mxp-line);
+  border-radius: 6px;
+  background: var(--mxp-panel-strong);
+  color: var(--mxp-fg);
+  padding: 6px 9px;
+  font-size: 12px;
+}
+
+.mxp-panel button:not(.mxp-icon-button) {
+  min-height: 29px;
+  border: 1px solid var(--mxp-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mxp-fg);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mxp-panel button:not(.mxp-icon-button):hover { border-color: var(--mxp-accent); background: var(--mxp-hover); }
+
+/* Selected rows invert to a solid fill, the same affirmative state the MXAnime-CMS
+   settings menu uses. Kept at button-level specificity so it wins over the panel rule. */
+.mxp-panel button.mxp-subtitle-track {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 9px;
+  border-color: transparent;
+  font-size: 12px;
+  text-align: left;
+}
+
+.mxp-panel button.mxp-subtitle-track:hover { border-color: transparent; background: var(--mxp-hover); }
+.mxp-panel button.mxp-subtitle-track[data-mxp-selected="true"] { border-color: var(--mxp-accent); background: var(--mxp-accent); color: var(--mxp-accent-ink); }
+.mxp-panel button.mxp-subtitle-track[data-mxp-pending="true"] { border-color: var(--mxp-line); border-style: dashed; }
+.mxp-subtitle-track-status { color: var(--mxp-muted); font-size: 11px; }
+.mxp-subtitle-track[data-mxp-selected="true"] .mxp-subtitle-track-status { color: inherit; }
+
+.mxp-subtitle-editor-guide {
+  position: absolute;
+  z-index: 1;
+  left: var(--mxp-subtitle-x, 50%);
+  top: var(--mxp-subtitle-y, 86%);
+  width: 72%;
+  height: var(--mxp-subtitle-guide-height, 26px);
+  transform: translate(-50%, -50%);
+  border: 1px dashed var(--mxp-accent);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+  cursor: move;
+  touch-action: none;
+}
+
+.mxp-subtitle-handle {
+  position: absolute;
+  left: 50%;
+  width: 42px;
+  height: 5px;
+  transform: translateX(-50%);
+  border-radius: 3px;
+  background: var(--mxp-accent);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
+  pointer-events: auto;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
 .mxp-subtitle-handle[data-mxp-edge="top"] { top: -4px; }
 .mxp-subtitle-handle[data-mxp-edge="bottom"] { bottom: -4px; }
-.mxp-panel { position: relative; z-index: 2; }
 .mxp-color-control { grid-template-columns: 1fr auto; align-items: center; }
-.mxp-color-control input[type="color"] { width: 44px; height: 32px; border: 1px solid var(--mxp-line); border-radius: 4px; background: var(--mxp-panel-strong); padding: 2px; }
+.mxp-color-control input[type="color"] { width: 44px; height: 30px; border: 1px solid var(--mxp-line); border-radius: 6px; background: var(--mxp-panel-strong); padding: 2px; }
 .mxp-subtitle-toggles { display: flex; flex-wrap: wrap; gap: 8px 14px; }
-.mxp-toggle-control { display: inline-flex; align-items: center; gap: 6px; color: var(--mxp-fg); }
+.mxp-toggle-control { display: inline-flex; align-items: center; gap: 6px; color: var(--mxp-fg); font-size: 12px; }
 .mxp-toggle-control input { accent-color: var(--mxp-accent); }
-.mxp-stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; color: var(--mxp-muted); font-variant-numeric: tabular-nums; }
-.mxp-stat-grid strong { color: var(--mxp-fg); font-weight: 600; }
-.mxp-tooltip { position: absolute; z-index: 30; left: 50%; bottom: calc(100% + 6px); max-width: 220px; padding: 5px 8px; border-radius: 3px; background: var(--mxp-panel-strong); color: var(--mxp-fg); font-size: 12px; white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transform: translateX(-50%); transition: opacity 120ms ease, visibility 120ms ease; }
+.mxp-stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 5px 12px; color: var(--mxp-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mxp-stat-grid strong { color: var(--mxp-fg); font-weight: 700; }
+.mxp-caption { color: var(--mxp-muted); font-size: 11px; }
+
+.mxp-tooltip {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  max-width: 220px;
+  padding: 5px 8px;
+  border: 1px solid var(--mxp-line);
+  border-radius: 6px;
+  background: var(--mxp-panel);
+  color: var(--mxp-fg);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease, visibility 120ms ease;
+  backdrop-filter: blur(14px);
+}
+
 .mxp-icon-button:hover > .mxp-tooltip,
 .mxp-icon-button:focus-visible > .mxp-tooltip { opacity: 1; visibility: visible; }
 .mxp-play-control > .mxp-tooltip { left: 0; transform: none; }
@@ -278,48 +393,65 @@
 .mxp-close-control > .mxp-tooltip { right: 0; left: auto; transform: none; }
 .mxp-close-control > .mxp-tooltip { top: 50%; right: calc(100% + 6px); bottom: auto; transform: translateY(-50%); }
 .mxp-tooltip[hidden], .mxp-preview[hidden] { display: none; }
-.mxp-preview { position: absolute; left: var(--mxp-preview-left, 50%); bottom: 34px; width: 160px; height: 90px; transform: translateX(-50%); border: 1px solid var(--mxp-line); border-radius: 3px; background: var(--mxp-panel-strong); overflow: hidden; pointer-events: none; }
+
+.mxp-preview {
+  position: absolute;
+  z-index: 4;
+  left: var(--mxp-preview-left, 50%);
+  bottom: 17px;
+  width: 160px;
+  height: 90px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 7px;
+  background: #000000;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
 .mxp-preview img { display: block; width: 160px; height: 90px; object-fit: cover; }
-.mxp-preview-time { position: absolute; left: 4px; bottom: 3px; padding: 1px 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.72); color: #fff; font-size: 11px; font-variant-numeric: tabular-nums; }
-.mxp-caption { color: var(--mxp-muted); font-size: 12px; }
+.mxp-preview-time { position: absolute; z-index: 2; right: 5px; bottom: 5px; padding: 2px 5px; border-radius: 4px; background: rgba(0, 0, 0, 0.8); color: #ffffff; font-size: 11px; font-weight: 700; line-height: 1.25; font-variant-numeric: tabular-nums; }
 .mxp-control-shell[data-mxp-interacting="true"] { opacity: 1; visibility: visible; }
 .mxp-player-ui[data-mxp-visible="false"] .mxp-control-shell { pointer-events: none; }
 
 @container (max-width: 760px) {
-  .mxp-control-shell { padding: 0 8px 8px; }
+  .mxp-control-shell { padding: 40px 8px 3px; }
+  .mxp-progress-wrap { width: calc(100% + 16px); margin: 0 -8px; }
   .mxp-theater-control, .mxp-volume-slider { display: none; }
   .mxp-control-row { gap: 4px; }
   .mxp-control-group { gap: 0; }
-  .mxp-icon-button { --mxp-control-size: 38px; }
-  .mxp-time-readout { min-width: 74px; font-size: 12px; }
+  .mxp-icon-button { --mxp-control-size: 34px; }
+  .mxp-time-readout { min-width: 100px; font-size: 11px; }
   .mxp-preview { display: none; }
 }
 
 @container (max-width: 420px) {
-  .mxp-icon-button { --mxp-control-size: 36px; }
+  .mxp-icon-button { --mxp-control-size: 32px; }
   .mxp-control-row { flex-wrap: wrap; justify-content: center; }
   .mxp-control-row .mxp-control-group:first-child { order: 1; }
   .mxp-control-row .mxp-control-group:last-child { order: 2; }
-  .mxp-time-readout { order: 0; width: 100%; }
+  .mxp-time-readout { order: 0; min-width: 0; width: 100%; }
   .mxp-panel { width: calc(100% - 4px); }
 }
 
 @media (max-width: 760px) {
-  .mxp-control-shell { padding: 0 8px 8px; }
+  .mxp-control-shell { padding: 40px 8px 3px; }
+  .mxp-progress-wrap { width: calc(100% + 16px); margin: 0 -8px; }
   .mxp-theater-control, .mxp-volume-slider { display: none; }
   .mxp-control-row { gap: 4px; }
   .mxp-control-group { gap: 0; }
-  .mxp-icon-button { --mxp-control-size: 38px; }
-  .mxp-time-readout { min-width: 74px; font-size: 12px; }
+  .mxp-icon-button { --mxp-control-size: 34px; }
+  .mxp-time-readout { min-width: 100px; font-size: 11px; }
   .mxp-preview { display: none; }
 }
 
 @media (max-width: 420px) {
-  .mxp-icon-button { --mxp-control-size: 36px; }
+  .mxp-icon-button { --mxp-control-size: 32px; }
   .mxp-control-row { flex-wrap: wrap; justify-content: center; }
   .mxp-control-row .mxp-control-group:first-child { order: 1; }
   .mxp-control-row .mxp-control-group:last-child { order: 2; }
-  .mxp-time-readout { order: 0; width: 100%; }
+  .mxp-time-readout { order: 0; min-width: 0; width: 100%; }
   .mxp-panel { width: calc(100% - 4px); }
 }
 

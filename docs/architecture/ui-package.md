@@ -110,7 +110,7 @@ UI 没有 localStorage 代码，不重新实现 origin/local-file scope，也不
 
 包发布独立 `dist/style.css`，不会 runtime 注入 `<style>` 或使用 CSS-in-JS。生产类名全部使用 `mxp-`，公开 token 使用 `--mxp-*`。包 manifest 把 `./dist/style.css` 标为 side effect，JS 入口仍可独立 tree-shake。
 
-样式提供 dark/light/system token、40x40 控件基线、20 px 图标、tooltip、ARIA pressed/disabled/live/alert、稳定 DOM 顺序、2 px focus-visible、WCAG AA 目标色和 reduced-motion overrides。
+样式提供 dark/light/system token、36x36 圆形控件基线、20 px 图标、tooltip、ARIA pressed/disabled/live/alert、稳定 DOM 顺序、2 px focus-visible、WCAG AA 目标色和 reduced-motion overrides。视觉语言对齐 MXAnime-CMS 内置的 MX-Player：单色强调（dark 为白、light 为黑）、`--mxp-scrim` 底部遮罩、3 px 全宽细进度轨（hover/focus 5 px、无独立 thumb）、毛玻璃深色浮层。样式契约允许且仅允许 `--mxp-scrim` 一处渐变，详见 `ADR-0006`。
 
 `<=760px` 隐藏音量 slider 与剧场按钮并缩减间距；`<=420px` 将时间独占一行并重排左右组。预览在移动断点隐藏。所有 runtime geometry 只通过有界 `--mxp-*` 变量设置。
 

@@ -302,7 +302,7 @@ Phase 13 质量、安全和性能固化
 ### 退出条件
 
 - 引擎不反向依赖 UI，依赖方向单向。
-- 外观参考 MX-Player-Pro 的交互模式，不复制其源文件与演示站视觉。
+- 外观参考 MX-Player-Pro 的交互模式，不复制其源文件；播放器 chrome 的视觉语言对齐 MXAnime-CMS 内置的 MX-Player（见 `ADR-0006`）。
 - 字幕样式按域名分作用域持久化，存储不可用时静默回退默认值。
 
 ## 13. Phase 10：WASM Decoder Manager
@@ -390,7 +390,7 @@ publishable assets，threaded 因缺少 host glue 技术性排除。
 - npm、jsDelivr、UMD `<script>`、自托管 WASM 四种接入方式均有文档。
 - 无构建工具的页面能用一行 `<script>` 得到可播放且带控件的播放器。
 - Demo 可以展示为什么选择某个后端。
-- Demo 不依赖 MX-Player-Pro 的实现文件或演示站视觉布局。
+- Demo 的布局与排版对齐 MX-Player-Pro 的落地页结构，但不依赖它的实现文件、品牌资源与文案（见 `ADR-0006`）。
 
 ## 16. Phase 13：质量、安全和性能固化
 

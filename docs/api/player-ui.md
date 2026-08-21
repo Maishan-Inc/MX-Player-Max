@@ -165,7 +165,7 @@ UI 不解析 SRT/ASS，不读取 cue 正文，不建立自己的 localStorage ke
 import '@mx-player-max/ui/style.css'
 ```
 
-包不会运行时注入 `<style>`。所有 UI 类名以 `mxp-` 开头，公开视觉参数以 `--mxp-*` 开头。`<=760px` 隐藏音量 slider 与剧场按钮，`<=420px` 重排控制行；focus-visible 与 `prefers-reduced-motion` 由样式表实现。
+包不会运行时注入 `<style>`。所有 UI 类名以 `mxp-` 开头，公开视觉参数以 `--mxp-*` 开头。默认视觉为单色 chrome：`--mxp-accent` 在 dark 主题为白、light 主题为黑，`--mxp-scrim` 提供控制栏底部遮罩，`--mxp-control-size` 基线 36 px 圆形按钮。`<=760px` 隐藏音量 slider 与剧场按钮，`<=420px` 重排控制行；focus-visible 与 `prefers-reduced-motion` 由样式表实现。覆盖任一 token 即可换色，不需要 fork 样式表。
 
 SDK/UI/React/Vue 入口是 ESM + declarations；Browser 另外发布 `./iife`、`./iife.min` 和 `./style.css`。IIFE 全局名为 `MXPlayerMax`，固定版本 URL 和 SRI 从 release manifest 取得。
 

@@ -80,6 +80,18 @@
 
 ### Changed
 
+- 播放器 chrome 改为单色视觉，对齐 MXAnime-CMS 内置 MX-Player：白色强调（light 主题为黑）、控制栏
+  `--mxp-scrim` 底部遮罩、36 px 圆形按钮、3 px 全宽细进度轨（hover/focus 5 px、无独立 thumb）、
+  毛玻璃深色浮层与 126 px 等宽时间码。DOM 与 `controller.ts` 不变，样式契约由「禁止任何渐变」收窄为
+  「仅允许 `--mxp-scrim` 一处」，`--mxp-control-size` 基线 40 px → 36 px，win32 chromium UI baseline
+  已重新生成。详见 `ADR-0006`。
+- Demo 由四宫格 workbench 改为落地页：顶栏（品牌、runtime 状态、主题切换、Repository）、可拖放的
+  播放区、URL 表单、本地媒体与字幕入口、播放意图、能力条、为什么选择、接入示例、工作原理、诊断面板、
+  FAQ 与页脚，布局与排版对齐 MX-Player-Pro 落地页结构，品牌/文案/代码示例/图标均为 Max 自有，
+  新增 dark/light 主题切换并同步给播放器 UI。
+- `AGENTS.md`、`ADR-0004`、execution-plan、roadmap、ui-package、player-ui 与两个 README 同步这次
+  视觉决策反转；`ADR-0006` 记录取代范围与后果。
+
 - `pnpm test:browser` 保留 UI/媒体项目并发，但在它们完成后串行运行 Chromium 与 Firefox 性能项目，
   避免跨浏览器资源竞争污染性能门槛并导致默认命令偶发失败。
 - Range/container probe 保留协议与损坏错误码，不再把错误 200、Content-Range、断连或截断全部折叠为

@@ -64,7 +64,19 @@ WebKit 媒体结果始终标记 automation-only。Chromium desktop/mobile 提交
 - mobile 隐藏音量 slider 与 theater；
 - focus 与 reduced-motion 状态可见且稳定。
 
-更新 snapshot 不能用于掩盖布局回归，必须先修源 CSS/DOM。
+更新 snapshot 不能用于掩盖布局回归，必须先修源 CSS/DOM。样式本身被有意改动时（例如 `ADR-0006`
+的单色 chrome）才重新生成 baseline，并在提交里说明改动来源。
+
+UI baseline 按平台提交，文件名形如 `desktop-workbench-chromium-desktop-win32.png`。字体栅格化和
+合成结果在不同操作系统上不同，同一张 PNG 不能跨平台复用。因此像素比对只在存在当前平台 baseline 时
+执行：
+
+- 已提交当前平台 baseline：严格比对，超出 `maxDiffPixelRatio` 直接失败。
+- 未提交当前平台 baseline（例如 Linux CI 目前没有 baseline）：记录 `ui-baseline-missing`
+  annotation 并跳过像素比对，不把「缺少基线」报成布局回归；同一测试中的布局、可见性、Range 与
+  a11y 断言仍然全部执行。
+- 需要为新平台生成首个 baseline：在该平台运行 `pnpm test:browser --update-snapshots`，人工按上面
+  的视觉检查项确认后提交生成的 PNG。
 
 ## 5. 真实浏览器回归
 

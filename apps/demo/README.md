@@ -1,6 +1,11 @@
 # MX-Player-Max Demo
 
-Phase 12 播放与诊断 workbench。首屏直接挂载官方 React 适配器和可选 UI，支持 HTTPS/HTTP URL、本地媒体、外挂 SRT/ASS/SSA、播放意图切换与宿主剧场模式。Probe、Decision、Runtime 和 Subtitles 面板只消费 React handle 暴露的 SDK 公共 getter/event，不读取 Core 或 Strategy 私有状态。Demo 不实现自己的播放器控制逻辑，也不是 SDK/UI 的运行时依赖。
+Phase 12 播放与诊断 workbench。首屏直接挂载官方 React 适配器和可选 UI，支持 HTTPS/HTTP URL、本地媒体（点击或拖入播放区）、外挂 SRT/ASS/SSA、播放意图切换与宿主剧场模式。Probe、Decision、Runtime 和 Subtitles 面板只消费 React handle 暴露的 SDK 公共 getter/event，不读取 Core 或 Strategy 私有状态。Demo 不实现自己的播放器控制逻辑，也不是 SDK/UI 的运行时依赖。
+
+页面的布局、排版尺度与折叠组件形态对齐 MX-Player-Pro 的落地页结构（顶栏、播放区、URL 表单、能力条、
+为什么选择、接入示例、工作原理、诊断、FAQ、页脚），品牌、文案、代码示例与图标都是 Max 自己的，不引入
+Pro 的实现文件或品牌资源。依据见 `docs/decisions/ADR-0006-demo-and-player-visual-alignment.md`。
+主题切换写入 `<html data-theme>` 并同步传给播放器 UI，选择持久化在 `localStorage`。
 
 ```bash
 pnpm --filter @mx-player-max/demo dev

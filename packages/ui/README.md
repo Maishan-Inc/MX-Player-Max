@@ -64,7 +64,7 @@ Custom 预览由宿主通过 `MXPlayerOptions.preview.provider` 提供。Native 
 
 ## CSS 与主题
 
-样式只从 `@mx-player-max/ui/style.css` 发布，不在运行时注入。所有类名使用 `mxp-` 前缀，可调 token 使用 `--mxp-*`，例如：
+样式只从 `@mx-player-max/ui/style.css` 发布，不在运行时注入。默认视觉是单色 chrome：强调色在 dark 主题为白、light 主题为黑，控制栏带一层 `--mxp-scrim` 底部遮罩，按钮为 36 px 圆形，进度轨 3 px 全宽、hover/focus 变 5 px。所有类名使用 `mxp-` 前缀，可调 token 使用 `--mxp-*`，覆盖任一个即可换色：
 
 ```css
 .player-host {
@@ -72,6 +72,7 @@ Custom 预览由宿主通过 `MXPlayerOptions.preview.provider` 提供。Native 
   --mxp-focus: #8bd9ff;
   --mxp-panel-radius: 4px;
   --mxp-control-size: 40px;
+  --mxp-scrim: linear-gradient(transparent, rgba(0, 0, 0, .9));
 }
 ```
 

@@ -7,7 +7,8 @@ describe('@mx-player-max/ui stylesheet contract', () => {
   const controller = readFileSync(resolve(import.meta.dirname, '../src/controller.ts'), 'utf8')
 
   it('publishes namespaced tokens and accessibility rules', () => {
-    expect(css).toContain('--mxp-control-size: 40px')
+    expect(css).toContain('--mxp-control-size: 36px')
+    expect(css).toContain('border-radius: 50%')
     expect(css).toContain('.mxp-player-ui')
     expect(css).toContain(':focus-visible')
     expect(css).toContain('prefers-reduced-motion')
@@ -21,8 +22,13 @@ describe('@mx-player-max/ui stylesheet contract', () => {
     expect(css).toContain('[data-mxp-theme="light"]')
   })
 
-  it('does not inject decorative gradients or negative letter spacing', () => {
-    expect(css).not.toMatch(/gradient\s*\(/i)
+  // The control shell carries one functional scrim so white controls stay legible over bright
+  // frames. It has to come from the `--mxp-scrim` token, and nothing else may add a gradient.
+  it('limits gradients to the scrim token and rejects negative letter spacing', () => {
+    const gradientLines = css.split('\n').filter((line) => /gradient\s*\(/i.test(line))
+    expect(gradientLines.length).toBeGreaterThan(0)
+    for (const line of gradientLines) expect(line.trimStart().startsWith('--mxp-scrim:')).toBe(true)
+    expect(css).toContain('background: var(--mxp-scrim)')
     expect(css).not.toMatch(/letter-spacing\s*:\s*-/i)
   })
 
