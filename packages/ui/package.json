@@ -40,7 +40,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-style.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests --exclude tests/playwright/**"
+    "test": "vitest run --passWithNoTests --exclude 'tests/playwright/**'"
   },
   "devDependencies": {
     "happy-dom": "^18.0.1"
