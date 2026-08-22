@@ -85,6 +85,11 @@ a { color: inherit; text-decoration: none; }
 
 .source-summary { min-height: 40px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 2px; color: var(--dim); font-size: 10px; text-transform: uppercase; }
 .source-summary strong { min-width: 0; overflow: hidden; color: var(--text); font-size: 11px; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; text-transform: none; }
+/* Concrete media parameters, not the playback intent: codec, geometry, audio layout, container
+   and the selected backend, so the readout says what is actually decoding. */
+.source-summary .media-readout { min-width: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 10px; color: var(--muted); font-size: 10px; text-transform: none; }
+.source-summary .media-readout em { font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.source-summary .media-readout em + em::before { content: "·"; margin-right: 8px; color: var(--dim); }
 .url-form { width: min(900px, 100%); min-height: 54px; margin: 8px auto 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; padding: 6px 7px 6px 15px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); }
 .url-form:focus-within { border-color: var(--text); }
 .url-form input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 13px; }
@@ -222,6 +227,10 @@ a { color: inherit; text-decoration: none; }
   .topbar > .runtime-status { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
   .home-main { width: min(100% - 24px, 620px); padding-top: 26px; }
   .player-stage { min-height: 190px; border-radius: 6px; }
+  /* The media readout is far wider than the old intent word, so it takes its own row instead of
+     squeezing the source name into an ellipsis. */
+  .source-summary { grid-template-columns: auto minmax(0, 1fr); }
+  .source-summary .media-readout { grid-column: 1 / -1; justify-content: flex-start; }
   .empty-player-icon { width: 52px; height: 52px; }
   .empty-player-title { font-size: 16px; }
   .url-form { grid-template-columns: auto minmax(0, 1fr); gap: 8px; padding: 8px 10px; }

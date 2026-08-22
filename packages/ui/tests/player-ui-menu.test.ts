@@ -197,6 +197,8 @@ describe('@mx-player-max/ui right-click menu', () => {
       '循环播放', '迷你播放器', '复制视频网址', '复制当前时间的视频网址', '复制嵌入代码', '复制调试信息', '排查播放问题', '详细统计信息',
     ])
     expect(menu.querySelectorAll('.mxp-menu-separator')).toHaveLength(2)
+    // Every entry carries its own glyph, like the MX-Player-Pro menu.
+    expect(menu.querySelectorAll('.mxp-menu-icon svg')).toHaveLength(8)
     ui.destroy()
   })
 

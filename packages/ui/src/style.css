@@ -21,7 +21,7 @@
   --mxp-control-size: 36px;
   --mxp-icon-size: 20px;
   --mxp-panel-radius: 9px;
-  --mxp-auto-hide-ms: 3000ms;
+  --mxp-auto-hide-ms: 5000ms;
   --mxp-safe-bottom: 12%;
   /* The diagnostic overlay is the one surface that leaves the monochrome language: the meters
      have to be readable at a glance, so they carry their own three-value palette. */
@@ -64,6 +64,10 @@
   container-type: inline-size;
 }
 
+/* The cursor belongs to the host: the UI root is pointer-transparent in the middle, so a rule
+   there would never win over the media surface underneath. */
+.mxp-player-host[data-mxp-cursor="hidden"] { cursor: none; }
+
 .mxp-player-ui {
   position: absolute;
   inset: 0;
@@ -95,12 +99,26 @@
 
 .mxp-player-ui[data-mxp-visible="false"] .mxp-control-shell { transform: translateY(6px); }
 
+/* Locked chrome: the control shell is gone and the whole root becomes opaque to the pointer, so a
+   click cannot reach the media surface and a move can still revive the lock affordance. */
+.mxp-player-ui[data-mxp-locked="true"] { pointer-events: auto; }
+
+.mxp-player-ui[data-mxp-locked="true"] .mxp-control-shell,
+.mxp-player-ui[data-mxp-locked="true"] .mxp-status-layer {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .mxp-control-shell,
 .mxp-status-layer,
 .mxp-overlay-backdrop,
 .mxp-preview,
 .mxp-context-menu,
+.mxp-subtitle-menu,
+.mxp-subtitle-edit-bar,
 .mxp-stats-overlay,
+.mxp-lock-toggle,
 .mxp-toast {
   pointer-events: auto;
 }
@@ -148,6 +166,14 @@
   overflow: hidden;
 }
 
+/* The played fill is the playhead: one continuous bar to `--mxp-progress-pct`. Buffered stays
+   segmented so a real gap in the buffer is still visible. */
+.mxp-progress-played {
+  right: auto;
+  width: var(--mxp-progress-pct, 0%);
+  background: var(--mxp-track-fill);
+}
+
 .mxp-progress-segment {
   position: absolute;
   inset: 0 auto 0 var(--mxp-range-start, 0%);
@@ -155,7 +181,6 @@
 }
 
 .mxp-progress-buffered .mxp-progress-segment { background: var(--mxp-track-buffered); }
-.mxp-progress-played .mxp-progress-segment { background: var(--mxp-track-fill); }
 
 .mxp-progress-input {
   position: absolute;
@@ -204,13 +229,65 @@
   background: transparent;
   cursor: pointer;
   font: inherit;
+  opacity: 0.86;
+  transition: opacity 120ms ease;
 }
 
+/* No filled disc behind an icon: hover lifts the glyph to full strength and an enabled toggle
+   carries a short underline instead of a circular background. */
 .mxp-icon-button:hover:not(:disabled),
-.mxp-icon-button[data-mxp-active="true"] { background: var(--mxp-hover); }
+.mxp-icon-button:focus-visible,
+.mxp-icon-button[data-mxp-active="true"] { background: transparent; opacity: 1; }
+
+.mxp-icon-button[data-mxp-active="true"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 14px;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.mxp-play-control[data-mxp-active="true"]::after,
+.mxp-mute-control[data-mxp-active="true"]::after,
+.mxp-lock-toggle[data-mxp-active="true"]::after { content: none; }
+
 .mxp-icon-button:disabled { cursor: not-allowed; opacity: 0.42; }
 .mxp-icon { width: var(--mxp-icon-size); height: var(--mxp-icon-size); display: inline-grid; place-items: center; }
 .mxp-icon-svg { width: 100%; height: 100%; stroke-width: 2; }
+
+/* The lock affordance is the one control that outlives the control shell, so it is placed
+   after the shared icon-button rules: `position: absolute` has to win over their `relative`. */
+.mxp-lock-toggle {
+  position: absolute;
+  z-index: 22;
+  top: 50%;
+  left: max(26px, calc(env(safe-area-inset-left) + 14px));
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  transform: translateY(-50%);
+  border-radius: 0;
+  transition: opacity 150ms ease, visibility 150ms ease;
+}
+
+.mxp-lock-toggle .mxp-icon { width: 22px; height: 22px; }
+.mxp-lock-toggle .mxp-icon-svg { animation: mxp-lock-pop 180ms ease both; }
+
+.mxp-player-ui[data-mxp-locked="false"][data-mxp-visible="false"] .mxp-lock-toggle,
+.mxp-player-ui[data-mxp-locked="true"][data-mxp-lock-chrome="false"] .mxp-lock-toggle {
+  opacity: 0;
+  visibility: hidden;
+}
+
+@keyframes mxp-lock-pop {
+  from { opacity: 0; transform: scale(0.72) rotate(-18deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
 
 .mxp-volume-slider,
 .mxp-rate-slider,
@@ -316,40 +393,135 @@
 
 .mxp-panel button:not(.mxp-icon-button):hover { border-color: var(--mxp-accent); background: var(--mxp-hover); }
 
-/* Selected rows invert to a solid fill, the same affirmative state the MXAnime-CMS
-   settings menu uses. Kept at button-level specificity so it wins over the panel rule. */
-.mxp-panel button.mxp-subtitle-track {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 9px;
-  border-color: transparent;
-  font-size: 12px;
-  text-align: left;
+/* Subtitle popup. Anchored above the control shell like the MX-Player-Pro menu: a page head, a
+   body whose height is fixed by the track list, and an edit affordance in the corner. */
+.mxp-subtitle-menu {
+  position: absolute;
+  z-index: 23;
+  right: 12px;
+  bottom: 62px;
+  width: min(300px, calc(100% - 24px));
+  max-height: calc(100% - 86px);
+  overflow: hidden;
+  border: 1px solid var(--mxp-line);
+  border-radius: var(--mxp-panel-radius);
+  background: var(--mxp-panel);
+  color: var(--mxp-fg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(14px);
 }
 
-.mxp-panel button.mxp-subtitle-track:hover { border-color: transparent; background: var(--mxp-hover); }
-.mxp-panel button.mxp-subtitle-track[data-mxp-selected="true"] { border-color: var(--mxp-accent); background: var(--mxp-accent); color: var(--mxp-accent-ink); }
-.mxp-panel button.mxp-subtitle-track[data-mxp-pending="true"] { border-color: var(--mxp-line); border-style: dashed; }
-.mxp-subtitle-track-status { color: var(--mxp-muted); font-size: 11px; }
-.mxp-subtitle-track[data-mxp-selected="true"] .mxp-subtitle-track-status { color: inherit; }
+.mxp-subtitle-menu-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 34px;
+  align-items: center;
+  border-bottom: 1px solid var(--mxp-line-soft);
+}
 
+.mxp-subtitle-tab {
+  min-width: 0;
+  height: 38px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--mxp-muted);
+  padding: 0 2px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 750;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.mxp-subtitle-tab[data-mxp-active="true"] { border-bottom-color: var(--mxp-accent); color: var(--mxp-fg); }
+.mxp-subtitle-head-icon { --mxp-control-size: 32px; --mxp-icon-size: 18px; justify-self: center; }
+
+.mxp-subtitle-menu-body {
+  height: var(--mxp-subtitle-body-height, 120px);
+  max-height: min(360px, 52cqh);
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: 7px;
+  overflow-y: auto;
+}
+
+.mxp-subtitle-menu-body .mxp-panel-section { gap: 5px; padding: 4px 2px; border-top: 0; }
+.mxp-subtitle-menu-body .mxp-style-slider { width: 100%; }
+
+.mxp-subtitle-menu-body .mxp-subtitle-track,
+.mxp-subtitle-menu-body .mxp-subtitle-font,
+.mxp-subtitle-reset {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--mxp-fg);
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mxp-subtitle-menu-body .mxp-subtitle-track { justify-content: space-between; }
+
+.mxp-subtitle-menu-body .mxp-subtitle-track:hover,
+.mxp-subtitle-menu-body .mxp-subtitle-font:hover,
+.mxp-subtitle-reset:hover { border-color: var(--mxp-line); background: var(--mxp-hover); }
+
+.mxp-subtitle-menu-body .mxp-subtitle-track[data-mxp-selected="true"],
+.mxp-subtitle-menu-body .mxp-subtitle-font[data-mxp-selected="true"] { border-color: var(--mxp-line); background: var(--mxp-hover); }
+.mxp-subtitle-menu-body .mxp-subtitle-track[data-mxp-pending="true"] { border-style: dashed; }
+.mxp-subtitle-track-status { color: var(--mxp-muted); font-size: 11px; }
+
+.mxp-subtitle-font { display: grid; gap: 2px; }
+.mxp-subtitle-font-name { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mxp-subtitle-font-name .mxp-icon-svg { width: 13px; height: 13px; flex: 0 0 13px; }
+.mxp-subtitle-font-sample { color: var(--mxp-muted); font-size: 11px; }
+.mxp-subtitle-reset { justify-content: center; margin-top: 2px; font-weight: 700; }
+.mxp-subtitle-reset .mxp-icon-svg { width: 13px; height: 13px; }
+
+/* The guide stands in for the live cue while editing: it is the drag surface and it previews the
+   style, so size, position, colour and emphasis are judged in place. */
 .mxp-subtitle-editor-guide {
   position: absolute;
-  z-index: 1;
+  z-index: 24;
   left: var(--mxp-subtitle-x, 50%);
   top: var(--mxp-subtitle-y, 86%);
-  width: 72%;
-  height: var(--mxp-subtitle-guide-height, 26px);
+  max-width: min(76%, 520px);
+  width: fit-content;
+  padding: 4px 9px;
   transform: translate(-50%, -50%);
   border: 1px dashed var(--mxp-accent);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.2);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
   pointer-events: auto;
-  cursor: move;
+  /* The drag is vertical only, matching MX-Player-Pro: the line keeps the horizontal placement
+     the style already sets. */
+  cursor: ns-resize;
   touch-action: none;
+}
+
+.mxp-subtitle-sample {
+  display: block;
+  color: var(--mxp-subtitle-color, #ffffff);
+  font-family: var(--mxp-subtitle-family, inherit);
+  font-size: var(--mxp-subtitle-size, 36px);
+  font-style: var(--mxp-subtitle-style, normal);
+  font-weight: var(--mxp-subtitle-weight, 650);
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: var(--mxp-subtitle-decoration, none);
+  white-space: nowrap;
+  -webkit-text-stroke: var(--mxp-subtitle-outline-width, 2px) var(--mxp-subtitle-outline, #000000);
+  paint-order: stroke fill;
 }
 
 .mxp-subtitle-handle {
@@ -358,9 +530,9 @@
   width: 42px;
   height: 5px;
   transform: translateX(-50%);
+  border: 1px solid #000000;
   border-radius: 3px;
   background: var(--mxp-accent);
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
   pointer-events: auto;
   cursor: ns-resize;
   touch-action: none;
@@ -368,6 +540,59 @@
 
 .mxp-subtitle-handle[data-mxp-edge="top"] { top: -4px; }
 .mxp-subtitle-handle[data-mxp-edge="bottom"] { bottom: -4px; }
+
+/* A thin bar rather than a dialog: the editing happens on the subtitle itself, so the only chrome
+   needed is a readout of the current values and a way to finish. */
+.mxp-subtitle-edit-bar {
+  position: absolute;
+  z-index: 25;
+  left: 50%;
+  bottom: 70px;
+  max-width: calc(100% - 20px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 8px 10px;
+  transform: translateX(-50%);
+  border: 1px solid var(--mxp-line);
+  border-radius: 6px;
+  background: var(--mxp-panel);
+  color: var(--mxp-fg);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(14px);
+}
+
+.mxp-subtitle-edit-hint { color: var(--mxp-muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The popup and the edit bar are open at the same time, so the bar centres itself in the room
+   left beside the popup instead of sliding under it. */
+.mxp-player-ui[data-mxp-subtitle-menu="open"] .mxp-subtitle-edit-bar {
+  left: 12px;
+  right: calc(min(300px, 100% - 24px) + 12px);
+  max-width: none;
+  transform: none;
+}
+.mxp-subtitle-edit-readout { color: var(--mxp-fg); font-size: 11px; font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.mxp-subtitle-edit-bar button {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--mxp-line);
+  border-radius: 4px;
+  background: var(--mxp-accent);
+  color: var(--mxp-accent-ink);
+  padding: 0 9px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mxp-subtitle-edit-bar button .mxp-icon-svg { width: 13px; height: 13px; }
 .mxp-color-control { grid-template-columns: 1fr auto; align-items: center; }
 .mxp-color-control input[type="color"] { width: 44px; height: 30px; border: 1px solid var(--mxp-line); border-radius: 6px; background: var(--mxp-panel-strong); padding: 2px; }
 .mxp-subtitle-toggles { display: flex; flex-wrap: wrap; gap: 8px 14px; }
@@ -408,8 +633,8 @@
   z-index: 28;
   left: var(--mxp-menu-left, 8px);
   top: var(--mxp-menu-top, 8px);
-  min-width: 218px;
-  max-width: min(320px, calc(100% - 16px));
+  min-width: 236px;
+  max-width: min(340px, calc(100% - 16px));
   padding: 5px;
   border: 1px solid var(--mxp-line);
   border-radius: var(--mxp-panel-radius);
@@ -440,6 +665,9 @@
 .mxp-menu-item:hover { background: var(--mxp-hover); }
 .mxp-menu-check { width: 16px; height: 16px; flex: 0 0 16px; display: inline-grid; place-items: center; }
 .mxp-menu-check .mxp-icon-svg { width: 15px; height: 15px; stroke-width: 2.4; }
+.mxp-menu-icon { width: 16px; height: 16px; flex: 0 0 16px; display: inline-grid; place-items: center; color: var(--mxp-muted); }
+.mxp-menu-icon .mxp-icon-svg { width: 15px; height: 15px; }
+.mxp-menu-item:hover .mxp-menu-icon { color: var(--mxp-fg); }
 .mxp-menu-label { min-width: 0; flex: 1 1 auto; }
 
 /* Stats for nerds. A non-modal diagnostic sheet: it stays open while the player is used. */
@@ -568,6 +796,10 @@
   .mxp-icon-button { --mxp-control-size: 34px; }
   .mxp-time-readout { min-width: 100px; font-size: 11px; }
   .mxp-preview { display: none; }
+  .mxp-subtitle-menu { right: 8px; bottom: 54px; width: min(280px, calc(100% - 16px)); }
+  .mxp-subtitle-edit-bar { bottom: 60px; gap: 7px; padding: 7px 8px; }
+  .mxp-subtitle-edit-hint { display: none; }
+  .mxp-lock-toggle { left: max(14px, calc(env(safe-area-inset-left) + 8px)); }
   .mxp-stats-overlay { left: 8px; top: 8px; width: calc(100% - 16px); font-size: 10px; }
   .mxp-toast { bottom: 64px; }
 }
@@ -583,6 +815,8 @@
   .mxp-stats-row { grid-template-columns: minmax(0, 1fr); }
   .mxp-stats-label { text-align: left; }
   .mxp-context-menu { min-width: 0; width: calc(100% - 16px); max-width: none; }
+  /* Too narrow to reserve room beside the popup: the compact bar centres itself again. */
+  .mxp-player-ui[data-mxp-subtitle-menu="open"] .mxp-subtitle-edit-bar { left: 50%; right: auto; max-width: calc(100% - 16px); transform: translateX(-50%); }
 }
 
 @media (max-width: 760px) {
@@ -594,6 +828,10 @@
   .mxp-icon-button { --mxp-control-size: 34px; }
   .mxp-time-readout { min-width: 100px; font-size: 11px; }
   .mxp-preview { display: none; }
+  .mxp-subtitle-menu { right: 8px; bottom: 54px; width: min(280px, calc(100% - 16px)); }
+  .mxp-subtitle-edit-bar { bottom: 60px; gap: 7px; padding: 7px 8px; }
+  .mxp-subtitle-edit-hint { display: none; }
+  .mxp-lock-toggle { left: max(14px, calc(env(safe-area-inset-left) + 8px)); }
   .mxp-stats-overlay { left: 8px; top: 8px; width: calc(100% - 16px); font-size: 10px; }
   .mxp-toast { bottom: 64px; }
 }
@@ -609,8 +847,11 @@
   .mxp-stats-row { grid-template-columns: minmax(0, 1fr); }
   .mxp-stats-label { text-align: left; }
   .mxp-context-menu { min-width: 0; width: calc(100% - 16px); max-width: none; }
+  /* Too narrow to reserve room beside the popup: the compact bar centres itself again. */
+  .mxp-player-ui[data-mxp-subtitle-menu="open"] .mxp-subtitle-edit-bar { left: 50%; right: auto; max-width: calc(100% - 16px); transform: translateX(-50%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mxp-control-shell, .mxp-status-layer, .mxp-progress-track, .mxp-tooltip { transition: none; }
+  .mxp-control-shell, .mxp-status-layer, .mxp-progress-track, .mxp-tooltip, .mxp-icon-button, .mxp-lock-toggle { transition: none; }
+  .mxp-lock-toggle .mxp-icon-svg { animation: none; }
 }

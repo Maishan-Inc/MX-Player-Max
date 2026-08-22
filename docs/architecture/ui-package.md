@@ -28,10 +28,12 @@ host (.mxp-player-host)
 ├─ subtitle overlay                   Subtitles/Core 所有
 └─ .mxp-player-ui                     UI 所有
    ├─ status layer
+   ├─ lock toggle                     全屏/剧场时出现，锁定后仍在
    ├─ control shell
-   │  ├─ progress + played/buffered segments
+   │  ├─ progress: played fill + buffered segments
    │  ├─ optional preview
    │  └─ left/right control groups
+   ├─ subtitle popup + edit bar + drag guide
    └─ at most one overlay backdrop/panel
 ```
 
@@ -76,9 +78,9 @@ destroy 后迟到的 promise、event、timer 和 focus task 都必须在写 DOM 
 时间轴：
 
 - duration/currentTime 为 `Micros | null`，未知值显示安全占位；
-- played 和 buffered 以离散 segment 表示，不把真实 gap 合并；
+- played 是跟随播放头的连续填充，buffered 以离散 segment 表示且不合并真实 gap；`played` 快照区间用于诊断而不是进度指示，否则一次 seek 之后填充会停在旧区间里看起来卡死；
 - pointer click/drag 和键盘 seek 统一经 coordinator，连续操作 80 ms coalesce，release 最终 flush；
-- seeking 状态来自 snapshot，拖拽值只作为本地视觉反馈；
+- seeking 状态来自 snapshot，拖拽值只作为本地视觉反馈：填充立刻跟随指针，快照落到目标位置或 1.2 s 无人应答后交回快照；
 - EOS 和非有限值在 Core 归一化，UI 仍执行二次边界保护。
 
 ## 6. 预览边界
@@ -96,21 +98,21 @@ Native preview 位于 Core 的隔离服务，使用独立 muted media element/ca
 
 Phase 8 的 subtitles 包仍拥有解析、轨道、时钟、Overlay、样式验证和 `SubtitleStyleStore`。UI 只显示安全轨道摘要，并调用选择/样式公共 API。
 
-字幕界面覆盖 off、轨道选择、外挂来源状态和全部已确认样式字段。通用 guide 的中心拖拽更新 x/y，上下句柄更新 fontSize；写入按 80 ms 限频并在结束时 flush。x 限制为 5-95%，y 为 8-92%，fontSize 为 6-256 px。resize、DPR、fullscreen、换源和 destroy 都会取消旧拖拽。
+字幕界面是贴控制栏的弹窗，分轨道、字体、样式三页，覆盖 off、轨道选择、外挂来源状态和全部已确认样式字段。弹窗与编辑模式共同持有一次播放挂起，两者都关闭后才恢复，且不覆盖用户自己按下的暂停。编辑模式下 guide 的中心拖拽只更新 y，上下句柄按指针到 guide 中心的距离比例更新 fontSize（与 MX-Player-Pro 相同的对称缩放，起始距离小于 1 px 时忽略）；写入按 80 ms 限频并在结束时 flush。x 由样式页的滑块设置并保持 5-95%，y 为 8-92%，fontSize 为 6-256 px。resize、DPR、fullscreen、换源和 destroy 都会取消旧拖拽。
 
 UI 没有 localStorage 代码，不重新实现 origin/local-file scope，也不读取 cue text 或 subtitle DOM。
 
 ## 8. 浮层、焦点与自动隐藏
 
-`settings | statistics | about | subtitles | null` 是唯一主浮层状态。打开新面板会关闭旧面板。document 级外部 pointer listener 只在面板打开时存在。
+`settings | statistics | about | null` 是唯一主浮层状态。打开新面板会关闭旧面板。字幕弹窗不在该状态机内：它贴着控制栏，可与统计浮层共存，并在指针落到控制栏其他位置时让位。document 级外部 pointer listener 只在面板打开时存在。
 
-打开面板后焦点进入第一个可操作元素并被限制在面板内；Escape/外部点击关闭并恢复 trigger。trigger 已移除时回退到 UI root。menu/drag/focus/pointer/keyboard interaction 都持有 visibility lock，播放中只有无 lock 且无 overlay 时才能自动隐藏。
+打开面板后焦点进入第一个可操作元素并被限制在面板内；Escape/外部点击关闭并恢复 trigger。trigger 已移除时回退到 UI root。menu/drag/pointer/keyboard focus 与 overlay 都持有 visibility lock；点击留下的 focus 不持有，否则鼠标用户点完播放后控制栏永不收起。自动隐藏倒计时只由真实交互重排，高频 `playbackchange` 不会重置它。锁定状态优先于全部可见性规则。
 
 ## 9. 样式与无障碍
 
 包发布独立 `dist/style.css`，不会 runtime 注入 `<style>` 或使用 CSS-in-JS。生产类名全部使用 `mxp-`，公开 token 使用 `--mxp-*`。包 manifest 把 `./dist/style.css` 标为 side effect，JS 入口仍可独立 tree-shake。
 
-样式提供 dark/light/system token、36x36 圆形控件基线、20 px 图标、tooltip、ARIA pressed/disabled/live/alert、稳定 DOM 顺序、2 px focus-visible、WCAG AA 目标色和 reduced-motion overrides。视觉语言对齐 MXAnime-CMS 内置的 MX-Player：单色强调（dark 为白、light 为黑）、`--mxp-scrim` 底部遮罩、3 px 全宽细进度轨（hover/focus 5 px、无独立 thumb）、毛玻璃深色浮层。样式契约允许且仅允许 `--mxp-scrim` 一处渐变，详见 `ADR-0006`。
+样式提供 dark/light/system token、36x36 控件基线、20 px 图标、tooltip、ARIA pressed/disabled/live/alert、稳定 DOM 顺序、2 px focus-visible、WCAG AA 目标色和 reduced-motion overrides。视觉语言对齐 MXAnime-CMS 内置的 MX-Player：单色强调（dark 为白、light 为黑）、`--mxp-scrim` 底部遮罩、3 px 全宽细进度轨（hover/focus 5 px、无独立 thumb）、毛玻璃深色浮层、Lucide 图标集（PiP 用 `PictureInPicture2`、剧场用 `RectangleHorizontal`、锁定用 `Lock`/`LockOpen`）。图标按钮不使用圆形底色：悬停提高不透明度，开启态在图标下画一条细线。样式契约允许且仅允许 `--mxp-scrim` 一处渐变，详见 `ADR-0006`。
 
 `<=760px` 隐藏音量 slider 与剧场按钮并缩减间距；`<=420px` 将时间独占一行并重排左右组。预览在移动断点隐藏。所有 runtime geometry 只通过有界 `--mxp-*` 变量设置。
 

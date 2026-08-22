@@ -77,9 +77,9 @@
     {
       "name": "@mx-player-max/demo",
       "directory": "apps/demo",
-      "testFiles": 5,
-      "tests": 21,
-      "passed": 21,
+      "testFiles": 6,
+      "tests": 24,
+      "passed": 24,
       "skipped": 0,
       "todo": 0
     },
@@ -168,8 +168,8 @@
       "name": "@mx-player-max/ui",
       "directory": "packages/ui",
       "testFiles": 3,
-      "tests": 60,
-      "passed": 60,
+      "tests": 62,
+      "passed": 62,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 96,
-    "tests": 568,
-    "passed": 568,
+    "testFiles": 97,
+    "tests": 573,
+    "passed": 573,
     "skipped": 0,
     "todo": 0
   }

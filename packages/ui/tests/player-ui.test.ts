@@ -125,7 +125,7 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     ui.destroy()
   })
 
-  it('renders disjoint played and buffered ranges without bridging gaps', () => {
+  it('fills the rail to the playhead and keeps buffered gaps discrete', () => {
     const player = new FakePlayer()
     player.playback = {
       ...player.playback,
@@ -135,12 +135,41 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     const host = document.createElement('div')
     document.body.append(host)
     const ui = attachPlayerUi(player as unknown as MXPlayer, host)
-    const played = [...host.querySelectorAll<HTMLElement>('.mxp-progress-played .mxp-progress-segment')]
+    const root = host.querySelector<HTMLElement>('.mxp-player-ui')!
+    // One continuous fill to the current position: the `played` islands must not fragment it.
+    expect(root.style.getPropertyValue('--mxp-progress-pct')).toBe('10%')
+    expect(host.querySelectorAll('.mxp-progress-played .mxp-progress-segment')).toHaveLength(0)
     const buffered = [...host.querySelectorAll<HTMLElement>('.mxp-progress-buffered .mxp-progress-segment')]
-    expect(played).toHaveLength(2)
-    expect(played[1]?.style.getPropertyValue('--mxp-range-start')).toBe('30%')
     expect(buffered).toHaveLength(2)
+    expect(buffered[1]?.style.getPropertyValue('--mxp-range-start')).toBe('60%')
     expect(buffered[1]?.style.getPropertyValue('--mxp-range-width')).toBe('20.000000000000007%')
+    ui.destroy()
+  })
+
+  it('follows the pointer while dragging and retires the local position once the SDK confirms', async () => {
+    vi.useFakeTimers()
+    const player = new FakePlayer()
+    const host = document.createElement('div')
+    document.body.append(host)
+    const ui = attachPlayerUi(player as unknown as MXPlayer, host)
+    const root = host.querySelector<HTMLElement>('.mxp-player-ui')!
+    const rail = host.querySelector<HTMLElement>('.mxp-progress-wrap')!
+    rail.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 200, bottom: 12, width: 200, height: 12, toJSON: () => ({}) })
+    rail.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 4, clientX: 150, bubbles: true }))
+    // The fill jumps to the pointer immediately, before any snapshot has come back.
+    expect(root.style.getPropertyValue('--mxp-progress-pct')).toBe('75%')
+    rail.dispatchEvent(new PointerEvent('pointerup', { pointerId: 4, clientX: 150, bubbles: true }))
+    await vi.runAllTimersAsync()
+    expect(player.seek).toHaveBeenCalledWith(75_000_000)
+    player.playback = { ...player.playback, currentTime: 75_000_000 }
+    player.emit('playbackchange', { snapshot: player.playback, reason: 'time' })
+    expect(root.style.getPropertyValue('--mxp-progress-pct')).toBe('75%')
+    // An unanswered seek must not strand the rail away from the real position.
+    rail.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 5, clientX: 20, bubbles: true }))
+    rail.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, clientX: 20, bubbles: true }))
+    expect(root.style.getPropertyValue('--mxp-progress-pct')).toBe('10%')
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(root.style.getPropertyValue('--mxp-progress-pct')).toBe('75%')
     ui.destroy()
   })
 
@@ -199,7 +228,7 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     ui.destroy()
   })
 
-  it('keeps one main overlay, closes with Escape, and restores focus', () => {
+  it('keeps one main overlay, hands over to the subtitle popup, and restores focus', () => {
     const player = new FakePlayer()
     const host = document.createElement('div')
     const outside = document.createElement('button')
@@ -209,9 +238,16 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     settings.focus(); settings.click()
     expect(host.querySelectorAll('.mxp-overlay-backdrop')).toHaveLength(1)
     expect(document.activeElement).toBe(host.querySelector<HTMLButtonElement>('[data-mxp-action="close"]'))
-    host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitles"]')!.click()
-    expect(host.querySelectorAll('.mxp-overlay-backdrop')).toHaveLength(1)
-    expect(host.querySelector('.mxp-overlay-backdrop')?.getAttribute('data-mxp-overlay')).toBe('subtitles')
+    const subtitles = host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitles"]')!
+    subtitles.click()
+    // The subtitle popup is anchored chrome, not a modal: the settings overlay steps aside.
+    expect(host.querySelector('.mxp-overlay-backdrop')).toBeNull()
+    expect(host.querySelectorAll('.mxp-subtitle-menu')).toHaveLength(1)
+    const focused = document.activeElement as HTMLElement
+    focused.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(host.querySelector('.mxp-subtitle-menu')).toBeNull()
+    expect(document.activeElement).toBe(subtitles)
+    settings.focus(); settings.click()
     outside.focus()
     outside.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     expect(host.querySelector('.mxp-overlay-backdrop')).toBeNull()
@@ -250,6 +286,52 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     settings.click()
     outside.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
     expect(host.querySelector('.mxp-overlay-backdrop')).toBeNull()
+    ui.destroy()
+  })
+
+  it('locks the chrome away where the player owns the screen and lets Escape out again', async () => {
+    vi.useFakeTimers()
+    const player = new FakePlayer()
+    player.playback = { ...player.playback, state: 'playing', paused: false }
+    const host = document.createElement('div')
+    document.body.append(host)
+    let theater = false
+    const listeners = new Set<(active: boolean) => void>()
+    const ui = attachPlayerUi(player as unknown as MXPlayer, host, {
+      features: { theater: true },
+      theaterMode: {
+        getState: (): boolean => theater,
+        setState: (active: boolean): void => { theater = active; for (const listener of listeners) listener(active) },
+        subscribe: (listener: (active: boolean) => void): (() => void) => { listeners.add(listener); return (): void => { listeners.delete(listener) } },
+      },
+    })
+    const root = host.querySelector<HTMLElement>('.mxp-player-ui')!
+    const lock = host.querySelector<HTMLButtonElement>('[data-mxp-action="lock"]')!
+    // Windowed playback keeps the escape hatch of the surrounding page, so no lock is offered.
+    expect(lock.hidden).toBe(true)
+    host.querySelector<HTMLButtonElement>('[data-mxp-action="theater"]')!.click()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(lock.hidden).toBe(false)
+    expect(lock.getAttribute('aria-label')).toBe('Lock controls')
+
+    lock.click()
+    expect(root.dataset.mxpLocked).toBe('true')
+    expect(root.dataset.mxpVisible).toBe('false')
+    expect(lock.getAttribute('aria-label')).toBe('Unlock controls')
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', bubbles: true }))
+    expect(player.play).not.toHaveBeenCalled()
+    // The affordance itself fades out, and the cursor goes with it.
+    expect(root.dataset.mxpLockChrome).toBe('true')
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(root.dataset.mxpLockChrome).toBe('false')
+    expect(host.dataset.mxpCursor).toBe('hidden')
+    host.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }))
+    expect(root.dataset.mxpLockChrome).toBe('true')
+    expect(host.dataset.mxpCursor).toBeUndefined()
+
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(root.dataset.mxpLocked).toBe('false')
+    expect(root.dataset.mxpVisible).toBe('true')
     ui.destroy()
   })
 
@@ -309,10 +391,27 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     const host = document.createElement('div')
     document.body.append(host)
     const ui = attachPlayerUi(player as unknown as MXPlayer, host)
-    host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitles"]')!.click()
-    host.querySelector<HTMLButtonElement>('.mxp-subtitle-track')!.click()
+    const openSubtitles = (): HTMLElement => {
+      host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitles"]')!.click()
+      return host.querySelector<HTMLElement>('.mxp-subtitle-menu')!
+    }
+    const track = openSubtitles().querySelector<HTMLButtonElement>('.mxp-subtitle-track[data-mxp-selected="false"]')!
+    expect(track.textContent).toContain('Local file - ready')
+    track.click()
+    await Promise.resolve()
     await Promise.resolve()
     expect(player.selectSubtitleTrack).toHaveBeenCalledWith('en')
+    // Picking a track dismisses the popup, as in MX-Player-Pro.
+    expect(host.querySelector('.mxp-subtitle-menu')).toBeNull()
+
+    const fontMenu = openSubtitles()
+    fontMenu.querySelector<HTMLButtonElement>('.mxp-subtitle-tab[data-mxp-page="font"]')!.click()
+    const fonts = [...host.querySelectorAll<HTMLButtonElement>('.mxp-subtitle-font')]
+    expect(fonts).toHaveLength(6)
+    fonts[1]?.click()
+    expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ fontFamily: expect.stringContaining('Noto Sans SC') }))
+
+    host.querySelector<HTMLButtonElement>('.mxp-subtitle-tab[data-mxp-page="style"]')!.click()
     const size = [...host.querySelectorAll<HTMLInputElement>('.mxp-style-slider')].find((input) => input.getAttribute('aria-label') === 'Font size')!
     size.value = '44'; size.dispatchEvent(new Event('input', { bubbles: true }))
     expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 44 }))
@@ -325,29 +424,52 @@ describe('@mx-player-max/ui lifecycle and controls (simulated DOM)', () => {
     expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ alignment: 'top-left' }))
     expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ outlineWidth: 4 }))
     expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ bold: true }))
-    expect(host.textContent).toContain('Local file - ready')
     ui.destroy()
   })
 
-  it('clamps subtitle center and font-size handle drags to the safe area', () => {
+  it('moves the subtitle vertically only and resizes it proportionally from the box centre', () => {
     const player = new FakePlayer()
     const host = document.createElement('div')
     document.body.append(host)
     const ui = attachPlayerUi(player as unknown as MXPlayer, host)
     host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitles"]')!.click()
+    host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitle-edit"]')!.click()
+    expect(host.querySelector('.mxp-subtitle-edit-bar')).not.toBeNull()
     const root = host.querySelector<HTMLElement>('.mxp-player-ui')!
     root.getBoundingClientRect = () => ({ x: 0, y: 0, left: 0, top: 0, right: 200, bottom: 100, width: 200, height: 100, toJSON: () => ({}) })
     const guide = host.querySelector<HTMLElement>('[data-mxp-guide="true"]')!
+    // A 900 px sideways drag must not move the line: it stays on the axis the style already sets.
     guide.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, clientX: 100, clientY: 50, bubbles: true }))
     guide.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 1_000, clientY: -1_000, bubbles: true }))
     guide.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: 1_000, clientY: -1_000, bubbles: true }))
-    expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ x: 95, y: 8 }))
+    expect(player.setSubtitleStyle).toHaveBeenLastCalledWith(expect.objectContaining({ x: 50, y: 8 }))
 
+    // Both handles read the pointer's distance from the guide centre, so either edge dragged to
+    // twice its grab distance doubles the size.
+    guide.getBoundingClientRect = () => ({ x: 0, y: 60, left: 0, top: 60, right: 200, bottom: 100, width: 200, height: 40, toJSON: () => ({}) })
     const top = guide.querySelector<HTMLElement>('[data-mxp-edge="top"]')!
-    top.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, clientY: 50, bubbles: true }))
-    top.dispatchEvent(new PointerEvent('pointermove', { pointerId: 2, clientY: -1_000, bubbles: true }))
-    top.dispatchEvent(new PointerEvent('pointerup', { pointerId: 2, clientY: -1_000, bubbles: true }))
-    expect(player.setSubtitleStyle).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 256 }))
+    top.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2, clientY: 60, bubbles: true }))
+    top.dispatchEvent(new PointerEvent('pointermove', { pointerId: 2, clientY: 40, bubbles: true }))
+    top.dispatchEvent(new PointerEvent('pointerup', { pointerId: 2, clientY: 40, bubbles: true }))
+    expect(player.setSubtitleStyle).toHaveBeenLastCalledWith(expect.objectContaining({ fontSize: 72 }))
+    player.subtitleStyle = { ...player.subtitleStyle, fontSize: 36 }
+    const bottom = guide.querySelector<HTMLElement>('[data-mxp-edge="bottom"]')!
+    bottom.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 3, clientY: 100, bubbles: true }))
+    bottom.dispatchEvent(new PointerEvent('pointermove', { pointerId: 3, clientY: 120, bubbles: true }))
+    bottom.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, clientY: 120, bubbles: true }))
+    expect(player.setSubtitleStyle).toHaveBeenLastCalledWith(expect.objectContaining({ fontSize: 72 }))
+    // Dragging an edge onto the centre shrinks to the floor rather than dividing by zero.
+    player.subtitleStyle = { ...player.subtitleStyle, fontSize: 36 }
+    bottom.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 4, clientY: 100, bubbles: true }))
+    bottom.dispatchEvent(new PointerEvent('pointermove', { pointerId: 4, clientY: 80, bubbles: true }))
+    bottom.dispatchEvent(new PointerEvent('pointerup', { pointerId: 4, clientY: 80, bubbles: true }))
+    expect(player.setSubtitleStyle).toHaveBeenLastCalledWith(expect.objectContaining({ fontSize: 6 }))
+
+    // Finishing leaves the popup up but takes the drag affordances away.
+    host.querySelector<HTMLButtonElement>('[data-mxp-action="subtitle-edit-done"]')!.click()
+    expect(host.querySelector('[data-mxp-guide="true"]')).toBeNull()
+    expect(host.querySelector('.mxp-subtitle-edit-bar')).toBeNull()
+    expect(host.querySelector('.mxp-subtitle-menu')).not.toBeNull()
     ui.destroy()
   })
 

@@ -28,6 +28,8 @@ export interface PlayerUiFeatureOptions {
   readonly share?: boolean
   /** Copy debug info and the troubleshooting report. */
   readonly troubleshoot?: boolean
+  /** Lock the chrome while fullscreen or theater mode is active. */
+  readonly lockControls?: boolean
 }
 
 export interface NextEpisodeControlOptions {
@@ -73,8 +75,28 @@ export interface PlayerUiLabels {
   readonly subtitleOff: string
   readonly subtitleTracks: string
   readonly subtitleStyle: string
+  /** Font-picker page of the subtitle menu. */
+  readonly subtitleFont: string
+  /** Opens the drag-to-edit mode from the subtitle menu header. */
+  readonly subtitleEdit: string
+  /** One-line instruction shown by the subtitle edit bar. */
+  readonly subtitleEditHint: string
+  /** Stand-in line rendered by the edit guide when no cue is on screen. */
+  readonly subtitleSample: string
+  /** Play-button tooltip while the subtitle menu holds the picture still. */
+  readonly subtitleHold: string
+  readonly done: string
+  readonly lockControls: string
+  readonly unlockControls: string
   readonly fontFamily: string
   readonly fontSize: string
+  /* Font list of the subtitle menu */
+  readonly fontSystem: string
+  readonly fontSans: string
+  readonly fontSerif: string
+  readonly fontKai: string
+  readonly fontRounded: string
+  readonly fontMono: string
   readonly alignment: string
   readonly horizontalPosition: string
   readonly subtitlePosition: string
@@ -172,7 +194,7 @@ export type PlayerUiPlayer = PlayerUiRequiredPlayer & PlayerUiTelemetryPlayer
 export const DEFAULT_LABELS: PlayerUiLabels = {
   play: 'Play', pause: 'Pause', replay: 'Replay', nextEpisode: 'Next episode', mute: 'Mute', unmute: 'Unmute', volume: 'Volume',
   seek: 'Seek', subtitles: 'Subtitles', pictureInPicture: 'Picture in picture', exitPictureInPicture: 'Exit picture in picture', theater: 'Theater mode', exitTheater: 'Exit theater mode', settings: 'Settings', statistics: 'Stats for nerds', about: 'About',
-  fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', close: 'Close', subtitleOff: 'Off', subtitleTracks: 'Subtitle tracks', subtitleStyle: 'Subtitle style', fontFamily: 'Font family', fontSize: 'Font size', alignment: 'Alignment', horizontalPosition: 'Horizontal position', subtitlePosition: 'Vertical position', subtitleColor: 'Text color', outlineColor: 'Outline color', outlineWidth: 'Outline width', bold: 'Bold', italic: 'Italic', underline: 'Underline', embeddedTrack: 'Embedded', localTrack: 'Local file', remoteTrack: 'Remote URL', reset: 'Reset', playbackRate: 'Playback rate', noSubtitles: 'No subtitle tracks', loading: 'Loading', buffering: 'Buffering', seeking: 'Seeking', error: 'Playback error', unknownDuration: 'Live',
+  fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', close: 'Close', subtitleOff: 'Off', subtitleTracks: 'Subtitle tracks', subtitleStyle: 'Subtitle style', subtitleFont: 'Choose font', subtitleEdit: 'Edit subtitle style', subtitleEditHint: 'Drag the subtitle to move it, drag the top or bottom edge to resize', subtitleSample: 'Subtitle sample', subtitleHold: 'Paused while the subtitle menu is open', done: 'Done', lockControls: 'Lock controls', unlockControls: 'Unlock controls', fontFamily: 'Font family', fontSize: 'Font size', fontSystem: 'System default', fontSans: 'Sans', fontSerif: 'Serif', fontKai: 'Kai', fontRounded: 'Rounded', fontMono: 'Monospace', alignment: 'Alignment', horizontalPosition: 'Horizontal position', subtitlePosition: 'Vertical position', subtitleColor: 'Text color', outlineColor: 'Outline color', outlineWidth: 'Outline width', bold: 'Bold', italic: 'Italic', underline: 'Underline', embeddedTrack: 'Embedded', localTrack: 'Local file', remoteTrack: 'Remote URL', reset: 'Reset', playbackRate: 'Playback rate', noSubtitles: 'No subtitle tracks', loading: 'Loading', buffering: 'Buffering', seeking: 'Seeking', error: 'Playback error', unknownDuration: 'Live',
   contextMenu: 'Player menu', loop: 'Loop', miniPlayer: 'Miniplayer', exitMiniPlayer: 'Exit miniplayer', copyVideoUrl: 'Copy video URL', copyVideoUrlAtTime: 'Copy video URL at current time', copyEmbedCode: 'Copy embed code', copyDebugInfo: 'Copy debug info', troubleshoot: 'Troubleshoot playback issue', copied: 'Copied to the clipboard', copyFailed: 'The clipboard is unavailable',
   statsVideoId: 'Video ID / sCPN', statsViewport: 'Viewport / Frames', statsResolution: 'Current / Optimal Res', statsVolume: 'Volume / Normalized', statsCodecs: 'Codecs', statsColor: 'Color', statsConnection: 'Connection Speed', statsNetwork: 'Network Activity', statsBufferHealth: 'Buffer Health', statsMystery: 'Mystery Text', statsDate: 'Date', statsFrames: '{dropped} dropped of {total}', statsUnknown: 'n/a',
   troubleshootHealthy: 'No playback problem was detected.', troubleshootFindings: 'Findings', troubleshootDroppedFrames: 'Frames are being dropped. Lower the resolution, close other GPU-heavy tabs, or switch the playback intent back to Normal.', troubleshootBuffering: 'Playback is starving for data. Check the connection and confirm the server answers HTTP Range requests with 206 Partial Content.', troubleshootError: 'The engine reported an error. The code below identifies the failing stage.', troubleshootNoAudioClock: 'No audio clock is running, so video timing follows the media wall clock and may drift.', troubleshootSoftwareDecode: 'A WASM decoder is active. Hardware decoding is unavailable for this codec in this browser.', troubleshootEnvironment: 'Environment', troubleshootCopyReport: 'Copy report',
@@ -180,7 +202,7 @@ export const DEFAULT_LABELS: PlayerUiLabels = {
 
 export const DEFAULT_FEATURES: Required<PlayerUiFeatureOptions> = {
   nextEpisode: true, volume: true, subtitles: true, pictureInPicture: true, theater: false, settings: true, statistics: true, about: true, fullscreen: true, preview: true,
-  contextMenu: true, loop: true, miniPlayer: true, share: true, troubleshoot: true,
+  contextMenu: true, loop: true, miniPlayer: true, share: true, troubleshoot: true, lockControls: true,
 }
 
 export const UiErrorCodes = {

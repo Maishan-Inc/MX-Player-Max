@@ -57,15 +57,15 @@ interface PlayerUiController {
 |---|---|---|
 | `theme` | `dark | light | system`，默认 `dark` | 设置 `data-mxp-theme` 并选择 CSS token |
 | `locale` | `en | zh-CN | zh-TW | ja | auto`，默认 `en` | 选择内置文案包；`auto` 依次读取宿主 `<html lang>`、`navigator.languages`、`navigator.language` |
-| `features` | `PlayerUiFeatureOptions` | 分别启用下一集、音量、字幕、PiP、剧场、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项和排查项 |
+| `features` | `PlayerUiFeatureOptions` | 分别启用下一集、音量、字幕、PiP、剧场、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项、排查项和控制栏锁定 |
 | `labels` | `Partial<PlayerUiLabels>` | 在所选 locale 之上逐条覆盖可见文本、tooltip 与 ARIA label |
 | `share` | `PlayerUiShareOptions` | 右键菜单复制项使用的地址；UI 不从引擎内部推导媒体地址 |
-| `autoHideDelayMs` | `2500` | 允许范围 500-30000 ms |
+| `autoHideDelayMs` | `5000` | 允许范围 500-30000 ms；与 MXAnime-CMS 内置播放器一致 |
 | `nextEpisode` | callback + unavailable behavior | 只把命令交给宿主，不管理播放列表 |
 | `theaterMode` | `TheaterModeAdapter` | 宿主拥有的 get/set/subscribe 状态 |
 | `onError` | `(summary) => void` | 只返回 `UI_*` code 与 recoverable，不泄露原始异常 |
 
-默认开启下一集、音量、字幕、PiP、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项和排查项；剧场模式默认关闭。下一集没有 callback 时可选择 disabled 或 hidden。
+默认开启下一集、音量、字幕、PiP、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项、排查项和控制栏锁定；剧场模式默认关闭。下一集没有 callback 时可选择 disabled 或 hidden。
 
 ### 语言包
 
@@ -180,24 +180,50 @@ provider 只收到 time、duration、dimensions、sessionEpoch 与 AbortSignal�
 
 字幕控件只调用 Phase 8 API：`subtitleTracks`、`selectedSubtitleTrack`、`subtitleState`、`subtitleStyle`、`selectSubtitleTrack()`、`setSubtitleStyle()` 和 `resetSubtitleStyle()`。关闭字幕等价于选择 `null`。
 
-UI 不解析 SRT/ASS，不读取 cue 正文，不建立自己的 localStorage key。默认 `SubtitleStyleStore` 仍由 subtitles 包按 URL origin 或 `local-file` 作用域管理。位置和上下句柄只把受限的 x/y/fontSize 写回公共样式 API。
+字幕入口不是模态浮层，而是贴在控制栏右上方的弹窗（`.mxp-subtitle-menu`），形态与 MX-Player-Pro 一致：
+
+| 页 | 内容 |
+|---|---|
+| 字幕 | 关闭字幕 + 轨道列表，每行附来源与轨道状态 |
+| 选择字体 | 六个 CJK 优先字体栈，选中项打勾，每行用该字体渲染 `ABCabc123` 样张 |
+| 字幕样式 | 字号、水平/垂直位置、描边宽度、文字与描边颜色、粗体/斜体/下划线、对齐方式、恢复默认 |
+
+弹窗打开期间画面保持静止：这是一次比较任务，动画会干扰判断。挂起由弹窗与编辑模式共同持有，两者都关闭后才恢复；打开前用户自己按下的暂停不会被覆盖，播放按钮在挂起期间禁用并给出提示。列表高度由轨道数决定，切页不会在指针下改变弹窗尺寸。
+
+弹窗标题栏的齿轮进入编辑模式：画面上出现一条虚线参考框（`[data-mxp-guide="true"]`），底部细条（`.mxp-subtitle-edit-bar`）给出操作提示、当前数值、恢复默认与完成。编辑模式叠在弹窗之上，字体列表始终只差一次点击。
+
+拖拽行为与 MX-Player-Pro 一致：
+
+- 参考框只上下移动，横向位置由样式页的水平位置决定，拖拽不会改写它；
+- 上下句柄按指针到参考框中心的距离比例缩放字号（拉到两倍距离即两倍字号），两条边因此对称，句柄正好落在中心时忽略本次拖拽而不是除零；
+- 字号仍受引擎的 6-256 px 约束，写入按 80 ms 限频并在结束时 flush。
+
+UI 不解析 SRT/ASS，不读取 cue 正文，不建立自己的 localStorage key。默认 `SubtitleStyleStore` 仍由 subtitles 包按 URL origin 或 `local-file` 作用域管理。参考框和句柄只把受限的 x/y/fontSize 写回公共样式 API。
 
 ## 8. 控件、浮层与键盘
 
 - 进度支持 click、pointer capture drag、80 ms 连续 seek、release flush、Home/End、Arrow 与 Page 键。
+- 已播放填充是连续的一条，跟随播放头；缓冲仍按真实区间分段，不合并 gap。
+- 拖拽期间填充跟随指针：本地拖拽位置只是视觉反馈，快照确认到目标位置（或 1.2 s 无人应答）后交回快照。
 - 预览在 fine pointer 悬停 100 ms 后请求；移动会 abort 旧请求，触摸布局只保留正常 seek。
-- 字幕、设置、关于、排查播放问题共用一个主浮层状态机；任何时刻最多一个。
+- 设置、关于、排查播放问题共用一个主浮层状态机；任何时刻最多一个。字幕弹窗与编辑条不属于该状态机，可与设置以外的表面共存。
 - 详细统计信息是独立的非模态浮层，可以与浮层、菜单和正常播放同时存在。
 - Escape、外部 pointerdown 关闭；打开后焦点进入面板，关闭后恢复到 trigger。
-- 播放中自动隐藏；pointer、keyboard、focus、menu、drag 期间保持显示。
-- 快捷键为 Space、方向键、F、M、C；表单、range、button、menu/dialog/contenteditable 内抑制。
-- Escape 的优先级为：右键菜单 → 浮层 → 迷你播放器。
+- 播放中自动隐藏，默认 5 s；指针离开播放器立即收起。`playbackchange` 每秒到达数次但不会重置倒计时，只有真实交互才重新计时。
+- pointer、menu、drag、overlay 和键盘 focus 期间保持显示；点击留下的 focus 不算交互，鼠标点完播放后控制栏仍会收起。焦点进入播放器区域本身会重新显示控制栏，随后的 Tab 才能落到控件上。
+- 全屏且控制栏收起时隐藏光标，锁定且锁图标收起时同样隐藏。
+- 快捷键为 Space、方向键、F、M、C；表单、range、button、menu/dialog/contenteditable 内抑制。任一被处理的按键都会重新显示控制栏。
+- Escape 的优先级为：右键菜单 → 字幕弹窗 → 浮层 → 迷你播放器。
+
+### 8.0 控制栏锁定
+
+全屏或剧场模式下，播放器左侧中部出现锁定按钮（`features.lockControls`，默认开启）。锁定后控制栏、状态层与所有浮层收起，指针与键盘对播放不再生效，只有锁图标本身可点；锁图标 5 s 无操作后淡出并隐藏光标，指针移动重新唤出。窗口模式不显示该按钮。根节点用 `data-mxp-locked` 与 `data-mxp-lock-chrome` 公开这两个状态，宿主可据此调整自己的 chrome。
 
 ## 8.1 右键菜单
 
 菜单监听共享宿主而不是 UI 根节点：播放 surface 是根节点的兄弟元素，根节点中心对指针透明，只有挂在宿主上才能接住 video/canvas 区域的右键。`features.contextMenu: false` 时恢复浏览器原生菜单。
 
-分三组，空组连同分隔线一起消失：
+分三组，空组连同分隔线一起消失。每一项都带一个 Lucide 图标，可勾选项额外保留左侧勾选位，使标签始终对齐：
 
 | 组 | 条目 | 行为 |
 |---|---|---|
@@ -235,7 +261,7 @@ SDK 不暴露字节计数器，所以网络活动与连接速度是派生估算�
 import '@mx-player-max/ui/style.css'
 ```
 
-包不会运行时注入 `<style>`。所有 UI 类名以 `mxp-` 开头，公开视觉参数以 `--mxp-*` 开头。默认视觉为单色 chrome：`--mxp-accent` 在 dark 主题为白、light 主题为黑，`--mxp-scrim` 提供控制栏底部遮罩，`--mxp-control-size` 基线 36 px 圆形按钮。`<=760px` 隐藏音量 slider 与剧场按钮，`<=420px` 重排控制行；focus-visible 与 `prefers-reduced-motion` 由样式表实现。覆盖任一 token 即可换色，不需要 fork 样式表。
+包不会运行时注入 `<style>`。所有 UI 类名以 `mxp-` 开头，公开视觉参数以 `--mxp-*` 开头。默认视觉为单色 chrome：`--mxp-accent` 在 dark 主题为白、light 主题为黑，`--mxp-scrim` 提供控制栏底部遮罩，`--mxp-control-size` 基线 36 px 按钮。图标按钮没有悬停或开启态的圆形底色：悬停只提高不透明度，开启态在图标下画一条 `--mxp-accent` 细线。`<=760px` 隐藏音量 slider 与剧场按钮，`<=420px` 重排控制行；focus-visible 与 `prefers-reduced-motion` 由样式表实现。覆盖任一 token 即可换色，不需要 fork 样式表。
 
 诊断浮层是唯一离开单色语言的表面，它自带 `--mxp-stats-bg`、`--mxp-stats-meter`、`--mxp-stats-graph`、`--mxp-stats-warn` 四个 token，其余表面仍然只用单色 token。停靠状态由 `.mxp-player-host[data-mxp-mini="true"]` 提供，宿主可以覆盖 inset 与宽度改变停靠角。
 

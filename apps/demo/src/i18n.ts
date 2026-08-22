@@ -105,6 +105,10 @@ export interface DemoCopy {
     readonly subtitleAttached: string
     readonly subtitleError: string
     readonly unknownSize: string
+    /** Shown by the media readout until the engine has identified the tracks. */
+    readonly mediaPending: string
+    /** Prefix of the media readout, ahead of the concrete track parameters. */
+    readonly mediaLabel: string
     readonly featuresLabel: string
   }
   readonly errors: {
@@ -160,6 +164,8 @@ const ZH_CN: DemoCopy = {
     subtitleAttached: '已挂载字幕 {name}',
     subtitleError: '字幕文件无法挂载，请检查是否为 SRT 或 ASS 文本轨。',
     unknownSize: '未知大小',
+    mediaPending: '编码待识别',
+    mediaLabel: '媒体参数',
     featuresLabel: '播放器能力',
   },
   errors: {
@@ -274,6 +280,8 @@ const ZH_TW: DemoCopy = {
     subtitleAttached: '已掛載字幕 {name}',
     subtitleError: '字幕檔案無法掛載，請確認是否為 SRT 或 ASS 文字軌。',
     unknownSize: '大小未知',
+    mediaPending: '編碼待識別',
+    mediaLabel: '媒體參數',
     featuresLabel: '播放器能力',
   },
   errors: {
@@ -388,6 +396,8 @@ const EN: DemoCopy = {
     subtitleAttached: '{name} subtitle attached',
     subtitleError: 'The subtitle file could not be attached. Check that it is an SRT or ASS text track.',
     unknownSize: 'unknown size',
+    mediaPending: 'Codec pending',
+    mediaLabel: 'Media parameters',
     featuresLabel: 'Player capabilities',
   },
   errors: {
@@ -502,6 +512,8 @@ const JA: DemoCopy = {
     subtitleAttached: '字幕 {name} を読み込みました',
     subtitleError: '字幕ファイルを読み込めません。SRT または ASS のテキストトラックか確認してください。',
     unknownSize: 'サイズ不明',
+    mediaPending: 'コーデック未判定',
+    mediaLabel: 'メディア情報',
     featuresLabel: 'プレーヤーの機能',
   },
   errors: {
