@@ -1,4 +1,7 @@
 import type {
+  AiPostProcessRequest,
+  AiStageStatus,
+  AiUnavailableReason,
   EngineError,
   MediaPreviewImage,
   PlaybackSnapshot,
@@ -508,7 +511,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     const root = this.#root
     if (!root) return
     const epoch = this.#epoch
-    this.#scope.add(this.#player.on('playbackchange', ({ snapshot }) => {
+    this.#scope.add(this.#player.on('playbackchange', ({ snapshot, reason }) => {
       if (epoch !== this.#epoch || this.#destroyed) return
       if (snapshot.sessionEpoch !== this.#sessionEpoch) {
         this.#sessionEpoch = snapshot.sessionEpoch
@@ -529,6 +532,9 @@ export class PlayerUiControllerImpl implements PlayerUiController {
       this.#observeSubtitlePause(snapshot)
       this.#applyLoop(snapshot)
       this.#render()
+      // `playbackchange` fires several times a second; only an AI change needs the
+      // open settings panel rebuilt, and rebuilding on every tick would steal focus.
+      if (reason === 'ai') this.#renderOverlayIfOpen()
     }))
     this.#scope.add(this.#player.on('subtitletrackchange', () => {
       if (epoch !== this.#epoch || this.#destroyed) return
@@ -989,10 +995,53 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     for (const value of [0.5, 0.75, 1, 1.25, 1.5, 2]) { const option = content.ownerDocument.createElement('option'); option.value = String(value); option.textContent = `${value}x`; option.selected = Math.abs(this.#snapshot.playbackRate - value) < 0.001; rate.append(option) }
     rate.addEventListener('change', () => { void this.#run(() => { this.#player.setPlaybackRate(Number(rate.value)) }) })
     section.append(rate)
+    if (this.#features.aiPostProcess) this.#renderAiSection(content)
     if (this.#features.subtitles) { const subtitle = content.ownerDocument.createElement('button'); subtitle.type = 'button'; subtitle.textContent = this.#labels.subtitles; subtitle.addEventListener('click', () => { this.#closeOverlay(true); this.#toggleSubtitleMenu() }); section.append(subtitle) }
     if (this.#features.statistics) { const stats = content.ownerDocument.createElement('button'); stats.type = 'button'; stats.textContent = this.#labels.statistics; stats.addEventListener('click', () => { this.#closeOverlay(true); this.#setStatsOpen(true) }); section.append(stats) }
     if (this.#features.troubleshoot) { const help = content.ownerDocument.createElement('button'); help.type = 'button'; help.textContent = this.#labels.troubleshoot; help.addEventListener('click', () => this.#openOverlay('troubleshoot', help)); section.append(help) }
     if (this.#features.about) { const about = content.ownerDocument.createElement('button'); about.type = 'button'; about.textContent = this.#labels.about; about.addEventListener('click', () => this.#openOverlay('about', about)); section.append(about) }
+  }
+
+  /**
+   * Two independent AI toggles. A stage the engine reports as unavailable stays
+   * visible but disabled, with the reason spelled out, so the control never looks
+   * broken and never silently does nothing.
+   */
+  #renderAiSection(content: HTMLElement): void {
+    const doc = content.ownerDocument
+    const status = this.#snapshot.ai
+    const section = this.#section(content, this.#labels.aiEnhance)
+    const stages: readonly [string, AiStageStatus | undefined, (next: boolean) => AiPostProcessRequest][] = [
+      [this.#labels.aiSuperResolution, status?.superResolution, (next) => ({ superResolution: next })],
+      [this.#labels.aiInterpolation, status?.interpolation, (next) => ({ interpolation: next })],
+    ]
+    for (const [label, stage, request] of stages) {
+      const row = doc.createElement('label'); row.className = 'mxp-panel-toggle'
+      const input = doc.createElement('input'); input.type = 'checkbox'
+      input.checked = stage?.enabled === true
+      input.disabled = stage?.available !== true
+      input.setAttribute('aria-label', label)
+      input.addEventListener('change', () => { void this.#run(() => this.#applyAiRequest(request(input.checked))) })
+      const text = doc.createElement('span'); text.textContent = label
+      row.append(input, text); section.append(row)
+      if (stage?.available === true) continue
+      const caption = doc.createElement('p'); caption.className = 'mxp-caption'
+      caption.textContent = this.#aiUnavailableText(stage?.unavailableReason ?? 'renderer-path')
+      section.append(caption)
+    }
+  }
+
+  #aiUnavailableText(reason: AiUnavailableReason): string {
+    if (reason === 'model-unavailable') return this.#labels.aiUnavailableModel
+    if (reason === 'device-capability') return this.#labels.aiUnavailableDevice
+    if (reason === 'not-implemented') return this.#labels.aiUnavailableNotImplemented
+    return this.#labels.aiUnavailableRendererPath
+  }
+
+  #applyAiRequest(request: AiPostProcessRequest): Promise<void> {
+    const apply = this.#player.setAiPostProcess
+    if (typeof apply !== 'function') throw new PlayerUiError(UiErrorCodes.UI_OPERATION_FAILED, 'The player does not expose AI post-processing', true)
+    return apply.call(this.#player, request)
   }
 
   #renderTroubleshoot(content: HTMLElement): void {

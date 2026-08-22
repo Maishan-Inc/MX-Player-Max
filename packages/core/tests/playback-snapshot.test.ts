@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createPlaybackSnapshot, summarizePlaybackError, updatePlaybackSnapshot } from '../src/playback/snapshot'
+import { createPlaybackSnapshot, snapshotReasonForStateChange, summarizePlaybackError, updatePlaybackSnapshot } from '../src/playback/snapshot'
 
 describe('playback snapshot normalization', () => {
   it('creates an immutable safe baseline and normalizes updates', () => {
@@ -22,6 +22,29 @@ describe('playback snapshot normalization', () => {
     expect(next.volume).toBe(1)
     expect(next.playbackRate).toBe(1.5)
     expect(next.capabilities.seek).toBe(true)
+  })
+
+  it('defaults AI post-processing to unavailable and merges a reported status', () => {
+    const initial = createPlaybackSnapshot(0)
+    expect(initial.ai).toEqual({
+      tier: 'off',
+      interpolation: { enabled: false, available: false, unavailableReason: 'renderer-path' },
+      superResolution: { enabled: false, available: false, unavailableReason: 'renderer-path' },
+    })
+    expect(Object.isFrozen(initial.ai.superResolution)).toBe(true)
+
+    const enabled = updatePlaybackSnapshot(initial, {
+      ai: {
+        tier: 'medium',
+        interpolation: { enabled: false, available: false, unavailableReason: 'not-implemented' },
+        superResolution: { enabled: true, available: true, unavailableReason: null },
+      },
+    })
+    expect(enabled.ai.superResolution).toEqual({ enabled: true, available: true, unavailableReason: null })
+    expect(Object.isFrozen(enabled.ai)).toBe(true)
+    // An update that says nothing about AI must not reset it.
+    expect(updatePlaybackSnapshot(enabled, { volume: 0.5 }).ai).toBe(enabled.ai)
+    expect(snapshotReasonForStateChange(initial, enabled)).toBe('ai')
   })
 
   it('reduces errors to stable code and recoverability only', () => {

@@ -105,6 +105,12 @@ export interface FrameBudgetGovernor {
 2. **`onSubmittedWorkDone()` + wall clock**（rough，adds latency）→ 作为 fallback
 3. **`requestVideoFrameCallback` callbacks**（仅 HTMLVideo 路径，AI 不可用时）→ 不适用
 
+当前实现走第 2 条：`Rt4kSrGraphExecutor` 把整张图录进**一个** command encoder 并只提交一次，
+帧内唯一的 fence 是末尾那次 `onSubmittedWorkDone()`——它同时是 governor 的测量点。逐 pass
+同步会把 22 层变成每帧 22 次 CPU↔GPU 往返，因此
+`packages/postprocess/tests/model-graph.test.ts` 用回归测试锁定「一次 encoder、一次 submit、
+一次 fence」这个不变量。改用 `timestamp-query` 时可以连这一次 fence 一起去掉。
+
 ## 依赖关系
 
 Governor 是一个叶子——只依赖浏览器的 GPU API，不依赖 `core`、`strategy` 或 `renderers`。它由 `postprocess/chain.ts` 在运行时创建并注入：

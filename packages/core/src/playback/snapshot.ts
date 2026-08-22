@@ -1,4 +1,5 @@
 import type {
+  AiPostProcessStatus,
   EngineError,
   PlaybackChangeReason,
   PlaybackControlCapabilities,
@@ -27,6 +28,7 @@ export interface PlaybackSnapshotInput {
   readonly buffering?: boolean
   readonly presentationMode?: PresentationMode
   readonly capabilities?: Partial<PlaybackControlCapabilities>
+  readonly ai?: AiPostProcessStatus
   readonly lastError?: EngineError | PlaybackErrorSummary | null
 }
 
@@ -37,6 +39,13 @@ const DEFAULT_CAPABILITIES: PlaybackControlCapabilities = Object.freeze({
   fullscreen: false,
   pictureInPicture: false,
   preview: false,
+})
+
+/** No session is running, so no stage can be switched on. */
+const DEFAULT_AI: AiPostProcessStatus = Object.freeze({
+  tier: 'off' as const,
+  interpolation: Object.freeze({ enabled: false, available: false, unavailableReason: 'renderer-path' as const }),
+  superResolution: Object.freeze({ enabled: false, available: false, unavailableReason: 'renderer-path' as const }),
 })
 
 export function createPlaybackSnapshot(sessionEpoch = 0): PlaybackSnapshot {
@@ -56,6 +65,7 @@ export function createPlaybackSnapshot(sessionEpoch = 0): PlaybackSnapshot {
     buffering: false,
     presentationMode: 'inline',
     capabilities: DEFAULT_CAPABILITIES,
+    ai: DEFAULT_AI,
     lastError: null,
   })
 }
@@ -83,6 +93,11 @@ export function updatePlaybackSnapshot(
     ...previous.capabilities,
     ...input.capabilities,
   })
+  const ai: AiPostProcessStatus = input.ai === undefined ? previous.ai : Object.freeze({
+    tier: input.ai.tier,
+    interpolation: Object.freeze({ ...input.ai.interpolation }),
+    superResolution: Object.freeze({ ...input.ai.superResolution }),
+  })
   const next = {
     ...previous,
     sessionEpoch: sessionEpoch !== undefined && Number.isSafeInteger(sessionEpoch) && sessionEpoch >= 0 ? sessionEpoch : previous.sessionEpoch,
@@ -102,6 +117,7 @@ export function updatePlaybackSnapshot(
     ...(input.buffering === undefined ? {} : { buffering: input.buffering }),
     ...(input.presentationMode === undefined ? {} : { presentationMode: input.presentationMode }),
     capabilities,
+    ai,
     ...(input.lastError === undefined ? {} : { lastError: summarizePlaybackError(input.lastError) }),
   }
   return Object.freeze(next)
@@ -111,6 +127,7 @@ export function snapshotReasonForStateChange(previous: PlaybackSnapshot, next: P
   if (previous.lastError?.code !== next.lastError?.code) return 'error'
   if (previous.presentationMode !== next.presentationMode) return 'presentation'
   if (JSON.stringify(previous.capabilities) !== JSON.stringify(next.capabilities)) return 'capabilities'
+  if (JSON.stringify(previous.ai) !== JSON.stringify(next.ai)) return 'ai'
   if (previous.volume !== next.volume || previous.muted !== next.muted) return 'volume'
   if (previous.playbackRate !== next.playbackRate) return 'rate'
   if (previous.currentTime !== next.currentTime || previous.duration !== next.duration || previous.played !== next.played) return 'time'

@@ -832,6 +832,39 @@ export interface PlaybackErrorSummary {
   readonly recoverable: boolean
 }
 
+/** Why an AI post-processing stage cannot be switched on for the current session. */
+export type AiUnavailableReason =
+  /** The session runs on the native or a non-WebGPU renderer; AI needs a WebGPU custom pipeline. */
+  | 'renderer-path'
+  /** No usable WebGPU adapter, or only a software fallback adapter. */
+  | 'device-capability'
+  /** No `aiModelBaseUrl` was configured, or the model asset failed to load or verify. */
+  | 'model-unavailable'
+  /** The GPU device was lost during playback. */
+  | 'device-lost'
+  /** The stage exists as an interface but has no verified implementation yet. */
+  | 'not-implemented'
+
+export interface AiStageStatus {
+  /** The stage is currently transforming frames. */
+  readonly enabled: boolean
+  /** `setAiPostProcess` can switch this stage on for the current session. */
+  readonly available: boolean
+  readonly unavailableReason: AiUnavailableReason | null
+}
+
+export interface AiPostProcessStatus {
+  readonly tier: AiQualityTier
+  readonly interpolation: AiStageStatus
+  readonly superResolution: AiStageStatus
+}
+
+/** Runtime request to switch AI post-processing stages on or off. */
+export interface AiPostProcessRequest {
+  readonly interpolation?: boolean
+  readonly superResolution?: boolean
+}
+
 export interface PlaybackSnapshot {
   readonly sessionEpoch: number
   readonly state: PlaybackState
@@ -848,6 +881,7 @@ export interface PlaybackSnapshot {
   readonly buffering: boolean
   readonly presentationMode: PresentationMode
   readonly capabilities: PlaybackControlCapabilities
+  readonly ai: AiPostProcessStatus
   readonly lastError: PlaybackErrorSummary | null
 }
 
@@ -860,6 +894,7 @@ export type PlaybackChangeReason =
   | 'rate'
   | 'presentation'
   | 'capabilities'
+  | 'ai'
   | 'error'
 
 export interface MediaPreviewRequest {
@@ -1116,6 +1151,8 @@ export interface MediaEngine extends EngineEventSource {
   setVolume(volume: number): void
   setMuted(muted: boolean): void
   setVideoFilter(filter: VideoFilterOptions): Promise<void>
+  /** Switch AI post-processing stages on or off for the active custom session. */
+  setAiPostProcess(request: AiPostProcessRequest): Promise<void>
   setVideoTransform(transform: VideoTransformOptions): void
   listSubtitleTracks(): readonly SubtitleTrack[]
   addSubtitleTrack(source: ExternalSubtitleSourceDescriptor, options?: SubtitleTrackOptions): Promise<SubtitleTrack>

@@ -36,8 +36,8 @@ export type { PackedTexture } from './gpu/packed'
 export { Rt4kSrGraphExecutor } from './gpu/rt4ksr'
 export { WebGpuInterpolationStage, WebGpuSuperResolutionStage } from './gpu/stages'
 export type { WebGpuStageOptions } from './gpu/stages'
-export { createRifeGraph, createRt4kSrGraph, uploadTensorStore } from './gpu/graph'
-export type { GpuGraphLayer, GpuModelGraph, GpuTensorBuffer, GpuTensorStore } from './gpu/graph'
+export { createRifeGraph, createRt4kSrGraph, graphTensorNames, uploadTensorStore } from './gpu/graph'
+export type { GpuGraphLayer, GpuGraphSlot, GpuModelGraph, GpuPadMode, GpuTensorBuffer, GpuTensorStore } from './gpu/graph'
 export {
   BILINEAR_WARP_WGSL,
   CONVOLUTION_WGSL,
@@ -45,8 +45,13 @@ export {
   PACKED_CONVOLUTION_WGSL,
   PACKED_INPUT_WGSL,
   PACKED_LAYER_NORM_WGSL,
+  PACKED_MASK_BLEND_WGSL,
+  PACKED_PIXEL_SHUFFLE_2_WGSL,
   PACKED_PIXEL_SHUFFLE_X4_WGSL,
   PACKED_PIXEL_UNSHUFFLE_WGSL,
+  PACKED_RESIZE_WGSL,
+  PACKED_TRANSPOSED_CONVOLUTION_WGSL,
+  PACKED_WARP_WGSL,
   RIFE_FLOW_WGSL,
   RIFE_IFBLOCK_WGSL,
   RT4KSR_RECONSTRUCTION_WGSL,

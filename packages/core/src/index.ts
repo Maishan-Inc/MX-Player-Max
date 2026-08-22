@@ -16,6 +16,10 @@ import { createStrategyEngine } from '@mx-player-max/strategy'
 import { createRenderer } from '@mx-player-max/renderers'
 import type { ManagedVideoRenderer, RendererEvent, RendererFactoryOptions } from '@mx-player-max/renderers'
 import type {
+  AiPostProcessRequest,
+  AiPostProcessStatus,
+  AiStageStatus,
+  AiUnavailableReason,
   AudioClockSnapshot,
   CustomAudioStats,
   CustomVideoStats,
@@ -142,6 +146,12 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let activeRenderer: ManagedVideoRenderer | null = null
   let renderLoop: CustomRenderLoop | null = null
   let aiPipeline: AiPipeline | null = null
+  /** Set while a WebGPU custom session is active; owns lazy stage construction. */
+  let aiControl: {
+    readonly reason: AiUnavailableReason | null
+    readonly modelConfigured: boolean
+    apply(request: AiPostProcessRequest): Promise<void>
+  } | null = null
   let subtitleController: CoreSubtitleController | null = null
   let customPipelineReady = false
   let customRendererRequired = false
@@ -184,6 +194,28 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     emit('playbackchange', { snapshot: next, reason })
   }
 
+  const aiStageOff = (reason: AiUnavailableReason): AiStageStatus => ({ enabled: false, available: false, unavailableReason: reason })
+
+  /** What the UI needs in order to render, enable or grey out each AI toggle. */
+  const aiStatus = (): AiPostProcessStatus => {
+    const control = aiControl
+    if (!control || control.reason !== null) {
+      const reason = control?.reason ?? 'renderer-path'
+      return { tier: 'off', interpolation: aiStageOff(reason), superResolution: aiStageOff(reason) }
+    }
+    return {
+      tier: aiPipeline?.tier ?? 'off',
+      // The RIFE stage is a placeholder: no executor runs its graph yet, so it is
+      // reported as present but not switchable rather than shipping wrong frames.
+      interpolation: aiStageOff('not-implemented'),
+      superResolution: {
+        enabled: aiPipeline?.superResolutionEnabled === true,
+        available: control.modelConfigured,
+        unavailableReason: control.modelConfigured ? null : 'model-unavailable',
+      },
+    }
+  }
+
   const ensureOpen = (): void => {
     if (closed) throw createEngineError(ErrorCodes.ENGINE_CLOSED, 'The media engine is closed', false)
   }
@@ -216,6 +248,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     renderLoop = null
     aiPipeline?.close()
     aiPipeline = null
+    aiControl = null
     activeRenderer?.close()
     activeRenderer = null
     probeReader?.close()
@@ -311,6 +344,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         pictureInPicture: false,
         preview: previewManager?.available === true,
       },
+      ai: aiStatus(),
     }, reason)
     customLastTime = currentTime
   }
@@ -749,40 +783,79 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
                 await activeRenderer.attach(customCanvas.canvas)
                 const renderer = activeRenderer
                 const rendererDevice = renderer.kind === 'webgpu' ? renderer.device : null
-                if (intent === 'ai-enhance' && playbackSelection.aiPlan?.proposedTier !== 'off'
-                  && renderer.kind === 'webgpu' && rendererDevice && 'decodedFrameSource' in customPipeline) {
-                  let rifeModel: ReturnType<typeof parseMxai> | undefined
-                  let rt4kSrModel: ReturnType<typeof parseMxai> | undefined
-                  if (options.aiModelBaseUrl !== undefined) {
-                    try {
-                      const asset = await loadAiModelAsset(RIFE_V425_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
-                      rifeModel = parseMxai(asset.bytes)
-                    } catch (error) {
-                      dispatch(() => emit('error', { error: { code: aiModelErrorCode(error), message: 'RIFE model load failed', recoverable: true } }))
-                    }
-                    try {
-                      const asset = await loadAiModelAsset(RT4KSR_X2_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
-                      rt4kSrModel = parseMxai(asset.bytes)
-                    } catch (error) {
-                      dispatch(() => emit('error', { error: { code: aiModelErrorCode(error), message: 'RT4KSR model load failed', recoverable: true } }))
-                    }
+                const rendererDevice2 = rendererDevice
+                const decodedSource = 'decodedFrameSource' in customPipeline ? customPipeline.decodedFrameSource : null
+                const softwareGpu = capabilities.webGpuFeatures.isFallbackAdapter === true
+                const capabilityReason: AiUnavailableReason | null = !rendererDevice2 || !decodedSource
+                  ? 'renderer-path'
+                  : softwareGpu ? 'device-capability' : null
+                let rt4kSrModel: ReturnType<typeof parseMxai> | undefined
+
+                const loadSuperResolutionModel = async (): Promise<ReturnType<typeof parseMxai>> => {
+                  if (rt4kSrModel) return rt4kSrModel
+                  if (options.aiModelBaseUrl === undefined) {
+                    throw createEngineError(ErrorCodes.RENDERER_AI_MODEL_LOAD_FAILED, 'No aiModelBaseUrl is configured for AI post-processing', true)
                   }
-                  const aiOptions: AiPipelineOptions = {
-                    upstream: customPipeline.decodedFrameSource,
-                    initialTier: playbackSelection.aiPlan?.proposedTier ?? 'low',
-                    ...(options.aiPostProcess?.maxTier === undefined ? {} : { maxTier: options.aiPostProcess.maxTier }),
-                    ...(options.aiPostProcess?.interpolation === 'off' ? {} : { interpolation: new WebGpuInterpolationStage({ device: rendererDevice, ...(rifeModel === undefined ? {} : { model: rifeModel }) }) }),
-                    ...(options.aiPostProcess?.superResolution === 'off' ? {} : { superResolution: new WebGpuSuperResolutionStage({ device: rendererDevice, ...(rt4kSrModel === undefined ? {} : { model: rt4kSrModel }) }) }),
-                    onEvent: (event) => dispatch(() => handleAiEvent(event, loadEpoch)),
+                  try {
+                    const asset = await loadAiModelAsset(RT4KSR_X2_MANIFEST, 'f32', { baseUrl: options.aiModelBaseUrl })
+                    rt4kSrModel = parseMxai(asset.bytes)
+                    return rt4kSrModel
+                  } catch (cause) {
+                    throw createEngineError(aiModelErrorCode(cause), 'RT4KSR model load failed', true, cause)
                   }
-                  aiPipeline = new AiPipeline(aiOptions)
+                }
+
+                const applyAiRequest = async (request: AiPostProcessRequest): Promise<void> => {
+                  if (capabilityReason !== null || !rendererDevice2 || !decodedSource) {
+                    throw createEngineError(ErrorCodes.RENDERER_AI_UNSUPPORTED, 'AI post-processing is unavailable for this session', true)
+                  }
+                  if (request.interpolation === true) {
+                    throw createEngineError(ErrorCodes.RENDERER_AI_UNSUPPORTED, 'AI frame interpolation has no verified implementation yet', true)
+                  }
+                  if (aiPipeline) {
+                    aiPipeline.setStages(request)
+                    return
+                  }
+                  if (request.superResolution !== true) return
+                  const model = await loadSuperResolutionModel()
+                  const superResolution = new WebGpuSuperResolutionStage({ device: rendererDevice2, model })
+                  try {
+                    aiPipeline = new AiPipeline({
+                      upstream: decodedSource,
+                      superResolution,
+                      initialTier: playbackSelection.aiPlan?.proposedTier ?? 'medium',
+                      ...(options.aiPostProcess?.maxTier === undefined ? {} : { maxTier: options.aiPostProcess.maxTier }),
+                      onEvent: (event) => dispatch(() => handleAiEvent(event, loadEpoch)),
+                    })
+                  } catch (cause) {
+                    superResolution.close()
+                    throw createEngineError(ErrorCodes.RENDERER_AI_PIPELINE_FAILED, 'The AI post-processing pipeline could not be created', true, cause)
+                  }
+                }
+
+                aiControl = { reason: capabilityReason, modelConfigured: options.aiModelBaseUrl !== undefined, apply: applyAiRequest }
+
+                if (intent === 'ai-enhance' && capabilityReason === null && options.aiPostProcess?.superResolution !== 'off'
+                  && playbackSelection.aiPlan?.superResolution !== false) {
+                  // Requested up front: build the stage now so the first frame is enhanced.
+                  try {
+                    await applyAiRequest({ superResolution: true })
+                  } catch (cause) {
+                    const error = toEngineError(cause, ErrorCodes.RENDERER_AI_PIPELINE_FAILED, 'AI post-processing could not start')
+                    dispatch(() => emit('error', { error: { code: error.code, message: error.message, recoverable: true } }))
+                  }
                 }
                 renderLoop = new CustomRenderLoop({
                   readVideoFrame: () => customPipeline.readVideoFrame(),
-                  ...(aiPipeline === null ? {} : {
+                  ...(aiControl?.reason !== null ? {} : {
                     readRenderableFrame: async (): Promise<CustomRenderableFrame | null> => {
+                      const active = aiPipeline
+                      if (!active) {
+                        const decoded = await customPipeline.readVideoFrame()
+                        return decoded === null ? null : { kind: 'video', frame: decoded }
+                      }
                       const clock = customPipeline.audioClock
-                      const processed = await aiPipeline?.frameAt(clock.mediaTime, clock.epoch)
+                      const processed = await active.frameAt(clock.mediaTime, clock.epoch)
                       if (!processed) return null
                       const detached = customPipeline.consumeFramesThrough(processed.timestamp)
                       if (processed.location === 'cpu') {
@@ -876,6 +949,16 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       if (!activePipeline) throw createEngineError(ErrorCodes.NATIVE_OPERATION_FAILED, 'No media is loaded', true)
       activePipeline.pipeline.setMuted(muted)
       syncPlayback('volume')
+    },
+
+    async setAiPostProcess(request: AiPostProcessRequest): Promise<void> {
+      ensureOpen()
+      const control = aiControl
+      if (activePipeline?.kind !== 'custom-video' || !control) {
+        throw createEngineError(ErrorCodes.RENDERER_AI_UNSUPPORTED, 'AI post-processing requires an active WebGPU custom session', true)
+      }
+      await control.apply(request)
+      syncCustomPlayback('ai')
     },
 
     async setVideoFilter(filter: VideoFilterOptions): Promise<void> {

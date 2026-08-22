@@ -5,6 +5,11 @@ import { DEFAULT_LABELS, type PlayerUiLabels, type PlayerUiLocale } from './cont
  * translation is a build error rather than an English string leaking into a localized UI.
  */
 const ZH_CN: PlayerUiLabels = {
+  aiEnhance: 'AI 增强', aiSuperResolution: '超分辨率', aiInterpolation: '插帧',
+  aiUnavailableRendererPath: '把渲染模式切换到 WebGPU 自定义管线后才能开启。',
+  aiUnavailableModel: '宿主未配置 AI 模型根目录。',
+  aiUnavailableDevice: '此设备没有可用的 WebGPU 适配器。',
+  aiUnavailableNotImplemented: '当前版本尚未提供。',
   play: '播放', pause: '暂停', replay: '重新播放', nextEpisode: '下一集', mute: '静音', unmute: '取消静音', volume: '音量',
   seek: '进度', subtitles: '字幕', pictureInPicture: '画中画', exitPictureInPicture: '退出画中画', theater: '影院模式', exitTheater: '退出影院模式', settings: '设置', statistics: '详细统计信息', about: '关于',
   fullscreen: '全屏', exitFullscreen: '退出全屏', close: '关闭', subtitleOff: '关闭字幕', subtitleTracks: '字幕轨道', subtitleStyle: '字幕样式', subtitleFont: '选择字体', subtitleEdit: '编辑字幕样式', subtitleEditHint: '拖动字幕调整位置，拖动上下边框调整大小', subtitleSample: '字幕示例', subtitleHold: '字幕菜单打开时已暂停', done: '完成', lockControls: '锁定控制栏', unlockControls: '解锁控制栏', fontFamily: '字体', fontSize: '字号', fontSystem: '系统默认', fontSans: '黑体', fontSerif: '宋体', fontKai: '楷体', fontRounded: '圆体', fontMono: '等宽', alignment: '对齐方式', horizontalPosition: '水平位置', subtitlePosition: '垂直位置', subtitleColor: '文字颜色', outlineColor: '描边颜色', outlineWidth: '描边宽度', bold: '粗体', italic: '斜体', underline: '下划线', embeddedTrack: '内嵌', localTrack: '本地文件', remoteTrack: '远程地址', reset: '恢复默认', playbackRate: '播放速度', noSubtitles: '没有可用的字幕轨道', loading: '加载中', buffering: '缓冲中', seeking: '跳转中', error: '播放出错', unknownDuration: '直播',
@@ -14,6 +19,11 @@ const ZH_CN: PlayerUiLabels = {
 }
 
 const ZH_TW: PlayerUiLabels = {
+  aiEnhance: 'AI 增強', aiSuperResolution: '超解析度', aiInterpolation: '補幀',
+  aiUnavailableRendererPath: '將算繪模式切換為 WebGPU 自訂管線後才能開啟。',
+  aiUnavailableModel: '宿主未設定 AI 模型根目錄。',
+  aiUnavailableDevice: '此裝置沒有可用的 WebGPU 轉接器。',
+  aiUnavailableNotImplemented: '目前版本尚未提供。',
   play: '播放', pause: '暫停', replay: '重新播放', nextEpisode: '下一集', mute: '靜音', unmute: '取消靜音', volume: '音量',
   seek: '進度', subtitles: '字幕', pictureInPicture: '子母畫面', exitPictureInPicture: '退出子母畫面', theater: '劇院模式', exitTheater: '退出劇院模式', settings: '設定', statistics: '詳細統計資訊', about: '關於',
   fullscreen: '全螢幕', exitFullscreen: '退出全螢幕', close: '關閉', subtitleOff: '關閉字幕', subtitleTracks: '字幕軌', subtitleStyle: '字幕樣式', subtitleFont: '選擇字型', subtitleEdit: '編輯字幕樣式', subtitleEditHint: '拖動字幕調整位置，拖動上下邊框調整大小', subtitleSample: '字幕範例', subtitleHold: '字幕選單開啟時已暫停', done: '完成', lockControls: '鎖定控制列', unlockControls: '解鎖控制列', fontFamily: '字型', fontSize: '字級', fontSystem: '系統預設', fontSans: '黑體', fontSerif: '宋體', fontKai: '楷體', fontRounded: '圓體', fontMono: '等寬', alignment: '對齊方式', horizontalPosition: '水平位置', subtitlePosition: '垂直位置', subtitleColor: '文字顏色', outlineColor: '外框顏色', outlineWidth: '外框寬度', bold: '粗體', italic: '斜體', underline: '底線', embeddedTrack: '內嵌', localTrack: '本機檔案', remoteTrack: '遠端網址', reset: '回復預設', playbackRate: '播放速度', noSubtitles: '沒有可用的字幕軌', loading: '載入中', buffering: '緩衝中', seeking: '跳轉中', error: '播放發生錯誤', unknownDuration: '直播',
@@ -23,6 +33,11 @@ const ZH_TW: PlayerUiLabels = {
 }
 
 const JA: PlayerUiLabels = {
+  aiEnhance: 'AI 補正', aiSuperResolution: '超解像', aiInterpolation: 'フレーム補間',
+  aiUnavailableRendererPath: 'WebGPU カスタムパイプラインに切り替えると有効になります。',
+  aiUnavailableModel: 'ホストが AI モデルのルートを設定していません。',
+  aiUnavailableDevice: 'この端末に利用可能な WebGPU アダプターがありません。',
+  aiUnavailableNotImplemented: 'このビルドではまだ利用できません。',
   play: '再生', pause: '一時停止', replay: '最初から再生', nextEpisode: '次のエピソード', mute: 'ミュート', unmute: 'ミュート解除', volume: '音量',
   seek: 'シーク', subtitles: '字幕', pictureInPicture: 'ピクチャー イン ピクチャー', exitPictureInPicture: 'ピクチャー イン ピクチャーを終了', theater: 'シアターモード', exitTheater: 'シアターモードを終了', settings: '設定', statistics: '詳細統計情報', about: 'このプレーヤーについて',
   fullscreen: '全画面', exitFullscreen: '全画面を終了', close: '閉じる', subtitleOff: 'オフ', subtitleTracks: '字幕トラック', subtitleStyle: '字幕スタイル', subtitleFont: 'フォントを選択', subtitleEdit: '字幕スタイルを編集', subtitleEditHint: '字幕をドラッグして位置を調整、上下の枠をドラッグしてサイズを調整', subtitleSample: '字幕サンプル', subtitleHold: '字幕メニュー表示中は一時停止しています', done: '完了', lockControls: 'コントロールをロック', unlockControls: 'コントロールのロックを解除', fontFamily: 'フォント', fontSize: '文字サイズ', fontSystem: 'システム標準', fontSans: 'ゴシック体', fontSerif: '明朝体', fontKai: '楷書体', fontRounded: '丸ゴシック体', fontMono: '等幅', alignment: '配置', horizontalPosition: '水平位置', subtitlePosition: '垂直位置', subtitleColor: '文字色', outlineColor: '縁取りの色', outlineWidth: '縁取りの太さ', bold: '太字', italic: '斜体', underline: '下線', embeddedTrack: '内蔵', localTrack: 'ローカルファイル', remoteTrack: 'リモート URL', reset: '既定に戻す', playbackRate: '再生速度', noSubtitles: '利用できる字幕トラックがありません', loading: '読み込み中', buffering: 'バッファリング中', seeking: 'シーク中', error: '再生エラー', unknownDuration: 'ライブ',

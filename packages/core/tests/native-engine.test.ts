@@ -80,6 +80,17 @@ describe('MediaEngine native load orchestration', () => {
     engine.close()
   })
 
+  it('refuses AI post-processing on the native path and reports the reason', async () => {
+    const video = new FakeVideo()
+    const engine = createMediaEngine()
+    await engine.load({ target: video as unknown as HTMLElement, source: { kind: 'file', file: new Blob(['x']) as File } })
+
+    expect(engine.playback.ai.superResolution).toEqual({ enabled: false, available: false, unavailableReason: 'renderer-path' })
+    expect(engine.playback.ai.interpolation.unavailableReason).toBe('renderer-path')
+    await expect(engine.setAiPostProcess({ superResolution: true })).rejects.toMatchObject({ code: 'RENDERER_AI_UNSUPPORTED', recoverable: true })
+    engine.close()
+  })
+
   it('does not silently ignore custom remote headers', async () => {
     const engine = createMediaEngine()
     await expect(engine.load({ target: new FakeVideo() as unknown as HTMLElement, source: { kind: 'url', url: 'https://example.test/video.mp4', headers: { Authorization: 'secret' } } })).rejects.toMatchObject({

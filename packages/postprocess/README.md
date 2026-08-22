@@ -6,6 +6,20 @@ AI 后处理层：插帧与超分辨率。
 
 Phase 7 实现了拉取式 AI 链、WebGPU RIFE/RT4KSR stage、纹理池、governor、MXAI manifest/哈希加载器和真实上游权重资产。RIFE 资产明确为 Practical-RIFE 4.25；上游没有可锁定的 4.6 archive。
 
+**超分（RT4KSR x2）已与上游 PyTorch forward 端到端对齐并可验证**：`pnpm quality:webgpu:oracle`
+用真实权重跑 shipped `Rt4kSrGraphExecutor`，对 `tools/generate_rt4ksr_reference.py` 生成的
+参考张量，8-bit 输入下输出 `max |delta| = 3.7e-3`。验证跑在软件 adapter（SwiftShader）上，
+只覆盖正确性；`shader-f16`、性能和实机三浏览器矩阵仍未覆盖。
+
+**插帧（RIFE）仍是占位实现**：`createRifeGraph()` 只枚举层，没有 executor 消费它；
+`WebGpuInterpolationStage` 只 dispatch 一个 warp/blend pass，且把输入帧当作光流纹理绑定。
+不要把它当作 RIFE 推理。SDK 因此把该 stage 报成 `not-implemented`，UI 开关保持禁用。
+
+RIFE 所需的算子已逐个对上游验证：`pnpm quality:webgpu:rife` 覆盖 `Head`（含
+`ConvTranspose2d`）、`grid_sample` 反向 warp 和 `align_corners=False` 双线性 resize。
+仍缺 IFBlock body、五级 flow 累积、可表达 concat/slice/resize/warp 的 graph IR，以及最终
+sigmoid blend 的接线。
+
 模型失败、shader/device loss、fallback adapter 和预算超限都会保留解码/音频时钟并回退为 passthrough。Native HTMLVideo 路径不会启用 AI。
 
 真实推理使用 `MXAI` v1 派生资产。应用在 `MXPlayerOptions.aiModelBaseUrl` 指向包含

@@ -31,6 +31,11 @@ const initialSnapshot: PlaybackSnapshot = {
   buffering: false,
   presentationMode: 'inline',
   capabilities: { seek: true, volume: true, playbackRate: true, fullscreen: true, pictureInPicture: false, preview: true },
+  ai: {
+    tier: 'off',
+    interpolation: { enabled: false, available: false, unavailableReason: 'renderer-path' },
+    superResolution: { enabled: false, available: false, unavailableReason: 'renderer-path' },
+  },
   lastError: null,
 }
 

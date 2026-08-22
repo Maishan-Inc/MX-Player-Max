@@ -41,16 +41,17 @@ describe('WGSL numerical contracts', () => {
     expect(PACKED_LAYER_NORM_WGSL).toContain('second / f32(params.channels)')
   })
 
-  it('round-trips pixel unshuffle and shuffle channel ordering', () => {
+  it('round-trips pixel unshuffle and shuffle in torch channel-major order', () => {
     const rgb = [
       1, 2, 3, 4, 5, 6,
       7, 8, 9, 10, 11, 12,
     ]
     const packed = pixelUnshuffle(rgb, 2, 2, 3, 2)
-    expect(packed).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+    // torch.nn.PixelUnshuffle groups every source channel's 2x2 block together.
+    expect(packed).toEqual([1, 4, 7, 10, 2, 5, 8, 11, 3, 6, 9, 12])
     expect(pixelShuffle(packed, 1, 1, 3, 2)).toEqual(rgb)
     expect(PACKED_PIXEL_UNSHUFFLE_WGSL).toContain('plane / params.scale')
-    expect(PACKED_PIXEL_SHUFFLE_X4_WGSL).toContain('pixel + c')
+    expect(PACKED_PIXEL_SHUFFLE_X4_WGSL).toContain('c * block + plane')
   })
 })
 
@@ -82,10 +83,14 @@ function layerNorm(input: readonly number[], scale: readonly number[], shift: re
   return input.map((value, index) => (value - mean) / Math.sqrt(variance + epsilon) * (scale[index] ?? 1) + (shift[index] ?? 0))
 }
 
+/** torch.nn.PixelUnshuffle: output channel = sourceChannel * r*r + i * r + j. */
 function pixelUnshuffle(input: readonly number[], width: number, height: number, channels: number, scale: number): number[] {
+  const block = scale * scale
   const output: number[] = []
   for (let y = 0; y < height / scale; y += 1) for (let x = 0; x < width / scale; x += 1) {
-    for (let plane = 0; plane < scale * scale; plane += 1) for (let channel = 0; channel < channels; channel += 1) {
+    for (let index = 0; index < channels * block; index += 1) {
+      const channel = Math.floor(index / block)
+      const plane = index % block
       const sourceX = x * scale + plane % scale
       const sourceY = y * scale + Math.floor(plane / scale)
       output.push(input[(sourceY * width + sourceX) * channels + channel] ?? 0)
@@ -94,14 +99,16 @@ function pixelUnshuffle(input: readonly number[], width: number, height: number,
   return output
 }
 
+/** torch.nn.PixelShuffle: the exact inverse of {@link pixelUnshuffle}. */
 function pixelShuffle(input: readonly number[], width: number, height: number, channels: number, scale: number): number[] {
-  const output = Array.from({ length: width * height * scale * scale * channels }, () => 0)
+  const block = scale * scale
+  const output = Array.from({ length: width * height * block * channels }, () => 0)
   for (let y = 0; y < height * scale; y += 1) for (let x = 0; x < width * scale; x += 1) {
     const sourceX = Math.floor(x / scale)
     const sourceY = Math.floor(y / scale)
-    const pixel = ((y % scale) * scale + x % scale) * channels
+    const plane = (y % scale) * scale + x % scale
     for (let channel = 0; channel < channels; channel += 1) {
-      output[(y * width * scale + x) * channels + channel] = input[(sourceY * width + sourceX) * channels * scale * scale + pixel + channel] ?? 0
+      output[(y * width * scale + x) * channels + channel] = input[(sourceY * width + sourceX) * channels * block + channel * block + plane] ?? 0
     }
   }
   return output

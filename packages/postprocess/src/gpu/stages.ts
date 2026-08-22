@@ -2,7 +2,7 @@ import type { Micros } from '@mx-player-max/types'
 import type { MxaiModel } from '../assets/mxai'
 import type { PipelineFrame, SpatialStage, TemporalStage } from '../types'
 import { TexturePool, type PooledTexture } from './texture-pool'
-import { createRifeGraph, createRt4kSrGraph, uploadTensorStore, type GpuModelGraph, type GpuTensorStore } from './graph'
+import { createRifeGraph, createRt4kSrGraph, graphTensorNames, uploadTensorStore, type GpuModelGraph, type GpuTensorStore } from './graph'
 import { Rt4kSrGraphExecutor } from './rt4ksr'
 import { BILINEAR_WARP_WGSL, RIFE_FLOW_WGSL, UPSCALE_X2_WGSL } from './wgsl'
 
@@ -35,8 +35,8 @@ export class WebGpuInterpolationStage implements TemporalStage {
     this.#device = options.device
     this.#queue = options.queue ?? options.device.queue
     this.#pool = new TexturePool({ device: options.device, capacity: options.texturePoolCapacity ?? 4 })
-    this.#tensorStore = options.model ? uploadTensorStore(options.device, options.model) : null
     this.graph = options.model ? createRifeGraph(options.model) : null
+    this.#tensorStore = options.model ? uploadTensorStore(options.device, options.model, this.graph ? graphTensorNames(this.graph) : undefined) : null
     this.#modelWeights = createModelBindingBuffer(options.device, this.#tensorStore, 'module.encode.cnn0.weight')
     const useRifeKernel = options.model !== undefined
     const module = options.device.createShaderModule({ code: useRifeKernel ? RIFE_FLOW_WGSL : BILINEAR_WARP_WGSL })
@@ -143,8 +143,8 @@ export class WebGpuSuperResolutionStage implements SpatialStage {
     this.#device = options.device
     this.#queue = options.queue ?? options.device.queue
     this.#pool = new TexturePool({ device: options.device, capacity: options.texturePoolCapacity ?? 4 })
-    this.#tensorStore = options.model ? uploadTensorStore(options.device, options.model) : null
     this.graph = options.model ? createRt4kSrGraph(options.model) : null
+    this.#tensorStore = options.model ? uploadTensorStore(options.device, options.model, this.graph ? graphTensorNames(this.graph) : undefined) : null
     this.#graphExecutor = options.model && this.#tensorStore ? Rt4kSrGraphExecutor.create({ device: options.device, queue: this.#queue, model: options.model, tensorStore: this.#tensorStore }) : null
     this.#modelWeights = createModelBindingBuffer(options.device, this.#tensorStore, 'module.upsample.0.weight')
     const module = options.device.createShaderModule({ code: UPSCALE_X2_WGSL })
@@ -226,8 +226,9 @@ async function ensureGpuTexture(device: GPUDevice, queue: GPUQueue, frame: Pipel
   const width = frame.frame.displayWidth || frame.frame.codedWidth
   const height = frame.frame.displayHeight || frame.frame.codedHeight
   const texture = device.createTexture({ size: { width, height }, format: 'rgba8unorm', usage: runtimeTextureUsage() })
+  // Queue operations run in issue order, so the copy is complete before the
+  // compute submission that samples this texture. No fence is needed here.
   queue.copyExternalImageToTexture({ source: frame.frame }, { texture }, { width, height })
-  await queue.onSubmittedWorkDone()
   return { texture, width, height, owned: true }
 }
 
@@ -252,8 +253,10 @@ function uniformBufferUsage(): GPUBufferUsageFlags {
 
 function runtimeTextureUsage(): GPUTextureUsageFlags {
   const usage = (globalThis as typeof globalThis & { GPUTextureUsage?: Record<string, number> }).GPUTextureUsage
-  if (usage) return (usage.TEXTURE_BINDING ?? 0) | (usage.STORAGE_BINDING ?? 0) | (usage.COPY_DST ?? 0)
-  return 0x04 | 0x08 | 0x02
+  // `copyExternalImageToTexture` validates that the destination carries both
+  // COPY_DST and RENDER_ATTACHMENT, so an upload target needs all four flags.
+  if (usage) return (usage.TEXTURE_BINDING ?? 0) | (usage.STORAGE_BINDING ?? 0) | (usage.COPY_DST ?? 0) | (usage.RENDER_ATTACHMENT ?? 0)
+  return 0x04 | 0x08 | 0x02 | 0x10
 }
 
 function createModelBindingBuffer(device: GPUDevice, store: GpuTensorStore | null, preferredName: string): GPUBuffer {

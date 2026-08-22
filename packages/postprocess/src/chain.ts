@@ -78,6 +78,27 @@ export class AiPipeline implements FrameSource {
   get lookaheadFrames(): number { return this.#interpolationEnabled && this.#interpolation ? this.#interpolation.lookaheadFrames ?? 1 : 0 }
   get tier(): AiQualityTier { return this.#tier }
   get governor(): FrameBudgetGovernor { return this.#governor }
+  get interpolationEnabled(): boolean { return this.#interpolationEnabled }
+  get superResolutionEnabled(): boolean { return this.#superResolutionEnabled }
+  /** True when a stage instance is attached and can therefore be switched on. */
+  get hasInterpolation(): boolean { return this.#interpolation !== null }
+  get hasSuperResolution(): boolean { return this.#superResolution !== null }
+
+  /**
+   * Switch stages on or off at runtime. The governor still owns degradation, so a
+   * stage enabled here can be switched off again by the next tier change.
+   */
+  setStages(request: { readonly interpolation?: boolean; readonly superResolution?: boolean }): void {
+    if (this.#closed) throw new Error('AI pipeline is closed')
+    if (request.interpolation !== undefined) {
+      if (request.interpolation && !this.#interpolation) throw new Error('No interpolation stage is attached')
+      this.#interpolationEnabled = request.interpolation
+    }
+    if (request.superResolution !== undefined) {
+      if (request.superResolution && !this.#superResolution) throw new Error('No super-resolution stage is attached')
+      this.#superResolutionEnabled = request.superResolution
+    }
+  }
 
   async frameAt(t: Micros, epoch: number): Promise<PipelineFrame | null> {
     if (this.#closed || epoch !== this.#currentEpoch) return null
@@ -89,9 +110,7 @@ export class AiPipeline implements FrameSource {
         return null
       }
       if (!frame) return null
-      if (this.#superResolutionEnabled && this.#superResolution && frame.location === 'cpu') {
-        frame = await this.#superResolution.process(frame, epoch)
-      } else if (this.#superResolutionEnabled && this.#superResolution) {
+      if (this.#superResolutionEnabled && this.#superResolution) {
         frame = await this.#superResolution.process(frame, epoch)
       }
       if (!this.#isActiveEpoch(epoch)) {

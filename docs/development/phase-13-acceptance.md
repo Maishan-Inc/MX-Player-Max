@@ -4,8 +4,9 @@
 
 状态：自动化质量、安全和短时性能固化已完成；最终发布门禁仍为 **pending/blocked**。
 
-当前复核（2026-08-21）：`pnpm test` 为 519/519 tests、94 test files；`pnpm verify:packages`
-验证 19 个 publishable packages。下表中的测试和包数量已按当前生成证据同步；历史日期和外部
+当前复核（2026-08-22）：`pnpm test` 的通过总数以生成证据
+`evidence/current-test-counts.json` 为准，不在本文件手工维护；`pnpm verify:packages`
+验证 19 个 publishable packages。下表中的包数量已按当前生成证据同步；历史日期和外部
 环境 pending 结论保持不变。
 
 ## 前置门禁
@@ -20,12 +21,16 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | 命令 | 结果 |
 |---|---|
 | `pnpm typecheck` | passed；20 个 workspace package/app 构建并严格类型检查 |
-| `pnpm test` | passed；519/519 tests，94 test files；与生成计数一致 |
+| `pnpm test` | passed；总数见 `evidence/current-test-counts.json`，与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
 | `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 approved Phase 10.2 WASM 为 3 passed/5 skipped，作为自动化回归但不替代实机证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
 | `pnpm quality:media` | passed；7 个媒体 + 2 个字幕 fixture，FFprobe 元数据和 SHA-256 一致 |
-| `pnpm --filter @mx-player-max/postprocess test` | passed；26 tests，含数值 kernel、packed graph、真实 device-lost、epoch、fallback 和 pool 长时复用/容量边界 |
-| `pnpm test:update-counts` | 已由当前 `evidence/current-test-counts.json` 复核为 519/519 tests、94 test files |
+| `pnpm --filter @mx-player-max/postprocess test` | passed；含数值 kernel、packed graph、真实 device-lost、epoch、fallback、pool 长时复用/容量边界和 `copyExternalImageToTexture` usage 回归 |
+| `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`，`pnpm test --check` 与其一致 |
+| `pnpm quality:webgpu` | passed；17/17 shipped WGSL kernel 通过真实 Dawn/Tint，`rgba16float` 2d-array 存储往返位级精确 |
+| `pnpm quality:webgpu:numerics` | passed；7 项 kernel 执行对比 CPU 参考（含 torch 通道序、layer norm、1x1 卷积、stage bind layout） |
+| `pnpm quality:webgpu:oracle` | passed；shipped `Rt4kSrGraphExecutor` 对上游 RT4KSR forward 端到端，8-bit 输入下 3x16x16 输出 `max |delta| = 3.7e-3`；GELU 换 ReLU 的负向对照会升到 `2.7e-1` |
+| `pnpm quality:webgpu:rife` | passed；对上游 IFNet forward，`encode` `8.9e-4`、`warp` `1.2e-3`、`resize` `5.1e-4`；IFBlock body、flow 累积、graph IR 和最终 blend 明确列为未实现 |
 | `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；20/20 real-media automation tests |
 | `pnpm exec playwright test --project=media-webkit-automation --trace=off` | 7 passed，3 unsupported skipped；automation-only，不是 Safari 证据 |
 | `pnpm exec playwright test --project=performance-chromium --project=performance-firefox` | passed；4/4，隔离/非隔离各一条 |
@@ -90,10 +95,21 @@ seek 仅交付当前 epoch 且队列不超过配置上限。所有错误事件�
 | AudioContext 挂起/恢复拒绝 | `AUDIO_AUTOPLAY_BLOCKED`，保留已初始化 pipeline | `packages/audio/tests/output.test.ts`、`packages/core/tests/custom-audio.test.ts` |
 | Worker 异常终止 | `WEBCODECS_WORKER_FAILED`，所有 pending request 拒绝并终止 transport | `packages/core/tests/custom-demux-session.test.ts` |
 
-**真实 WebGPU 数值执行 pending**：默认 Playwright Chromium 及三组 `--enable-unsafe-webgpu` /
-SwiftShader/Dawn 参数探测均为 `navigator.gpu=false`。本机已通过 CPU reference oracle、WGSL full-channel
-contract、真实 MXAI graph/hash、真实 device-lost stage 和 bounded pool 测试，但不得把 fake GPU 记成
-WGSL kernel 的实设备数值结果；该行随 latest-two-stable 实机 WebGPU 回归补录。
+**真实 WebGPU 执行已具备（软件 adapter），f16 与性能仍 pending**：早前记录的
+`navigator.gpu=false` 是探测配置误判，不是本机能力限制。`navigator.gpu` 受 `[SecureContext]`
+约束，在 Playwright 默认的 `about:blank` 上不存在；`headless: true` 默认使用
+chromium-headless-shell，它暴露 `navigator.gpu` 但永不返回 adapter。改为
+`channel: 'chromium'` + `--enable-unsafe-webgpu` 并在 `http://127.0.0.1` 上探测后，
+可稳定获得 `google/swiftshader`（`isFallbackAdapter=true`，`maxTextureDimension2D=8192`，
+`float32-filterable` 可用，**`shader-f16` 不可用**）。详见
+`docs/development/webgpu-harness.md`。
+
+由此新增三个门禁：`pnpm quality:webgpu`（12 个 shipped kernel 全部通过真实 Dawn/Tint 编译 +
+`rgba16float` 2d-array 存储往返精确）、`pnpm quality:webgpu:numerics`（kernel 对 CPU 参考）、
+`pnpm quality:webgpu:oracle`（对上游 RT4KSR forward 的参考张量）。仍然 pending 的是：
+`shader-f16` 变体、任何性能数字（SwiftShader 是 CPU 光栅化器）、以及播放器整链的 AI 端到端路径
+（fallback adapter 会让 `proposeAiPlan()` 返回 tier `off`）。Firefox 即使强制
+`dom.webgpu.enabled` 也拿不到 adapter，三浏览器 WebGPU 矩阵依旧依赖实机。
 
 ## 性能基线
 

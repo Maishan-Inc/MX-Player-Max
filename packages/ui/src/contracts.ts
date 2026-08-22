@@ -16,6 +16,8 @@ export interface PlayerUiFeatureOptions {
   readonly pictureInPicture?: boolean
   readonly theater?: boolean
   readonly settings?: boolean
+  /** AI post-processing toggles inside the settings panel. */
+  readonly aiPostProcess?: boolean
   readonly statistics?: boolean
   readonly about?: boolean
   readonly fullscreen?: boolean
@@ -154,6 +156,18 @@ export interface PlayerUiLabels {
   readonly troubleshootSoftwareDecode: string
   readonly troubleshootEnvironment: string
   readonly troubleshootCopyReport: string
+  /* AI post-processing section of the settings panel */
+  readonly aiEnhance: string
+  readonly aiSuperResolution: string
+  readonly aiInterpolation: string
+  /** Shown under a toggle the current renderer cannot support. */
+  readonly aiUnavailableRendererPath: string
+  /** Shown when the host did not configure a model root. */
+  readonly aiUnavailableModel: string
+  /** Shown when the adapter is missing or software-only. */
+  readonly aiUnavailableDevice: string
+  /** Shown for a stage that exists as an interface but has no verified implementation. */
+  readonly aiUnavailableNotImplemented: string
 }
 
 export interface PlayerUiErrorSummary {
@@ -187,7 +201,7 @@ type PlayerUiRequiredPlayer = Pick<MXPlayer, 'playback' | 'state' | 'play' | 'pa
  * Read-only telemetry the statistics overlay and the troubleshooting report consume. It is
  * optional so a host may pass a reduced player object; every reader guards for absence.
  */
-type PlayerUiTelemetryPlayer = Partial<Pick<MXPlayer, 'media' | 'selection' | 'nativeStats' | 'customVideoStats' | 'customAudioStats' | 'audioClock' | 'rendererKind' | 'rendererStats'>>
+type PlayerUiTelemetryPlayer = Partial<Pick<MXPlayer, 'media' | 'selection' | 'nativeStats' | 'customVideoStats' | 'customAudioStats' | 'audioClock' | 'rendererKind' | 'rendererStats' | 'setAiPostProcess'>>
 
 export type PlayerUiPlayer = PlayerUiRequiredPlayer & PlayerUiTelemetryPlayer
 
@@ -197,11 +211,16 @@ export const DEFAULT_LABELS: PlayerUiLabels = {
   fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', close: 'Close', subtitleOff: 'Off', subtitleTracks: 'Subtitle tracks', subtitleStyle: 'Subtitle style', subtitleFont: 'Choose font', subtitleEdit: 'Edit subtitle style', subtitleEditHint: 'Drag the subtitle to move it, drag the top or bottom edge to resize', subtitleSample: 'Subtitle sample', subtitleHold: 'Paused while the subtitle menu is open', done: 'Done', lockControls: 'Lock controls', unlockControls: 'Unlock controls', fontFamily: 'Font family', fontSize: 'Font size', fontSystem: 'System default', fontSans: 'Sans', fontSerif: 'Serif', fontKai: 'Kai', fontRounded: 'Rounded', fontMono: 'Monospace', alignment: 'Alignment', horizontalPosition: 'Horizontal position', subtitlePosition: 'Vertical position', subtitleColor: 'Text color', outlineColor: 'Outline color', outlineWidth: 'Outline width', bold: 'Bold', italic: 'Italic', underline: 'Underline', embeddedTrack: 'Embedded', localTrack: 'Local file', remoteTrack: 'Remote URL', reset: 'Reset', playbackRate: 'Playback rate', noSubtitles: 'No subtitle tracks', loading: 'Loading', buffering: 'Buffering', seeking: 'Seeking', error: 'Playback error', unknownDuration: 'Live',
   contextMenu: 'Player menu', loop: 'Loop', miniPlayer: 'Miniplayer', exitMiniPlayer: 'Exit miniplayer', copyVideoUrl: 'Copy video URL', copyVideoUrlAtTime: 'Copy video URL at current time', copyEmbedCode: 'Copy embed code', copyDebugInfo: 'Copy debug info', troubleshoot: 'Troubleshoot playback issue', copied: 'Copied to the clipboard', copyFailed: 'The clipboard is unavailable',
   statsVideoId: 'Video ID / sCPN', statsViewport: 'Viewport / Frames', statsResolution: 'Current / Optimal Res', statsVolume: 'Volume / Normalized', statsCodecs: 'Codecs', statsColor: 'Color', statsConnection: 'Connection Speed', statsNetwork: 'Network Activity', statsBufferHealth: 'Buffer Health', statsMystery: 'Mystery Text', statsDate: 'Date', statsFrames: '{dropped} dropped of {total}', statsUnknown: 'n/a',
+  aiEnhance: 'AI enhancement', aiSuperResolution: 'Super resolution', aiInterpolation: 'Frame interpolation',
+  aiUnavailableRendererPath: 'Switch the render mode to the WebGPU custom pipeline to enable this.',
+  aiUnavailableModel: 'The host has not configured a model root for AI post-processing.',
+  aiUnavailableDevice: 'This device has no usable WebGPU adapter.',
+  aiUnavailableNotImplemented: 'Not available yet in this build.',
   troubleshootHealthy: 'No playback problem was detected.', troubleshootFindings: 'Findings', troubleshootDroppedFrames: 'Frames are being dropped. Lower the resolution, close other GPU-heavy tabs, or switch the playback intent back to Normal.', troubleshootBuffering: 'Playback is starving for data. Check the connection and confirm the server answers HTTP Range requests with 206 Partial Content.', troubleshootError: 'The engine reported an error. The code below identifies the failing stage.', troubleshootNoAudioClock: 'No audio clock is running, so video timing follows the media wall clock and may drift.', troubleshootSoftwareDecode: 'A WASM decoder is active. Hardware decoding is unavailable for this codec in this browser.', troubleshootEnvironment: 'Environment', troubleshootCopyReport: 'Copy report',
 }
 
 export const DEFAULT_FEATURES: Required<PlayerUiFeatureOptions> = {
-  nextEpisode: true, volume: true, subtitles: true, pictureInPicture: true, theater: false, settings: true, statistics: true, about: true, fullscreen: true, preview: true,
+  nextEpisode: true, volume: true, subtitles: true, pictureInPicture: true, theater: false, settings: true, aiPostProcess: true, statistics: true, about: true, fullscreen: true, preview: true,
   contextMenu: true, loop: true, miniPlayer: true, share: true, troubleshoot: true, lockControls: true,
 }
 

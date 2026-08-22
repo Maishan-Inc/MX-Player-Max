@@ -47,6 +47,36 @@ describe('postprocess quality hardening', () => {
     expect(device.createdTextures[0]?.destroy).toHaveBeenCalledOnce()
   })
 
+  it('switches stages at runtime and refuses to enable one that is not attached', async () => {
+    const frame = gpuFrame(0)
+    const upstream = queue([frame])
+    const stage: SpatialStage = {
+      id: 'sr',
+      outputSize: (width, height) => ({ width: width * 2, height: height * 2 }),
+      process: vi.fn(async (input) => input),
+      close: vi.fn(),
+    }
+    const pipeline = createAiPipeline({ upstream, superResolution: stage, initialTier: 'high', superResolutionEnabled: false })
+    expect(pipeline.hasSuperResolution).toBe(true)
+    expect(pipeline.hasInterpolation).toBe(false)
+    expect(pipeline.superResolutionEnabled).toBe(false)
+
+    await pipeline.frameAt(0, 0)
+    expect(stage.process).not.toHaveBeenCalled()
+
+    pipeline.setStages({ superResolution: true })
+    expect(pipeline.superResolutionEnabled).toBe(true)
+    await pipeline.frameAt(0, 0)
+    expect(stage.process).toHaveBeenCalledOnce()
+
+    pipeline.setStages({ superResolution: false })
+    await pipeline.frameAt(0, 0)
+    expect(stage.process).toHaveBeenCalledOnce()
+
+    expect(() => pipeline.setStages({ interpolation: true })).toThrow('No interpolation stage is attached')
+    pipeline.close()
+  })
+
   it('reports governor tier changes through pipeline events', () => {
     const events: AiPipelineEvent[] = []
     const pipeline = createAiPipeline({ upstream: queue([]), initialTier: 'high', governorOptions: { windowSize: 3 }, onEvent: (event) => events.push(event) })
@@ -113,7 +143,57 @@ describe('postprocess quality hardening', () => {
     textures.close()
     packed.close()
   })
+
+  it('uploads CPU frames with the usage flags copyExternalImageToTexture requires', async () => {
+    // Dawn rejects the upload with "Destination texture needs to have CopyDst and
+    // RenderAttachment usage." if either flag is missing.
+    vi.stubGlobal('GPUTextureUsage', { COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8, RENDER_ATTACHMENT: 16 })
+    vi.stubGlobal('GPUBufferUsage', { COPY_SRC: 4, COPY_DST: 8, UNIFORM: 64, STORAGE: 128 })
+    vi.stubGlobal('GPUShaderStage', { COMPUTE: 4 })
+    try {
+      const usages: number[] = []
+      const stage = new WebGpuSuperResolutionStage({ device: uploadRecordingDevice(usages) })
+      const frame = await stage.process({ location: 'cpu', frame: fakeVideoFrame(8, 4), timestamp: 0 }, 0)
+      expect(frame.location).toBe('gpu')
+      if (frame.location === 'gpu') frame.release()
+      expect(usages[0]).toBeDefined()
+      expect((usages[0] ?? 0) & 2).toBe(2)
+      expect((usages[0] ?? 0) & 16).toBe(16)
+      stage.close()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
+
+function fakeVideoFrame(width: number, height: number): VideoFrame {
+  return { displayWidth: width, displayHeight: height, codedWidth: width, codedHeight: height } as unknown as VideoFrame
+}
+
+/** Records the `usage` of every created texture, in creation order. */
+function uploadRecordingDevice(usages: number[]): GPUDevice {
+  const texture = () => ({ createView: vi.fn(() => ({})), destroy: vi.fn() })
+  const device = {
+    queue: {
+      writeBuffer: vi.fn(),
+      submit: vi.fn(),
+      copyExternalImageToTexture: vi.fn(),
+      onSubmittedWorkDone: vi.fn(async () => undefined),
+    },
+    createShaderModule: vi.fn(() => ({})),
+    createBindGroupLayout: vi.fn(() => ({})),
+    createPipelineLayout: vi.fn(() => ({})),
+    createComputePipeline: vi.fn(() => ({})),
+    createBuffer: vi.fn(() => ({ destroy: vi.fn() })),
+    createBindGroup: vi.fn(() => ({})),
+    createTexture: vi.fn((descriptor: { usage: number }) => { usages.push(descriptor.usage); return texture() }),
+    createCommandEncoder: vi.fn(() => ({
+      beginComputePass: vi.fn(() => ({ setPipeline: vi.fn(), setBindGroup: vi.fn(), dispatchWorkgroups: vi.fn(), end: vi.fn() })),
+      finish: vi.fn(() => ({})),
+    })),
+  }
+  return device as unknown as GPUDevice
+}
 
 function gpuFrame(timestamp: number): PipelineFrame & { release: ReturnType<typeof vi.fn> } {
   return { location: 'gpu', texture: {} as GPUTexture, width: 320, height: 180, timestamp, release: vi.fn() }

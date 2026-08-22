@@ -4,6 +4,37 @@
 
 ### Added
 
+- AI 后处理运行时开关：`MediaEngine.setAiPostProcess({ interpolation?, superResolution? })` 与
+  `PlaybackSnapshot.ai`（`{ tier, interpolation, superResolution }`，每个 stage 带
+  `enabled/available/unavailableReason`）。stage 懒构造，第一次开启超分才拉取并校验模型；
+  原生或非 WebGPU 会话以 `RENDERER_AI_UNSUPPORTED` 拒绝，`PlaybackChangeReason` 新增 `ai`。
+- 播放器设置面板新增「AI 增强」一节，插帧与超分两个独立开关（`features.aiPostProcess`，默认开启），
+  不可用时保持可见但禁用并给出原因（渲染路径 / 缺模型根目录 / 无 WebGPU 适配器 / 尚未实现），
+  四语言文案齐备。插帧当前恒为 `not-implemented`，不会把未验证输出交给用户。
+- 真实 WGSL 执行门禁：`pnpm quality:webgpu`（17 个 kernel 通过 Dawn/Tint 编译 + rgba16float 存储往返）、
+  `pnpm quality:webgpu:numerics`（kernel 对 CPU 参考）、`pnpm quality:webgpu:oracle`（shipped
+  `Rt4kSrGraphExecutor` 对上游 RT4KSR forward，端到端 `max |delta| = 3.7e-3`）。
+  `packages/postprocess/tools/generate_rt4ksr_reference.py` 生成逐层参考张量。
+- RIFE 4.25 算子与 oracle：新增 `PACKED_TRANSPOSED_CONVOLUTION`、`PACKED_RESIZE`、`PACKED_WARP`、
+  `PACKED_PIXEL_SHUFFLE_2`、`PACKED_MASK_BLEND` 五个 kernel，卷积的 LeakyReLU 斜率改为可配置；
+  `packages/postprocess/tools/generate_rife_reference.py` 从 vendored 归档还原上游 `IFNet` 并逐 stage
+  导出参考张量，`pnpm quality:webgpu:rife` 对其验证 `Head`（含 `ConvTranspose2d`）`8.9e-4`、
+  `grid_sample` 反向 warp `1.2e-3`、`align_corners=False` 双向 resize `5.1e-4`。IFBlock body、
+  五级 flow 累积、graph IR 与最终 blend 仍未实现，门禁会显式列出。
+
+### Fixed
+
+- RT4KSR 图按上游 `RT4KSR_Rep.forward` 重写：移除推理时不可达的 `hfb`/`gamma` 分支，激活改为
+  block 后的 GELU，`fea_conv` 边框按 `expand_conv` 的 per-channel bias 填充并补回 pad 前 identity，
+  `head`/`tail` 不再多加激活；pixel unshuffle/shuffle 通道序改为 `torch.nn.PixelShuffle` 语义。
+- 12 个 shipped WGSL kernel 中有 8 个此前无法通过真实 Dawn/Tint 编译（混类型向量构造、2d-array
+  `textureLoad` 签名），已全部修正。
+- postprocess 上传 CPU `VideoFrame` 的目标纹理补上 `RENDER_ATTACHMENT`，`copyExternalImageToTexture`
+  不再被验证层拒绝；RIFE stage 的 bind group layout 与着色器绑定号对齐。
+- `Rt4kSrGraphExecutor` 把整张图录进单个 command encoder 并只提交一次（此前每 pass 一次
+  submit + fence，22 层等于每帧 22 次 CPU↔GPU 往返），uniform 改为单缓冲多槽位；
+  `uploadTensorStore` 只上传图实际绑定的张量（RT4KSR 51→44，RIFE 198→118）。
+
 - 控制栏锁定（`features.lockControls`，默认开启）：全屏或剧场模式下播放器左侧中部出现 `Lock`/`LockOpen`
   按钮，锁定后控制栏、状态层与浮层一并收起，指针与键盘不再影响播放，只有锁图标可点；锁图标 5 s
   无操作后淡出并隐藏光标，指针移动重新唤出，退出全屏/剧场自动解锁。根节点公开 `data-mxp-locked`

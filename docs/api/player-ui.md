@@ -117,11 +117,15 @@ player.on('playbackchange', ({ snapshot, reason }) => {
 - `bufferedAhead`、`volume`、`muted`、`playbackRate`。
 - `presentationMode`：`inline | fullscreen | picture-in-picture`。
 - `capabilities`：seek、volume、playbackRate、fullscreen、PiP、preview。
+- `ai`：AI 后处理状态，`{ tier, interpolation, superResolution }`。两个 stage 各自是
+  `{ enabled, available, unavailableReason }`，`unavailableReason` 取
+  `renderer-path | device-capability | model-unavailable | device-lost | not-implemented`。
+  UI 据此把开关置灰并给出原因，不需要读取 GPU、renderer 或 selection 内部。
 - `lastError`：只有安全的 `code` 与 `recoverable`。
 
 未知或非有限媒体时间转换为 `null`，不会把 `NaN`/`Infinity` 传播给 UI。控制器可以显示临时拖拽位置，但播放/音量/展示模式的已提交值只能由后续快照确认。
 
-`PlaybackChangeReason` 用于限频或诊断：`load | state | time | buffer | volume | rate | presentation | capabilities | error`。
+`PlaybackChangeReason` 用于限频或诊断：`load | state | time | buffer | volume | rate | presentation | capabilities | ai | error`。
 
 ### Playback Decision Trace
 
@@ -129,6 +133,27 @@ player.on('playbackchange', ({ snapshot, reason }) => {
 最终分数、平台 adjustment、初始化 attempt、最终选择或稳定失败码。快照不会暴露 source
 URL/header、Codec private data、原始异常、Frame、PCM 或字幕正文。UI 和 Demo 可以显示该
 快照，但不得据此绕过 SDK 的实际能力检测或自行强制不存在的后端。
+
+## 4.1 AI 后处理开关
+
+```ts
+await player.setAiPostProcess({ superResolution: true })
+```
+
+只在活动会话是 WebGPU 自定义管线时可用，否则以 `RENDERER_AI_UNSUPPORTED` 拒绝。stage 是
+**懒构造**的：第一次开启超分才会按 `MXPlayerOptions.aiModelBaseUrl` 拉取并校验模型、创建
+WGSL stage，因此不开启就没有任何模型下载或 GPU 分配。
+
+- 超分（RT4KSR x2）已与上游 forward 对齐，见 `docs/development/webgpu-harness.md`。
+- 插帧当前恒为 `available: false`、`unavailableReason: 'not-implemented'`；请求开启会被拒绝，
+  以免把未验证的输出交给用户。
+- governor 仍拥有降档权：这里开启的 stage 可能在下一次档位变化中被关闭，届时快照的
+  `ai.superResolution.enabled` 变为 `false` 并伴随 `playbackchange`（`reason: 'ai'`）。
+- 原生路径按 ADR-0003 明确不支持 AI，`ai` 报 `renderer-path`。
+
+UI 侧对应 `features.aiPostProcess`（默认开启）与 `aiEnhance` / `aiSuperResolution` /
+`aiInterpolation` / `aiUnavailable*` 标签；设置面板渲染两个独立开关，不可用时保持可见但禁用
+并显示原因。
 
 ## 5. 换源与 ready
 

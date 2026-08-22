@@ -379,6 +379,23 @@
   font-size: 12px;
 }
 
+.mxp-panel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mxp-panel-toggle input:disabled {
+  cursor: not-allowed;
+}
+
+.mxp-panel-toggle input:disabled + span {
+  opacity: 0.45;
+}
+
+
 .mxp-panel button:not(.mxp-icon-button) {
   min-height: 29px;
   border: 1px solid var(--mxp-line);

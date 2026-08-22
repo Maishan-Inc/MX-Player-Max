@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
+  AiPostProcessRequest,
   AudioClockSnapshot,
   CustomAudioStats,
   CustomVideoStats,
@@ -52,6 +53,11 @@ const SNAPSHOT: PlaybackSnapshot = {
   buffering: false,
   presentationMode: 'inline',
   capabilities: { seek: true, volume: true, playbackRate: true, fullscreen: true, pictureInPicture: false, preview: true },
+  ai: {
+    tier: 'medium',
+    interpolation: { enabled: false, available: false, unavailableReason: 'not-implemented' },
+    superResolution: { enabled: false, available: true, unavailableReason: null },
+  },
   lastError: null,
 }
 
@@ -72,6 +78,7 @@ class FakePlayer {
   selectedSubtitleTrack: string | null = null
   subtitleState: SubtitleState = 'ready'
   subtitleStyle: SubtitleCueStyle = { fontFamily: 'system-ui, sans-serif', fontSize: 36, x: 50, y: 86 }
+  setAiPostProcess = vi.fn(async (_request: AiPostProcessRequest): Promise<void> => {})
   play = vi.fn(async (): Promise<void> => {})
   pause = vi.fn((): void => {})
   seek = vi.fn(async (_time: number): Promise<void> => {})
@@ -597,5 +604,76 @@ describe('@mx-player-max/ui statistics model', () => {
     expect(codes).toContain('UI_SOFTWARE_DECODE')
     expect(codes).toContain('UI_NO_AUDIO_CLOCK')
     expect(report.environment.find(([key]) => key === 'userAgent')?.[1]).toBe('agent/1.0')
+  })
+})
+
+describe('@mx-player-max/ui AI post-processing toggles', () => {
+  const openSettings = (host: HTMLElement): HTMLElement => {
+    host.querySelector<HTMLButtonElement>('[data-mxp-action="settings"]')!.click()
+    return host.querySelector<HTMLElement>('.mxp-panel')!
+  }
+
+  it('offers super resolution and interpolation as independent controls', () => {
+    const { host, ui } = mount(new FakePlayer())
+    const toggles = [...openSettings(host).querySelectorAll<HTMLInputElement>('.mxp-panel-toggle input')]
+    expect(toggles.map((input) => input.getAttribute('aria-label'))).toEqual(['Super resolution', 'Frame interpolation'])
+    // The engine reports super resolution as available and interpolation as not built.
+    expect(toggles[0]?.disabled).toBe(false)
+    expect(toggles[0]?.checked).toBe(false)
+    expect(toggles[1]?.disabled).toBe(true)
+    const captions = [...host.querySelectorAll('.mxp-panel .mxp-caption')].map((node) => node.textContent)
+    expect(captions).toEqual(['Not available yet in this build.'])
+    ui.destroy()
+  })
+
+  it('asks the engine to switch super resolution on', async () => {
+    const player = new FakePlayer()
+    const { host, ui } = mount(player)
+    const input = openSettings(host).querySelector<HTMLInputElement>('.mxp-panel-toggle input')!
+    input.checked = true
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+    await Promise.resolve()
+    expect(player.setAiPostProcess).toHaveBeenCalledWith({ superResolution: true })
+    ui.destroy()
+  })
+
+  it('explains the render path when the session cannot host AI', () => {
+    const player = new FakePlayer()
+    player.playback = {
+      ...player.playback,
+      ai: {
+        tier: 'off',
+        interpolation: { enabled: false, available: false, unavailableReason: 'renderer-path' },
+        superResolution: { enabled: false, available: false, unavailableReason: 'renderer-path' },
+      },
+    }
+    const { host, ui } = mount(player, { locale: 'zh-CN' })
+    const panel = openSettings(host)
+    expect([...panel.querySelectorAll<HTMLInputElement>('.mxp-panel-toggle input')].every((input) => input.disabled)).toBe(true)
+    expect(panel.textContent).toContain('把渲染模式切换到 WebGPU 自定义管线后才能开启。')
+    ui.destroy()
+  })
+
+  it('rebuilds the open panel when the engine reports an AI change', () => {
+    const player = new FakePlayer()
+    const { host, ui } = mount(player)
+    openSettings(host)
+    player.playback = {
+      ...player.playback,
+      ai: {
+        tier: 'medium',
+        interpolation: { enabled: false, available: false, unavailableReason: 'not-implemented' },
+        superResolution: { enabled: true, available: true, unavailableReason: null },
+      },
+    }
+    player.emit('playbackchange', { snapshot: player.playback, reason: 'ai' })
+    expect(host.querySelector<HTMLInputElement>('.mxp-panel-toggle input')?.checked).toBe(true)
+    ui.destroy()
+  })
+
+  it('omits the section when the feature is switched off', () => {
+    const { host, ui } = mount(new FakePlayer(), { features: { aiPostProcess: false } })
+    expect(openSettings(host).querySelector('.mxp-panel-toggle')).toBeNull()
+    ui.destroy()
   })
 })

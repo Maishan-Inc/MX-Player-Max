@@ -1,5 +1,6 @@
 import { createMediaEngine } from '@mx-player-max/core'
 import type {
+  AiPostProcessRequest,
   AudioClockSnapshot,
   CustomAudioStats,
   CustomVideoStats,
@@ -83,6 +84,7 @@ export class MXPlayer {
     return ready
   }
   setVideoFilter(filter: VideoFilterOptions): Promise<void> { return this.engine.setVideoFilter(filter) }
+  setAiPostProcess(request: AiPostProcessRequest): Promise<void> { return this.engine.setAiPostProcess(request) }
   setVideoTransform(transform: VideoTransformOptions): void { this.engine.setVideoTransform(transform) }
   listSubtitleTracks(): readonly SubtitleTrack[] { return this.engine.listSubtitleTracks() }
   addSubtitleTrack(source: ExternalSubtitleSourceDescriptor, options?: SubtitleTrackOptions): Promise<SubtitleTrack> { return this.engine.addSubtitleTrack(source, options) }

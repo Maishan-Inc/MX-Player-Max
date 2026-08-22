@@ -10,23 +10,29 @@
 ### 关键设计
 
 1. **结构重参数化（Structural Re-parameterization）**
-   - 训练时：多分支块（1×1 + 3×3 + identity）
-   - 推理时：折叠为单一 3×3 卷积栈
-   - 好处：**几乎 1:1 映射到 WGSL compute pass 链**，无复杂控制流
+   - 训练时：`expand 1×1 → fea 3×3 → reduce 1×1`，带内部 identity 与块级残差
+   - 推理时：可折叠为单一 3×3 卷积
+   - **本仓库使用的是未折叠的训练架构**（`rt4ksr_x2.pth` 即 `--is-train` 变体），因此
+     GPU 图逐个执行这三个卷积，`fea_conv` 的 1px 边框按 `expand_conv` 的 per-channel
+     bias 填充（上游 `pad_tensor` 的做法，不是零填充也不是边缘复制）
 
 2. **Pixel Unshuffle**
    - 下采样特征图、增加通道数，降低空间分辨率下的计算量
    - 高频细节提取在低分辨率完成，减少深层特征图的宽高
+   - 通道序为 `torch.nn.PixelUnshuffle` 的 `c * r² + i * r + j`
 
 3. **NAFNet 简化块**
-   - 轻量通道注意力
-   - 无归一化层（GPU 友好）
+   - `LayerNorm2d → ResBlock → GELU`；`rt4ksr_rep()` 传入 `layernorm=True`、
+     `residual=False`、`eca_gamma=0`，所以有归一化层、没有通道注意力、没有块级残差
+   - 高频分支（gaussian blur + `hfb` + `gamma`）因 `forget=False` 在推理时不可达，
+     GPU 图不包含它
 
 ### 为何选它
 
 - 明确针对 1080p → 4K 实时场景设计
-- 重参数化使其成为**纯卷积栈**，手写 WGSL 直接明了
-- 论文公开、可复现、基准性能已知
+- 结构固定、算子少（卷积、LayerNorm、GELU、pixel shuffle），手写 WGSL 可覆盖
+- 论文公开、可复现、基准性能已知；上游 forward 可作为逐层数值 oracle，见
+  `docs/development/webgpu-harness.md`
 
 ### 排除的方案
 
