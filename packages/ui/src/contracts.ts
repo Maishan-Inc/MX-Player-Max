@@ -175,6 +175,13 @@ export interface PlayerUiLabels {
   readonly troubleshootError: string
   readonly troubleshootNoAudioClock: string
   readonly troubleshootSoftwareDecode: string
+  /* Why a load failed. The engine only reports a summary code; these name the actual cause. */
+  readonly troubleshootUnsupportedVideoCodec: string
+  readonly troubleshootUnsupportedAudioCodec: string
+  readonly troubleshootUnsupportedContainer: string
+  readonly troubleshootUnsupportedChannels: string
+  /** No backend could even be built for this media. */
+  readonly troubleshootNoBackend: string
   readonly troubleshootEnvironment: string
   readonly troubleshootCopyReport: string
   /* Render-path section of the settings panel */
@@ -230,7 +237,7 @@ type PlayerUiRequiredPlayer = Pick<MXPlayer, 'playback' | 'state' | 'play' | 'pa
  * Read-only telemetry the statistics overlay and the troubleshooting report consume. It is
  * optional so a host may pass a reduced player object; every reader guards for absence.
  */
-type PlayerUiTelemetryPlayer = Partial<Pick<MXPlayer, 'media' | 'selection' | 'nativeStats' | 'customVideoStats' | 'customAudioStats' | 'audioClock' | 'rendererKind' | 'rendererStats' | 'setAiPostProcess'>>
+type PlayerUiTelemetryPlayer = Partial<Pick<MXPlayer, 'media' | 'selection' | 'decisionTrace' | 'nativeStats' | 'customVideoStats' | 'customAudioStats' | 'audioClock' | 'rendererKind' | 'rendererStats' | 'setAiPostProcess'>>
 
 export type PlayerUiPlayer = PlayerUiRequiredPlayer & PlayerUiTelemetryPlayer
 
@@ -247,7 +254,13 @@ export const DEFAULT_LABELS: PlayerUiLabels = {
   aiUnavailableModel: 'The host has not configured a model root for AI post-processing.',
   aiUnavailableDevice: 'This device has no usable WebGPU adapter.',
   aiUnavailableNotImplemented: 'Not available yet in this build.',
-  troubleshootHealthy: 'No playback problem was detected.', troubleshootFindings: 'Findings', troubleshootDroppedFrames: 'Frames are being dropped. Lower the resolution, close other GPU-heavy tabs, or switch the playback intent back to Normal.', troubleshootBuffering: 'Playback is starving for data. Check the connection and confirm the server answers HTTP Range requests with 206 Partial Content.', troubleshootError: 'The engine reported an error. The code below identifies the failing stage.', troubleshootNoAudioClock: 'No audio clock is running, so video timing follows the media wall clock and may drift.', troubleshootSoftwareDecode: 'A WASM decoder is active. Hardware decoding is unavailable for this codec in this browser.', troubleshootEnvironment: 'Environment', troubleshootCopyReport: 'Copy report',
+  troubleshootHealthy: 'No playback problem was detected.', troubleshootFindings: 'Findings', troubleshootDroppedFrames: 'Frames are being dropped. Lower the resolution, close other GPU-heavy tabs, or switch the playback intent back to Normal.', troubleshootBuffering: 'Playback is starving for data. Check the connection and confirm the server answers HTTP Range requests with 206 Partial Content.', troubleshootError: 'The engine reported an error. The code below identifies the failing stage.', troubleshootNoAudioClock: 'No audio clock is running, so video timing follows the media wall clock and may drift.', troubleshootSoftwareDecode: 'A WASM decoder is active. Hardware decoding is unavailable for this codec in this browser.',
+  troubleshootUnsupportedVideoCodec: 'This video codec cannot be decoded here. H.264, VP8, VP9 and AV1 play; HEVC does not.',
+  troubleshootUnsupportedAudioCodec: 'This audio codec cannot be decoded here. AAC, Opus and MP3 play; AC-3, DTS, FLAC and Vorbis do not.',
+  troubleshootUnsupportedContainer: 'This container cannot be read. MP4, WebM and Matroska are supported.',
+  troubleshootUnsupportedChannels: 'Only mono and stereo audio play. This track has more channels.',
+  troubleshootNoBackend: 'No playback path could handle this media, so nothing was attempted.',
+  troubleshootEnvironment: 'Environment', troubleshootCopyReport: 'Copy report',
 }
 
 export const DEFAULT_FEATURES: Required<PlayerUiFeatureOptions> = {

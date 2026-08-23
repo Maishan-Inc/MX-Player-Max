@@ -5,6 +5,7 @@ import type {
   CustomVideoStats,
   MediaDescriptor,
   NativePlaybackStats,
+  PlaybackDecisionTrace,
   PlaybackSelection,
   PlaybackSnapshot,
   PlaybackState,
@@ -36,6 +37,8 @@ export interface StatsInput {
   readonly snapshot: PlaybackSnapshot
   readonly media: MediaDescriptor | null
   readonly selection: PlaybackSelection | null
+  /** Per-candidate attempt codes; the only place the real reason for a failed load lives. */
+  readonly decisionTrace: PlaybackDecisionTrace | null
   readonly nativeStats: NativePlaybackStats | null
   readonly customVideoStats: CustomVideoStats | null
   readonly customAudioStats: CustomAudioStats | null

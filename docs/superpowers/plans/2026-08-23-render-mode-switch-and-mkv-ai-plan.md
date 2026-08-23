@@ -220,6 +220,32 @@ A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺
 
 验收：新增单测覆盖三种编码不支持路径的错误码透出。
 
+**已完成（2026-08-23）**：`PlayerUiPlayer` 的 telemetry 增加 `decisionTrace`，`StatsInput` 随之
+带上它；`troubleshoot.ts` 新增 `playbackFailureCause()` 把逐候选错误码归成五类（视频编码 / 音频
+编码 / 声道数 / 容器 / 无可用路径），报告与控制栏状态文案共用同一份判定，四语言文案齐备。轨迹的
+`sessionEpoch` 与当前快照不符时忽略，避免用上一次会话的原因解释这一次的失败。环境报告新增
+`videoCodec`、`audioCodec`（带声道数）、`candidates`（`候选 id:结果`）。7 条单测覆盖五类归因、
+陈旧轨迹与状态文案回落。
+
+实测（构建产物）：
+
+| 源 | 状态文案 | 报告 |
+|---|---|---|
+| `flower.webm`（VP8 + **Vorbis**）切自定义档 | 「这个音频编码在此处无法解码。AAC、Opus、MP3 可以播放，AC-3、DTS、FLAC、Vorbis 不行。」 | `WEBCODECS_AUDIO_NOT_SUPPORTED`、`audioCodec: vorbis 2ch`、`candidates: webcodecs-ai:WEBCODECS_AUDIO_NOT_SUPPORTED` |
+| `mp4-hevc-main10-10bit-aac.mp4` 切自定义档 | 「没有任何播放路径能处理这个媒体，因此一次尝试都没有发生。」 | `STRATEGY_NO_VIABLE_BACKEND`、`videoCodec: hvc1`、`candidates: none` |
+
+**原第三条诊断是错的，改立为 A8。** 我原先写「`supportsRequiredWebCodecs()` 在
+`context.media.query.audio === null` 时把音频视为无要求」——实际上 `createMediaCapabilityQuery()`
+只要有音轨就一定构造出 `query.audio`，所以那条路走不到。真实原因是**能力探测反映的是浏览器支持，
+而 `decoder-webcodecs` 自己的编码范围更窄**：Chrome 的 `AudioDecoder` 配合 CodecPrivate 能解
+Vorbis，于是候选被建出来，随后 `audio-config.ts` 以「outside the Phase 5 codec scope」硬失败。
+要根治得把引擎自身的编码范围传进策略层（`CapabilityContext` 已有 `wasmDecoders` 这个先例可循），
+牵动 types / capabilities / strategy / core 四个包，独立成任务更稳妥。
+
+可选的后续改进：自定义档下 HEVC 报的是「没有任何路径」，但切回原生档其实能播。轨迹里没有「原生
+候选因 intent 被排除」这条信息，所以现在无法据此给出「换回原生档试试」的提示；要做得先在轨迹里
+记录被 intent 排除的候选。
+
 ### A6 回归护栏与证据更新
 
 - `pnpm test:update-counts` 更新 `docs/development/evidence/current-test-counts.json`（`pnpm test --check` 会比对数量，漏了会红）
@@ -265,12 +291,12 @@ A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺
 3. `feat(ui): add a render-mode control to the settings panel` — A2 ✅ 已完成
 4. `feat(demo): wire the render-mode switch and the AI model root` — A3 ✅ 已完成
 5. `test(quality): add Matroska fixtures and media coverage` — A4 ✅ 已完成
-6. `fix(core): surface the real codec failure instead of a generic strategy error` — A5 ← 下一步
-7. `chore(quality): refresh test counts and evidence` — A6
+6. `fix(ui): explain why a load failed instead of showing a generic error` — A5 ✅ 已完成
+7. `chore(quality): refresh test counts and evidence` — A6 ← 下一步
 8. `feat(demux): derive a full VP9 codec string` — A7（A4 的计划外发现，独立工作）
+9. `fix(strategy): stop ranking a backend whose codec scope the engine will reject` — A8（A5 的计划外发现，跨四个包）
 
-A 组没有阻塞项了：三档切换可用，带音轨的自定义会话能播到 `ended`，Matroska 两条路径都有用例。
-A5 之后 MKV + AI 的最终验收就只剩真机（B 组）。
+A 组只剩 A6 的证据刷新。A7 / A8 是这轮挖出来的两个独立缺陷，不阻塞 MKV + AI 的最终验收。
 
 ## 7. 最终验收清单（demo 里要能看见的）
 

@@ -30,7 +30,7 @@ import {
 import { detectPlayerUiLocale, playerUiLabels, resolvePlayerUiLocale } from './locales'
 import { buildStatsRows, NETWORK_SAMPLE_COUNT, type StatsInput, type StatsRow } from './stats'
 import { buildDebugInfo, buildEmbedCode, createCpn, resolveVideoUrl, resolveVideoUrlAtTime, shortMediaId } from './share'
-import { buildTroubleshootReport } from './troubleshoot'
+import { buildTroubleshootReport, playbackFailureCause, troubleshootCauseMessage } from './troubleshoot'
 import { createPlayerIcon, type PlayerIconName } from './icons'
 import { CleanupScope, isElement } from './lifecycle'
 
@@ -702,7 +702,13 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     const snapshot = this.#snapshot
     let text = ''
     let tone = 'normal'
-    if (snapshot.lastError) { text = this.#labels.error; tone = 'error' }
+    if (snapshot.lastError) {
+      // A bare "Playback error" tells the viewer nothing they can act on, so name the codec or
+      // container when the decision trace explains it.
+      const failure = playbackFailureCause(this.#statsInput())
+      text = failure ? troubleshootCauseMessage(failure.cause, this.#labels) : this.#labels.error
+      tone = 'error'
+    }
     else if (snapshot.state === 'loading') text = this.#labels.loading
     else if (snapshot.buffering) text = this.#labels.buffering
     else if (snapshot.seeking || snapshot.state === 'seeking') text = this.#labels.seeking
@@ -2103,6 +2109,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
       snapshot: this.#snapshot,
       media: this.#telemetry(() => this.#player.media),
       selection: this.#telemetry(() => this.#player.selection),
+      decisionTrace: this.#telemetry(() => this.#player.decisionTrace),
       nativeStats: this.#telemetry(() => this.#player.nativeStats),
       customVideoStats: this.#telemetry(() => this.#player.customVideoStats),
       customAudioStats: this.#telemetry(() => this.#player.customAudioStats),

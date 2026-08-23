@@ -168,8 +168,8 @@
       "name": "@mx-player-max/ui",
       "directory": "packages/ui",
       "testFiles": 3,
-      "tests": 72,
-      "passed": 72,
+      "tests": 79,
+      "passed": 79,
       "skipped": 0,
       "todo": 0
     },
@@ -185,8 +185,8 @@
   ],
   "totals": {
     "testFiles": 100,
-    "tests": 601,
-    "passed": 601,
+    "tests": 608,
+    "passed": 608,
     "skipped": 0,
     "todo": 0
   }

@@ -48,6 +48,15 @@
 
 ### Fixed
 
+- 播放失败不再只显示笼统的「播放出错」。引擎对失败只给汇总码（候选全试过是
+  `STRATEGY_ALL_CANDIDATES_FAILED`，连候选都建不出来是 `STRATEGY_NO_VIABLE_BACKEND`），真实原因
+  只存在于 `decisionTrace` 的逐候选 `attempts[].errorCode` 里，而 UI 此前读不到这份轨迹。现在
+  `PlayerUiPlayer` 的 telemetry 带上 `decisionTrace`，`playbackFailureCause()` 把候选错误码归成
+  五类——视频编码 / 音频编码 / 声道数 / 容器 / 无可用路径——控制栏状态文案与排查报告共用同一份
+  判定，四语言齐备。陈旧轨迹（`sessionEpoch` 不匹配）会被忽略，无法归类时回落到原文案。排查报告
+  的环境段新增 `videoCodec`、`audioCodec`（带声道数）与 `candidates`（`候选 id:结果`），复制出来
+  的报告自带真实原因。
+
 - 媒体语料里 VP9 样本的路径声明修正为仅 `native`。EBML 解复用把 VP9 轨道报成裸 `vp09`，而
   `VideoDecoder.isConfigSupported({ codec: 'vp09' })` 返回 `false`、`video-config.ts` 要求完整的
   `vp09.PP.LL.DD`，所以 VP9 在任何容器里都走不了自定义管线——两个 WebM VP9 样本实测都是

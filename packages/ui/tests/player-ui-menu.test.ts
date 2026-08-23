@@ -13,6 +13,7 @@ import type {
   MediaPreviewImage,
   MediaPreviewRequest,
   NativePlaybackStats,
+  PlaybackDecisionTrace,
   PlaybackSelection,
   PlaybackSnapshot,
   SubtitleCueStyle,
@@ -68,6 +69,7 @@ class FakePlayer {
   state = SNAPSHOT.state
   media: MediaDescriptor | null = MEDIA
   selection: PlaybackSelection | null = SELECTION
+  decisionTrace: PlaybackDecisionTrace | null = null
   nativeStats: NativePlaybackStats | null = { presentedFrames: 300, droppedFrames: 5, mediaTime: 8_790_000, lastCallbackTime: null }
   customVideoStats: CustomVideoStats | null = null
   customAudioStats: CustomAudioStats | null = null
@@ -527,6 +529,7 @@ describe('@mx-player-max/ui statistics model', () => {
       snapshot: SNAPSHOT,
       media: MEDIA,
       selection: SELECTION,
+      decisionTrace: null,
       nativeStats: { presentedFrames: 300, droppedFrames: 5, mediaTime: 0, lastCallbackTime: null },
       customVideoStats: null,
       customAudioStats: null,
@@ -740,6 +743,98 @@ describe('@mx-player-max/ui render mode selector', () => {
     expect(panel.textContent).toContain('渲染模式')
     expect(panel.textContent).toContain('WebGPU 自定义管线')
     expect(panel.textContent).toContain('AI 增强只在 WebGPU 自定义管线下可用。')
+    ui.destroy()
+  })
+})
+
+describe('@mx-player-max/ui playback failure explanation', () => {
+  const labels = playerUiLabels('en')
+
+  function trace(overrides: Partial<PlaybackDecisionTrace> = {}): PlaybackDecisionTrace {
+    return {
+      schemaVersion: 1,
+      sessionEpoch: 1,
+      generatedAtMs: 0,
+      status: 'failed',
+      intent: 'normal',
+      media: { container: 'matroska', videoCodec: 'hvc1', audioCodec: 'ac-3' },
+      candidates: [{ candidateId: 'webcodecs-custom', kind: 'webcodecs', renderer: 'webgpu', initialScore: 120, finalScore: 120, reasons: [], requires: [], adjustment: null }],
+      attempts: [{ index: 0, candidateId: 'webcodecs-custom', kind: 'webcodecs', status: 'failed', errorCode: 'WEBCODECS_AUDIO_NOT_SUPPORTED' }],
+      selectedCandidateId: null,
+      finalErrorCode: 'STRATEGY_ALL_CANDIDATES_FAILED',
+      ...overrides,
+    } as PlaybackDecisionTrace
+  }
+
+  const failed = (decisionTrace: PlaybackDecisionTrace | null): Parameters<typeof buildTroubleshootReport>[0] => ({
+    labels,
+    locale: 'en',
+    snapshot: { ...SNAPSHOT, state: 'error', lastError: { code: 'STRATEGY_ALL_CANDIDATES_FAILED', recoverable: false } },
+    media: MEDIA,
+    selection: SELECTION,
+    decisionTrace,
+    nativeStats: null,
+    customVideoStats: null,
+    customAudioStats: null,
+    audioClock: null,
+    rendererKind: null,
+    rendererStats: null,
+    viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+    videoId: 'AAAAAAAAAAA',
+    cpn: 'BBBBBBBBBBBBBBBB',
+    connectionKbps: null,
+    networkSamples: [],
+    networkBytes: 0,
+    now: 0,
+  })
+
+  it('names the audio codec behind a generic strategy failure', () => {
+    const report = buildTroubleshootReport(failed(trace()), labels, 'agent/1.0')
+    expect(report.findings.map((finding) => finding.code)).toEqual(['STRATEGY_ALL_CANDIDATES_FAILED', 'WEBCODECS_AUDIO_NOT_SUPPORTED'])
+    expect(report.findings[1]?.message).toBe(labels.troubleshootUnsupportedAudioCodec)
+  })
+
+  it('names the video codec, the channel layout and the container', () => {
+    const attempt = (errorCode: string): PlaybackDecisionTrace => trace({ attempts: [{ index: 0, candidateId: 'webcodecs-custom', kind: 'webcodecs', status: 'failed', errorCode }] })
+    const messageFor = (errorCode: string): string | undefined => buildTroubleshootReport(failed(attempt(errorCode)), labels, 'agent/1.0').findings[1]?.message
+    expect(messageFor('WEBCODECS_NOT_SUPPORTED')).toBe(labels.troubleshootUnsupportedVideoCodec)
+    expect(messageFor('AUDIO_CHANNEL_LAYOUT_UNSUPPORTED')).toBe(labels.troubleshootUnsupportedChannels)
+    expect(messageFor('CONTAINER_UNSUPPORTED')).toBe(labels.troubleshootUnsupportedContainer)
+  })
+
+  it('reports no backend when the strategy could not build a candidate', () => {
+    const report = buildTroubleshootReport(failed(trace({ candidates: [], attempts: [], finalErrorCode: 'STRATEGY_NO_VIABLE_BACKEND' })), labels, 'agent/1.0')
+    expect(report.findings[1]?.message).toBe(labels.troubleshootNoBackend)
+    expect(report.environment.find(([key]) => key === 'candidates')?.[1]).toBe('none')
+  })
+
+  it('ignores a trace left over from an earlier session', () => {
+    const report = buildTroubleshootReport(failed(trace({ sessionEpoch: 7 })), labels, 'agent/1.0')
+    expect(report.findings.map((finding) => finding.code)).toEqual(['STRATEGY_ALL_CANDIDATES_FAILED'])
+  })
+
+  it('carries the codecs and the candidate outcomes in the copied report', () => {
+    const report = buildTroubleshootReport(failed(trace()), labels, 'agent/1.0')
+    const row = (key: string): string | undefined => report.environment.find(([name]) => name === key)?.[1]
+    expect(row('videoCodec')).toBe('av01.0.05M.08')
+    expect(row('audioCodec')).toBe('opus 2ch')
+    expect(row('candidates')).toBe('webcodecs-custom:WEBCODECS_AUDIO_NOT_SUPPORTED')
+  })
+
+  it('replaces the generic status text with the actual cause', () => {
+    const player = new FakePlayer()
+    player.playback = { ...SNAPSHOT, state: 'error', lastError: { code: 'STRATEGY_ALL_CANDIDATES_FAILED', recoverable: false } }
+    player.decisionTrace = trace()
+    const { host, ui } = mount(player)
+    expect(host.querySelector('.mxp-status-message')?.textContent).toBe(labels.troubleshootUnsupportedAudioCodec)
+    ui.destroy()
+  })
+
+  it('keeps the generic status text when nothing explains the failure', () => {
+    const player = new FakePlayer()
+    player.playback = { ...SNAPSHOT, state: 'error', lastError: { code: 'RANGE_HTTP_STATUS', recoverable: false } }
+    const { host, ui } = mount(player)
+    expect(host.querySelector('.mxp-status-message')?.textContent).toBe(labels.error)
     ui.destroy()
   })
 })

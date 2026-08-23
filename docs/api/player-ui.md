@@ -167,14 +167,19 @@ await player.setAiPostProcess({ superResolution: true })
 ```
 
 只在活动会话是 WebGPU 自定义管线时可用，否则以 `RENDERER_AI_UNSUPPORTED` 拒绝。stage 是
-**懒构造**的：第一次开启超分才会按 `MXPlayerOptions.aiModelBaseUrl` 拉取并校验模型、创建
-WGSL stage，因此不开启就没有任何模型下载或 GPU 分配。
+**懒构造**的：某个开关第一次被打开时才会按 `MXPlayerOptions.aiModelBaseUrl` 拉取并校验对应
+模型、创建 WGSL stage，因此不开启就没有任何模型下载或 GPU 分配。两个开关各自独立懒加载，
+先开一个再开另一个不会重建管线，governor 的历史与当前 epoch 都保留。
 
 - 超分（RT4KSR x2）已与上游 forward 对齐，见 `docs/development/webgpu-harness.md`。
-- 插帧当前恒为 `available: false`、`unavailableReason: 'not-implemented'`；请求开启会被拒绝，
-  以免把未验证的输出交给用户。
+- 插帧（RIFE 4.25）同样已与上游 `IFNet.forward` 对齐（同一文档），可用性与超分一致：
+  会话是 WebGPU 自定义管线且配置了 `aiModelBaseUrl` 时 `available: true`，缺模型根目录时报
+  `model-unavailable`。开启插帧会让 core 把解码队列的低水位抬高一帧，因为合成需要当前帧的
+  后继帧仍在队列里；`customVideo.maxDecodedFrames` 小于 3 时请求会以
+  `CUSTOM_INVALID_QUEUE_CONFIG` 拒绝。
 - governor 仍拥有降档权：这里开启的 stage 可能在下一次档位变化中被关闭，届时快照的
   `ai.superResolution.enabled` 变为 `false` 并伴随 `playbackchange`（`reason: 'ai'`）。
+  档位降到 `low` 时先关插帧、保留超分。
 - 原生路径按 ADR-0003 明确不支持 AI，`ai` 报 `renderer-path`。
 
 UI 侧对应 `features.aiPostProcess`（默认开启）与 `aiEnhance` / `aiSuperResolution` /
@@ -305,6 +310,26 @@ UI 不解析 SRT/ASS，不读取 cue 正文，不建立自己的 localStorage ke
 | 日期 | 按所选 locale 的 `Intl.DateTimeFormat` |
 
 SDK 不暴露字节计数器，所以网络活动与连接速度是派生估算而不是实测流量。停靠为迷你播放器时该浮层隐藏。排查播放问题在同一批数据上给出 findings：丢帧比例、缓冲饥饿、引擎错误码、音频时钟缺失、WASM 软解，并提供可复制的环境报告。
+
+### 8.3 播放失败的真实原因
+
+引擎对失败只给汇总码：候选全试过仍失败是 `STRATEGY_ALL_CANDIDATES_FAILED`，连候选都建不出来是
+`STRATEGY_NO_VIABLE_BACKEND`。两者都不说是哪个编码或容器的问题——那只存在于 `decisionTrace` 的
+逐候选 `attempts[].errorCode` 里。UI 现在读这份轨迹（`PlayerUiPlayer` 的 telemetry 增加
+`decisionTrace`），把它翻译成四类可执行的说明：
+
+| 原因 | 触发的候选错误码 | 标签 |
+|---|---|---|
+| 视频编码不支持 | `WEBCODECS_NOT_SUPPORTED`、`WEBCODECS_VIDEO_CONFIGURE_FAILED`、`NATIVE_NOT_SUPPORTED` | `troubleshootUnsupportedVideoCodec` |
+| 音频编码不支持 | `WEBCODECS_AUDIO_NOT_SUPPORTED`、`WEBCODECS_AUDIO_CONFIGURE_FAILED` | `troubleshootUnsupportedAudioCodec` |
+| 声道数超出范围 | `AUDIO_CHANNEL_LAYOUT_UNSUPPORTED` | `troubleshootUnsupportedChannels` |
+| 容器无法解析 | `CONTAINER_UNSUPPORTED`、`CONTAINER_INVALID` | `troubleshootUnsupportedContainer` |
+| 没有任何可用路径 | 轨迹里候选数为 0 | `troubleshootNoBackend` |
+
+同一份判定同时驱动**控制栏上的状态文案**：原先失败一律显示 `error`（「播放出错」），现在显示上表
+对应的说明。轨迹的 `sessionEpoch` 与当前快照不符时忽略，避免用上一次会话的原因解释这一次的失败；
+无法归类时回落到 `error`。环境报告新增 `videoCodec`、`audioCodec`（带声道数）与 `candidates`
+（`候选 id:结果` 列表），所以复制出来的报告自带真实原因。
 
 ## 9. CSS 契约
 
