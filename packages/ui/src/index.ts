@@ -12,6 +12,8 @@ export type {
   PlayerUiLocale,
   PlayerUiOptions,
   PlayerUiShareOptions,
+  PlayerRenderMode,
+  RenderModeAdapter,
   TheaterModeAdapter,
 } from './contracts'
 export { DEFAULT_FEATURES, DEFAULT_LABELS, PlayerUiError, UiErrorCodes } from './contracts'

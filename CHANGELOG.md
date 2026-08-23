@@ -4,6 +4,14 @@
 
 ### Added
 
+- 播放器设置面板新增「渲染模式」三档选择：`native`（原生 `<video>`）/ `custom-webgpu`
+  （WebGPU 自定义管线，AI 增强只在这一档可用）/ `custom-fallback`（WebGL2 自定义管线）。
+  渲染路径在会话创建时固定，切换等于用不同引擎选项重新 `load()`，所以这一节走宿主适配器
+  `RenderModeAdapter`（与 `TheaterModeAdapter` 同形的 get/set/subscribe），UI 只呈现与上报；
+  没有提供适配器时整节不渲染，不会出现点了没反应的控件。对应 `features.renderMode`（默认开启）
+  与 `renderMode` / `renderModeNative` / `renderModeWebGpu` / `renderModeFallback` /
+  `renderModeHint` 标签，四语言文案齐备。宿主在别处改档时已打开的面板会重绘。
+
 - AI 后处理运行时开关：`MediaEngine.setAiPostProcess({ interpolation?, superResolution? })` 与
   `PlaybackSnapshot.ai`（`{ tier, interpolation, superResolution }`，每个 stage 带
   `enabled/available/unavailableReason`）。stage 懒构造，第一次开启超分才拉取并校验模型；

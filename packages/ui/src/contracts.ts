@@ -6,6 +6,25 @@ export interface TheaterModeAdapter {
   subscribe(listener: (active: boolean) => void): () => void
 }
 
+/**
+ * Which playback path the session runs on.
+ *
+ * `native` is the HTML video element. Both custom values are the WebCodecs pipeline; they
+ * differ in the renderer, and only `custom-webgpu` can carry the AI stages.
+ */
+export type PlayerRenderMode = 'native' | 'custom-webgpu' | 'custom-fallback'
+
+/**
+ * Switching the render path means reloading the session with different engine options, which
+ * is the host's call, not the chrome's. The UI only renders the choice and reports it, exactly
+ * like {@link TheaterModeAdapter}.
+ */
+export interface RenderModeAdapter {
+  getState(): PlayerRenderMode
+  setState(mode: PlayerRenderMode): void | Promise<void>
+  subscribe(listener: (mode: PlayerRenderMode) => void): () => void
+}
+
 /** Locales shipped with the player chrome. `auto` resolves the host language at attach time. */
 export type PlayerUiLocale = 'en' | 'zh-CN' | 'zh-TW' | 'ja'
 
@@ -16,6 +35,8 @@ export interface PlayerUiFeatureOptions {
   readonly pictureInPicture?: boolean
   readonly theater?: boolean
   readonly settings?: boolean
+  /** Render-path selector inside the settings panel. Needs a `renderMode` adapter to appear. */
+  readonly renderMode?: boolean
   /** AI post-processing toggles inside the settings panel. */
   readonly aiPostProcess?: boolean
   readonly statistics?: boolean
@@ -156,6 +177,13 @@ export interface PlayerUiLabels {
   readonly troubleshootSoftwareDecode: string
   readonly troubleshootEnvironment: string
   readonly troubleshootCopyReport: string
+  /* Render-path section of the settings panel */
+  readonly renderMode: string
+  readonly renderModeNative: string
+  readonly renderModeWebGpu: string
+  readonly renderModeFallback: string
+  /** Caption under the selector naming the mode the AI toggles need. */
+  readonly renderModeHint: string
   /* AI post-processing section of the settings panel */
   readonly aiEnhance: string
   readonly aiSuperResolution: string
@@ -185,6 +213,7 @@ export interface PlayerUiOptions {
   readonly autoHideDelayMs?: number
   readonly nextEpisode?: NextEpisodeControlOptions
   readonly theaterMode?: TheaterModeAdapter
+  readonly renderMode?: RenderModeAdapter
   readonly onError?: (error: PlayerUiErrorSummary) => void
 }
 
@@ -212,6 +241,8 @@ export const DEFAULT_LABELS: PlayerUiLabels = {
   contextMenu: 'Player menu', loop: 'Loop', miniPlayer: 'Miniplayer', exitMiniPlayer: 'Exit miniplayer', copyVideoUrl: 'Copy video URL', copyVideoUrlAtTime: 'Copy video URL at current time', copyEmbedCode: 'Copy embed code', copyDebugInfo: 'Copy debug info', troubleshoot: 'Troubleshoot playback issue', copied: 'Copied to the clipboard', copyFailed: 'The clipboard is unavailable',
   statsVideoId: 'Video ID / sCPN', statsViewport: 'Viewport / Frames', statsResolution: 'Current / Optimal Res', statsVolume: 'Volume / Normalized', statsCodecs: 'Codecs', statsColor: 'Color', statsConnection: 'Connection Speed', statsNetwork: 'Network Activity', statsBufferHealth: 'Buffer Health', statsMystery: 'Mystery Text', statsDate: 'Date', statsFrames: '{dropped} dropped of {total}', statsUnknown: 'n/a',
   aiEnhance: 'AI enhancement', aiSuperResolution: 'Super resolution', aiInterpolation: 'Frame interpolation',
+  renderMode: 'Render mode', renderModeNative: 'Native playback', renderModeWebGpu: 'WebGPU custom pipeline', renderModeFallback: 'WebGL2 custom pipeline',
+  renderModeHint: 'AI enhancement runs only on the WebGPU custom pipeline.',
   aiUnavailableRendererPath: 'Switch the render mode to the WebGPU custom pipeline to enable this.',
   aiUnavailableModel: 'The host has not configured a model root for AI post-processing.',
   aiUnavailableDevice: 'This device has no usable WebGPU adapter.',
@@ -220,7 +251,7 @@ export const DEFAULT_LABELS: PlayerUiLabels = {
 }
 
 export const DEFAULT_FEATURES: Required<PlayerUiFeatureOptions> = {
-  nextEpisode: true, volume: true, subtitles: true, pictureInPicture: true, theater: false, settings: true, aiPostProcess: true, statistics: true, about: true, fullscreen: true, preview: true,
+  nextEpisode: true, volume: true, subtitles: true, pictureInPicture: true, theater: false, settings: true, renderMode: true, aiPostProcess: true, statistics: true, about: true, fullscreen: true, preview: true,
   contextMenu: true, loop: true, miniPlayer: true, share: true, troubleshoot: true, lockControls: true,
 }
 

@@ -57,15 +57,16 @@ interface PlayerUiController {
 |---|---|---|
 | `theme` | `dark | light | system`，默认 `dark` | 设置 `data-mxp-theme` 并选择 CSS token |
 | `locale` | `en | zh-CN | zh-TW | ja | auto`，默认 `en` | 选择内置文案包；`auto` 依次读取宿主 `<html lang>`、`navigator.languages`、`navigator.language` |
-| `features` | `PlayerUiFeatureOptions` | 分别启用下一集、音量、字幕、PiP、剧场、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项、排查项和控制栏锁定 |
+| `features` | `PlayerUiFeatureOptions` | 分别启用下一集、音量、字幕、PiP、剧场、设置、渲染模式、AI 后处理、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项、排查项和控制栏锁定 |
 | `labels` | `Partial<PlayerUiLabels>` | 在所选 locale 之上逐条覆盖可见文本、tooltip 与 ARIA label |
 | `share` | `PlayerUiShareOptions` | 右键菜单复制项使用的地址；UI 不从引擎内部推导媒体地址 |
 | `autoHideDelayMs` | `5000` | 允许范围 500-30000 ms；与 MXAnime-CMS 内置播放器一致 |
 | `nextEpisode` | callback + unavailable behavior | 只把命令交给宿主，不管理播放列表 |
 | `theaterMode` | `TheaterModeAdapter` | 宿主拥有的 get/set/subscribe 状态 |
+| `renderMode` | `RenderModeAdapter` | 同上形状，值是 `native \| custom-webgpu \| custom-fallback`；不提供则设置面板不出现这一节 |
 | `onError` | `(summary) => void` | 只返回 `UI_*` code 与 recoverable，不泄露原始异常 |
 
-默认开启下一集、音量、字幕、PiP、设置、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项、排查项和控制栏锁定；剧场模式默认关闭。下一集没有 callback 时可选择 disabled 或 hidden。
+默认开启下一集、音量、字幕、PiP、设置、渲染模式、AI 后处理、统计、关于、全屏、预览、右键菜单、循环、迷你播放器、复制分享项、排查项和控制栏锁定；剧场模式默认关闭。下一集没有 callback 时可选择 disabled 或 hidden。渲染模式一节还需要宿主提供 `renderMode` 适配器才会出现。
 
 ### 语言包
 
@@ -133,6 +134,31 @@ player.on('playbackchange', ({ snapshot, reason }) => {
 最终分数、平台 adjustment、初始化 attempt、最终选择或稳定失败码。快照不会暴露 source
 URL/header、Codec private data、原始异常、Frame、PCM 或字幕正文。UI 和 Demo 可以显示该
 快照，但不得据此绕过 SDK 的实际能力检测或自行强制不存在的后端。
+
+## 4.05 渲染模式切换
+
+渲染路径在会话创建时就固定，切换意味着用不同的引擎选项重新 `load()`，这是宿主的职责，UI 只负责
+呈现与上报。契约与 `TheaterModeAdapter` 同形：
+
+```ts
+interface RenderModeAdapter {
+  getState(): PlayerRenderMode                                  // native | custom-webgpu | custom-fallback
+  setState(mode: PlayerRenderMode): void | Promise<void>
+  subscribe(listener: (mode: PlayerRenderMode) => void): () => void
+}
+```
+
+三档与引擎选项的对应关系由宿主决定，参考实现见 demo：
+
+| 档位 | `intent` | `customVideo.renderer` | AI |
+|---|---|---|---|
+| `native` | `normal` | — | 不可用（`renderer-path`） |
+| `custom-webgpu` | `ai-enhance` | `webgpu` | 可用 |
+| `custom-fallback` | `filters` | `webgl2` | 不可用（`renderer-path`） |
+
+UI 侧对应 `features.renderMode`（默认开启）与 `renderMode` / `renderModeNative` /
+`renderModeWebGpu` / `renderModeFallback` / `renderModeHint` 标签。**没有提供适配器时整节不渲染**，
+不会出现一个点了没反应的控件。宿主在别处改了档位时，`subscribe` 会让已打开的设置面板重绘。
 
 ## 4.1 AI 后处理开关
 

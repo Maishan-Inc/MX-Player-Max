@@ -21,7 +21,7 @@ import type {
 } from '@mx-player-max/types'
 import type { MXPlayer } from '@mx-player-max/sdk'
 import { attachPlayerUi, PLAYER_UI_LOCALE_CODES, PLAYER_UI_LOCALES, matchPlayerUiLocale, playerUiLabels } from '../src/index'
-import type { PlayerUiLabels } from '../src/contracts'
+import type { PlayerRenderMode, PlayerUiLabels } from '../src/contracts'
 import { buildEmbedCode, createCpn, resolveVideoUrl, resolveVideoUrlAtTime, shortMediaId } from '../src/share'
 import { buildStatsRows, formatColor, formatFrames, formatOptimalResolution, frameCounters, mysteryText, normalizeSamples } from '../src/stats'
 import { buildTroubleshootReport } from '../src/troubleshoot'
@@ -674,6 +674,72 @@ describe('@mx-player-max/ui AI post-processing toggles', () => {
   it('omits the section when the feature is switched off', () => {
     const { host, ui } = mount(new FakePlayer(), { features: { aiPostProcess: false } })
     expect(openSettings(host).querySelector('.mxp-panel-toggle')).toBeNull()
+    ui.destroy()
+  })
+})
+
+describe('@mx-player-max/ui render mode selector', () => {
+  const openSettings = (host: HTMLElement): HTMLElement => {
+    host.querySelector<HTMLButtonElement>('[data-mxp-action="settings"]')!.click()
+    return host.querySelector<HTMLElement>('.mxp-panel')!
+  }
+
+  function adapter(initial: PlayerRenderMode = 'native') {
+    let mode = initial
+    const listeners = new Set<(next: PlayerRenderMode) => void>()
+    return {
+      setState: vi.fn((next: PlayerRenderMode) => { mode = next; for (const listener of listeners) listener(next) }),
+      getState: () => mode,
+      subscribe: (listener: (next: PlayerRenderMode) => void) => { listeners.add(listener); return () => { listeners.delete(listener) } },
+    }
+  }
+
+  it('offers the three render paths with the host mode selected', () => {
+    const renderMode = adapter('custom-webgpu')
+    const { host, ui } = mount(new FakePlayer(), { renderMode })
+    const select = openSettings(host).querySelector<HTMLSelectElement>('[data-mxp-control="render-mode"]')!
+    expect([...select.options].map((option) => option.value)).toEqual(['native', 'custom-webgpu', 'custom-fallback'])
+    expect([...select.options].map((option) => option.textContent)).toEqual(['Native playback', 'WebGPU custom pipeline', 'WebGL2 custom pipeline'])
+    expect(select.value).toBe('custom-webgpu')
+    expect(host.querySelector('.mxp-panel')?.textContent).toContain('AI enhancement runs only on the WebGPU custom pipeline.')
+    ui.destroy()
+  })
+
+  it('hands a picked mode to the host adapter', async () => {
+    const renderMode = adapter()
+    const { host, ui } = mount(new FakePlayer(), { renderMode })
+    const select = openSettings(host).querySelector<HTMLSelectElement>('[data-mxp-control="render-mode"]')!
+    select.value = 'custom-fallback'
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await Promise.resolve()
+    expect(renderMode.setState).toHaveBeenCalledWith('custom-fallback')
+    ui.destroy()
+  })
+
+  it('follows a mode the host changed elsewhere', () => {
+    const renderMode = adapter()
+    const { host, ui } = mount(new FakePlayer(), { renderMode })
+    openSettings(host)
+    renderMode.setState('custom-webgpu')
+    expect(host.querySelector<HTMLSelectElement>('[data-mxp-control="render-mode"]')?.value).toBe('custom-webgpu')
+    ui.destroy()
+  })
+
+  it('stays out of the panel without an adapter or with the feature off', () => {
+    const withoutAdapter = mount(new FakePlayer())
+    expect(openSettings(withoutAdapter.host).querySelector('[data-mxp-control="render-mode"]')).toBeNull()
+    withoutAdapter.ui.destroy()
+    const switchedOff = mount(new FakePlayer(), { renderMode: adapter(), features: { renderMode: false } })
+    expect(openSettings(switchedOff.host).querySelector('[data-mxp-control="render-mode"]')).toBeNull()
+    switchedOff.ui.destroy()
+  })
+
+  it('localizes the section', () => {
+    const { host, ui } = mount(new FakePlayer(), { renderMode: adapter(), locale: 'zh-CN' })
+    const panel = openSettings(host)
+    expect(panel.textContent).toContain('渲染模式')
+    expect(panel.textContent).toContain('WebGPU 自定义管线')
+    expect(panel.textContent).toContain('AI 增强只在 WebGPU 自定义管线下可用。')
     ui.destroy()
   })
 })

@@ -23,6 +23,8 @@ import {
   type PlayerUiOptions,
   type PlayerUiPlayer,
   type PlayerUiShareOptions,
+  type PlayerRenderMode,
+  type RenderModeAdapter,
   type TheaterModeAdapter,
 } from './contracts'
 import { detectPlayerUiLocale, playerUiLabels, resolvePlayerUiLocale } from './locales'
@@ -181,6 +183,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
   #pointerFocus = false
   #sessionEpoch = 0
   #theaterUnsubscribe: (() => void) | null = null
+  #renderModeUnsubscribe: (() => void) | null = null
   #seek: SeekState = { active: false, pointerId: null, pending: null, timer: null, epoch: 0, cleanup: null }
   #preview: PreviewState = { controller: null, timer: null, url: null, urls: [] }
   #subtitleDrag: SubtitleDragState = { active: false, pending: null, timer: null, cleanup: null }
@@ -290,6 +293,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
       ...(delay === undefined ? {} : { autoHideDelayMs: delay }),
       ...(options.nextEpisode === undefined ? {} : { nextEpisode: { ...options.nextEpisode } }),
       ...(options.theaterMode === undefined ? {} : { theaterMode: options.theaterMode }),
+      ...(options.renderMode === undefined ? {} : { renderMode: options.renderMode }),
       ...(options.onError === undefined ? {} : { onError: options.onError }),
     }
     this.#locale = this.#resolveLocale(options.locale)
@@ -586,6 +590,7 @@ export class PlayerUiControllerImpl implements PlayerUiController {
       this.#scope.add(() => observer.disconnect())
     }
     if (this.#options.theaterMode) this.#connectTheater(this.#options.theaterMode)
+    if (this.#options.renderMode) this.#connectRenderMode(this.#options.renderMode)
   }
 
   #sync(): void {
@@ -995,11 +1000,50 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     for (const value of [0.5, 0.75, 1, 1.25, 1.5, 2]) { const option = content.ownerDocument.createElement('option'); option.value = String(value); option.textContent = `${value}x`; option.selected = Math.abs(this.#snapshot.playbackRate - value) < 0.001; rate.append(option) }
     rate.addEventListener('change', () => { void this.#run(() => { this.#player.setPlaybackRate(Number(rate.value)) }) })
     section.append(rate)
+    if (this.#features.renderMode) this.#renderRenderModeSection(content)
     if (this.#features.aiPostProcess) this.#renderAiSection(content)
     if (this.#features.subtitles) { const subtitle = content.ownerDocument.createElement('button'); subtitle.type = 'button'; subtitle.textContent = this.#labels.subtitles; subtitle.addEventListener('click', () => { this.#closeOverlay(true); this.#toggleSubtitleMenu() }); section.append(subtitle) }
     if (this.#features.statistics) { const stats = content.ownerDocument.createElement('button'); stats.type = 'button'; stats.textContent = this.#labels.statistics; stats.addEventListener('click', () => { this.#closeOverlay(true); this.#setStatsOpen(true) }); section.append(stats) }
     if (this.#features.troubleshoot) { const help = content.ownerDocument.createElement('button'); help.type = 'button'; help.textContent = this.#labels.troubleshoot; help.addEventListener('click', () => this.#openOverlay('troubleshoot', help)); section.append(help) }
     if (this.#features.about) { const about = content.ownerDocument.createElement('button'); about.type = 'button'; about.textContent = this.#labels.about; about.addEventListener('click', () => this.#openOverlay('about', about)); section.append(about) }
+  }
+
+  /**
+   * The render path is fixed when a session is created, so switching it means reloading with
+   * different engine options — the host's job. Without an adapter the section stays out of the
+   * panel entirely instead of offering a control that cannot do anything.
+   */
+  #renderRenderModeSection(content: HTMLElement): void {
+    const adapter = this.#options.renderMode
+    if (!adapter) return
+    const doc = content.ownerDocument
+    const section = this.#section(content, this.#labels.renderMode)
+    let active: PlayerRenderMode = 'native'
+    try { active = adapter.getState() } catch { active = 'native' }
+    const select = doc.createElement('select')
+    select.setAttribute('aria-label', this.#labels.renderMode)
+    select.dataset.mxpControl = 'render-mode'
+    const modes: readonly (readonly [PlayerRenderMode, string])[] = [
+      ['native', this.#labels.renderModeNative],
+      ['custom-webgpu', this.#labels.renderModeWebGpu],
+      ['custom-fallback', this.#labels.renderModeFallback],
+    ]
+    for (const [mode, label] of modes) {
+      const option = doc.createElement('option')
+      option.value = mode
+      option.textContent = label
+      option.selected = mode === active
+      select.append(option)
+    }
+    select.addEventListener('change', () => {
+      const next = select.value as PlayerRenderMode
+      void this.#run(() => adapter.setState(next))
+    })
+    section.append(select)
+    const hint = doc.createElement('p')
+    hint.className = 'mxp-caption'
+    hint.textContent = this.#labels.renderModeHint
+    section.append(hint)
   }
 
   /**
@@ -2270,6 +2314,19 @@ export class PlayerUiControllerImpl implements PlayerUiController {
 
   #connectTheater(adapter: TheaterModeAdapter): void { this.#theaterUnsubscribe?.(); try { this.#theaterUnsubscribe = adapter.subscribe(() => this.#render()) } catch { this.#theaterUnsubscribe = null } }
 
+  /**
+   * An open settings panel has to follow a mode the host changed elsewhere, so this repaints
+   * the panel rather than just the control shell.
+   */
+  #connectRenderMode(adapter: RenderModeAdapter): void {
+    this.#renderModeUnsubscribe?.()
+    try {
+      this.#renderModeUnsubscribe = adapter.subscribe(() => this.#renderOverlayIfOpen())
+    } catch {
+      this.#renderModeUnsubscribe = null
+    }
+  }
+
   #detachInternal(removeHostClass = true): void {
     if (this.#hideTimer !== null) clearTimeout(this.#hideTimer)
     this.#hideTimer = null
@@ -2291,6 +2348,8 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     this.#scope = new CleanupScope()
     this.#theaterUnsubscribe?.()
     this.#theaterUnsubscribe = null
+    this.#renderModeUnsubscribe?.()
+    this.#renderModeUnsubscribe = null
     this.#closeOverlay(false)
     this.#subtitleResume = null
     this.#pendingSubtitleSelection = null

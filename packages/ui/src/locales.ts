@@ -6,6 +6,8 @@ import { DEFAULT_LABELS, type PlayerUiLabels, type PlayerUiLocale } from './cont
  */
 const ZH_CN: PlayerUiLabels = {
   aiEnhance: 'AI 增强', aiSuperResolution: '超分辨率', aiInterpolation: '插帧',
+  renderMode: '渲染模式', renderModeNative: '原生播放', renderModeWebGpu: 'WebGPU 自定义管线', renderModeFallback: 'WebGL2 自定义管线',
+  renderModeHint: 'AI 增强只在 WebGPU 自定义管线下可用。',
   aiUnavailableRendererPath: '把渲染模式切换到 WebGPU 自定义管线后才能开启。',
   aiUnavailableModel: '宿主未配置 AI 模型根目录。',
   aiUnavailableDevice: '此设备没有可用的 WebGPU 适配器。',
@@ -20,6 +22,8 @@ const ZH_CN: PlayerUiLabels = {
 
 const ZH_TW: PlayerUiLabels = {
   aiEnhance: 'AI 增強', aiSuperResolution: '超解析度', aiInterpolation: '補幀',
+  renderMode: '算繪模式', renderModeNative: '原生播放', renderModeWebGpu: 'WebGPU 自訂管線', renderModeFallback: 'WebGL2 自訂管線',
+  renderModeHint: 'AI 增強僅在 WebGPU 自訂管線下可用。',
   aiUnavailableRendererPath: '將算繪模式切換為 WebGPU 自訂管線後才能開啟。',
   aiUnavailableModel: '宿主未設定 AI 模型根目錄。',
   aiUnavailableDevice: '此裝置沒有可用的 WebGPU 轉接器。',
@@ -34,6 +38,8 @@ const ZH_TW: PlayerUiLabels = {
 
 const JA: PlayerUiLabels = {
   aiEnhance: 'AI 補正', aiSuperResolution: '超解像', aiInterpolation: 'フレーム補間',
+  renderMode: 'レンダリングモード', renderModeNative: 'ネイティブ再生', renderModeWebGpu: 'WebGPU カスタムパイプライン', renderModeFallback: 'WebGL2 カスタムパイプライン',
+  renderModeHint: 'AI 補正は WebGPU カスタムパイプラインでのみ利用できます。',
   aiUnavailableRendererPath: 'WebGPU カスタムパイプラインに切り替えると有効になります。',
   aiUnavailableModel: 'ホストが AI モデルのルートを設定していません。',
   aiUnavailableDevice: 'この端末に利用可能な WebGPU アダプターがありません。',
