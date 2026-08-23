@@ -129,6 +129,10 @@ export interface EbmlFixtureOptions {
   blockGroup?: boolean
   videoCodecId?: string
   audioCodecId?: string
+  /** Replaces the placeholder video frame, so a codec that carries its profile in-band can be read. */
+  videoPayload?: Uint8Array
+  /** Clears the key-frame flag on the video SimpleBlock. */
+  videoInterFrame?: boolean
 }
 
 export function createEbmlFixture(options: EbmlFixtureOptions = {}): Uint8Array {
@@ -160,7 +164,7 @@ export function createEbmlFixture(options: EbmlFixtureOptions = {}): Uint8Array 
   } else if (lacing === 'ebml') {
     videoBlock = simpleBlock(1, 0, 0x86, Uint8Array.of(1, 0x82, 0x11, 0x12, 0x21, 0x22))
   } else {
-    videoBlock = simpleBlock(1, 0, 0x80, Uint8Array.of(0x11, 0x22))
+    videoBlock = simpleBlock(1, 0, options.videoInterFrame === true ? 0x00 : 0x80, options.videoPayload ?? Uint8Array.of(0x11, 0x22))
   }
   const clusterPayload = concat(
     uintElement(0xe7, 0),

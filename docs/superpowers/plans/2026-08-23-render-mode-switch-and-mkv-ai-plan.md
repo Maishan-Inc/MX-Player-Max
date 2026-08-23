@@ -208,6 +208,9 @@ A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺
 - 补全 codec 字符串（从 VP9 bitstream 或 CodecPrivate 推 profile/level/bitDepth）是独立工作，
   不在本任务内；`mkv-vp8` 已经覆盖了「Matroska + 第二组编码对」这个维度
 
+以上三条已被 A7 取代，其中「修正为 `["native"]`」那条本身也是错的：裸 `vp09` 连原生路径都走不通。
+见 §6 的 A7 结论。
+
 **内嵌 ASS 字幕轨（2026-08-23 补做）**：新增第三条 Matroska 夹具
 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv`，把 `basic-style.ass` 以 `S_TEXT/ASS` 流拷贝进容器，
 验收模式 `mkv-embedded-subs` 用 `selectSubtitleTrack('embedded-<trackId>')` 选中它。这条夹具
@@ -319,8 +322,24 @@ worker/configure/flush/seek 预算。处理：验收 harness 通过公开选项�
 5. `test(quality): add Matroska fixtures and media coverage` — A4 ✅ 已完成
 6. `fix(ui): explain why a load failed instead of showing a generic error` — A5 ✅ 已完成
 7. `chore(quality): refresh test counts and evidence` — A6 ✅ 已完成
-8. `feat(demux): derive a full VP9 codec string` — A7（A4 的计划外发现，独立工作）
+8. `feat(demux): derive a full VP9 codec string` — A7 ✅ 已完成（2026-08-23）
 9. `fix(strategy): stop ranking a backend whose codec scope the engine will reject` — A8（A5 的计划外发现，跨四个包）
+
+**A7 的结论。** 解复用现在读第一个关键帧的 uncompressed header 取 profile 与 bit depth，按 VP9
+level 表用帧尺寸和帧率推出 level，产出 `vp09.PP.LL.DD`；关键帧读不出或头部校验不过时保留裸 id，
+探测的成败与此前一致。MP4 侧不需要碰帧，`vpcC` 直接给出三个字段。
+
+**一处需要更正的原有记录：VP9 此前连原生路径也不通。** A4 里写「语料 VP9 样本修正为仅 `native`」
+是错的——裸 `vp09` 让 `canPlayType('video/webm; codecs="vp09, opus"')` 返回空串（Chromium 与
+Firefox 都是），所以原生候选同样被判 unsupported。去掉推导后实测：`videoCodec: 'vp09'`、
+`engineErrorCode: 'STRATEGY_NO_VIABLE_BACKEND'`、原生模式也是 `unsupported`。两个样本现在都是
+`expectedPaths: ["native", "webcodecs"]`，四条用例背书（profile 0 自定义、profile 2 10-bit 自定义、
+两个 profile 的原生、裸 `vp09` 仍被浏览器拒绝）。
+
+**验收用例的教训（第二条）。** 这三条 VP9 用例最初写成 `test.skip(result.status === 'unsupported')`，
+于是抽掉推导后它们全部 skip 而不是转红——`STRATEGY_NO_VIABLE_BACKEND` 正在 `CAPABILITY_CODES` 里。
+改成先用 `VideoDecoder.isConfigSupported` / `canPlayType` 探浏览器能力再决定 skip，然后无条件断言
+`passed`；这样才真的钉住推导。
 
 **A 组全部完成。** 剩下的 A7 / A8 是这轮挖出来的两个独立缺陷，都不阻塞 MKV + AI 的最终验收；
 真正的终局验收（AI 开关端到端、性能与画质、真实浏览器矩阵）在 B 组，需要一台有真实 GPU 的机器。

@@ -41,7 +41,7 @@
       "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
       "subtitleIds": ["ass-basic-style"], "durationSeconds": 3.008, "bytes": 116674,
       "sha256": "03994a3fda205cb6492fec594361347e6724b467a0a9bfab1170d8a50f6ebbc7",
-      "minimumReproduction": "VP9 profile 0 decode and external ASS cue. Native only: the EBML demuxer reports a bare vp09 codec string, which no WebCodecs decoder accepts", "expectedPaths": ["native"], "wasmStatus": "not-implemented"
+      "minimumReproduction": "VP9 profile 0 decode and external ASS cue. The routes depend on the codec string being derived from the keyframe header: a bare vp09 is rejected by both WebCodecs and canPlayType", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
     },
     {
       "id": "webm-vp9-p2-10bit-opus", "path": "fixtures/webm-vp9-p2-10bit-opus.webm", "container": "webm",
@@ -49,7 +49,7 @@
       "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
       "subtitleIds": [], "durationSeconds": 3.008, "bytes": 122388,
       "sha256": "486bef6ea4c41cad518fe50cde5cce40d3171c3650f9e03f088f80d35638a0ea",
-      "minimumReproduction": "10-bit VP9 capability and decode result. Native only, same bare vp09 codec string as profile 0", "expectedPaths": ["native"], "wasmStatus": "not-implemented"
+      "minimumReproduction": "10-bit VP9 capability and decode result, with the bit depth read from the keyframe header and reported as vp09.02.LL.10", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
     },
     {
       "id": "mkv-h264-baseline-8bit-aac", "path": "fixtures/mkv-h264-baseline-8bit-aac.mkv", "container": "matroska",

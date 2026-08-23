@@ -55,6 +55,26 @@
 
 ### Fixed
 
+- VP9 现在能走自定义管线，原生路径也才真正通。EBML 解复用此前把 VP9 轨道报成裸 `vp09`
+  （`V_VP9` 在 WebM/Matroska 里没有 CodecPrivate，容器元数据里根本没有 profile/level/bitDepth），
+  而 `VideoDecoder.isConfigSupported({ codec: 'vp09' })` 与
+  `canPlayType('video/webm; codecs="vp09, opus"')` 都拒绝这个字符串，于是两个 VP9 样本连一个候选
+  都建不出来，一律 `STRATEGY_NO_VIABLE_BACKEND`。**原生路径此前同样不通**：语料里那句
+  `expectedPaths: ["native"]` 从来没有用例验证过，去掉推导后实测原生也拿不到候选。现在解复用读
+  第一个 Cluster 里该轨道的第一个关键帧的 uncompressed header，取 profile 与 bit depth，再按 VP9
+  level 表用帧尺寸和帧率推出 level，产出 `vp09.PP.LL.DD`；读不出关键帧、帧不是关键帧、或者头部
+  校验不过时保留裸 id，所以探测的成败与此前完全一致。MP4 侧不需要解码帧，`vpcC` 直接给出这三个
+  字段。两个语料样本的 `expectedPaths` 改回 `["native", "webcodecs"]`，由四条浏览器用例背书：
+  profile 0 自定义、profile 2（10-bit）自定义、两个 profile 的原生、以及裸 `vp09` 仍被浏览器拒绝。
+  这三条用例按浏览器自身的 VP9 探测结果决定是否 skip，而不是按验收结果的 `unsupported`——推导
+  一旦回退，报出来的正是 `unsupported` 会放过的那个错误码。
+
+- 媒体验收 harness 的每个脚本化步骤有了名字和独立预算，超时的错误码从一律的
+  `MEDIA_ACCEPTANCE_FAILED` 变成 `MEDIA_ACCEPTANCE_TIMEOUT_<step>`。预算从 15 s 提到 25 s
+  （等首条 cue 从 3 s 提到 5 s）：本机无 GPU，Firefox 下 10-bit VP9 与 Matroska H.264 走自定义管线
+  整条脚本要 41–45 s，单步 15 s 会间歇性把慢跑读成失败。`media-*` 三个 project 的用例超时统一到
+  180 s。**出厂默认值未改动**，这些都是验收 harness 的参数。
+
 - Matroska 里的 ASS/SSA 块现在按 CodecPrivate 的 `Format:` 行取字段（减去 Start/End、前置
   ReadOrder），不再假定固定的九字段布局。`Format:` 行更短时——FFmpeg 原样拷贝这类脚本就会这样——
   每个块都被判为字段不全，整条轨道一条 cue 都出不来。规范格式下的行为逐字不变。

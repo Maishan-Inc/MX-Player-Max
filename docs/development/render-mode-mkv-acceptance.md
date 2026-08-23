@@ -21,7 +21,7 @@
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json` |
 | `pnpm quality:acceptance-drift` | passed |
 | `pnpm quality:media` | passed；10 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（新增 3 条 Matroska） |
-| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；32/32，含 5 条新增 Matroska/VP9 用例 |
+| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；38/38，含 9 条新增 Matroska/内嵌字幕/VP9 用例 |
 | `pnpm exec playwright test --project=chromium-desktop` | passed；6/6 |
 | `pnpm release:manifest` | passed；新增 audio-worklet 自包含断言，回填坏文件时会中断发布 |
 | `pnpm verify:packages` | passed；19 个公开包 |
@@ -39,6 +39,7 @@
 | A4 | 两条 Matroska 夹具与三个验收模式 | 4 条浏览器用例（chromium + firefox）；`quality:media` 校验哈希；裸 `vp09` 拒绝被单独钉住 |
 | A4 补 | 内嵌 `S_TEXT/ASS` 轨的容器级覆盖：夹具 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv` + 验收模式 `mkv-embedded-subs` | `media-paths.spec.ts` 的 embedded-ASS 用例（断言选中的是 `embedded-<trackId>`、cue 落在 0.4–1.2 s）；`embedded.test.ts` 的 reduced-format 用例；`verify-media-manifest.mjs` 校验 `embeddedSubtitleTracks` 的引用与格式 |
 | A5 | 失败归因（视频/音频编码、声道、容器、无路径） | `player-ui-menu.test.ts` 7 条，含陈旧轨迹忽略与状态文案回落 |
+| A7 | 从关键帧头部推导 `vp09.PP.LL.DD`（MP4 侧从 `vpcC`） | `packages/demux/tests/codec-vp9.test.ts` 20 条（头部解析、拒绝路径、level 表、两个容器的推导与回落）；4 条浏览器用例，按浏览器 VP9 探测而非验收 `unsupported` 决定 skip |
 
 ## 手工核对（构建产物 + preview）
 
@@ -57,11 +58,14 @@
   归入计划的 B 组，需换有真实 GPU 的机器。
 - **Firefox 需要更长的操作预算。** 本机无 GPU，Firefox 走自定义管线比 Chromium 慢约 60%，
   脚本化验收会间歇性撞上引擎默认的 10 s worker/configure/flush/seek 预算，表现为
-  `WEBCODECS_WORKER_FAILED` 或 `CUSTOM_SEEK_FAILED`。验收 harness 把该预算提到 30 s、
-  `media-firefox` project 的用例超时提到 120 s 后，连续三轮 3/3 通过。这是计时问题，
-  **不是解码缺陷**，也没有改动出厂默认值。
-- **VP9 走不了自定义管线（A7）。** EBML 解复用把 VP9 轨道报成裸 `vp09`，WebCodecs 拒绝该字符串。
-  语料里 VP9 样本已修正为仅 `native`。
+  `WEBCODECS_WORKER_FAILED` 或 `CUSTOM_SEEK_FAILED`。验收 harness 把该预算提到 30 s、每个脚本化
+  步骤的等待提到 25 s、外层等待提到 120 s、`media-*` project 的用例超时提到 180 s 后稳定通过。
+  这是计时问题，**不是解码缺陷**，也没有改动出厂默认值。Firefox 下最慢的一条是 10-bit VP9 走
+  自定义管线，整条脚本 43 s。步骤超时现在报 `MEDIA_ACCEPTANCE_TIMEOUT_<step>`，能直接看出卡在哪步。
+- **VP9 已经能走自定义管线（A7 已完成）。** EBML 解复用从第一个关键帧的 uncompressed header 推出
+  `vp09.PP.LL.DD`，MP4 侧从 `vpcC` 取同样三个字段。顺带纠正原先的一条记录：裸 `vp09` 让
+  `canPlayType` 返回空串，所以 VP9 样本此前连原生路径也不通——语料里的 `expectedPaths: ["native"]`
+  是个从未被用例验证的声明。现在两个样本都是 `["native", "webcodecs"]`，四条用例背书。
 - **策略层不知道引擎自身的编码范围（A8）。** 能力探测反映浏览器支持，`decoder-webcodecs` 的范围更窄，
   于是 Vorbis 这类会先被排进候选再硬失败。A5 让这个失败可读，但没有消除它。
 - 真实浏览器矩阵 [`tests/browser/evidence/real-browser-matrix.json`](../../tests/browser/evidence/real-browser-matrix.json)
@@ -73,6 +77,7 @@
 |---|---|
 | WebGPU 适配器 | `google/swiftshader`，`isFallbackAdapter: true`；强制 Vulkan 时无适配器 |
 | 显卡 | NVIDIA GeForce GT 705（Fermi，驱动 23.21.13.9135）+ Microsoft Remote Display Adapter，RDP 会话 |
-| WebCodecs | `VideoDecoder` 支持 vp8 / vp09.PP.LL.DD / avc1；裸 `vp09` 不支持；`AudioDecoder` 支持 opus / mp4a.40.2 |
+| WebCodecs | `VideoDecoder` 支持 vp8 / vp09.PP.LL.DD / avc1；裸 `vp09` 不支持（Chromium 与 Firefox 都是）；`AudioDecoder` 支持 opus / mp4a.40.2 |
 | Chrome 原生 Matroska | `avc1+mp4a` → `probably`；`vp8+opus` → `probably`；`vp9+opus` → 空串 |
+| 原生 VP9 codec 字符串 | `video/webm; codecs="vp09, opus"` → 空串；`codecs="vp09.00.11.08, opus"` → `probably`（Chromium 与 Firefox 都是） |
 | 工具链 | ffmpeg 9.0、pwsh 7、Playwright chromium（`channel: 'chromium'` + `--enable-unsafe-webgpu`） |

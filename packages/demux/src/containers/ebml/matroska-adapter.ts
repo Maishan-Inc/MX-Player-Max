@@ -5,6 +5,7 @@ import { checkedAdd } from '../../range/validation'
 import { BoundedRangeReader } from '../bounded-reader'
 import { resolveDemuxLimits, type DemuxLimits, type DemuxLimitsInput } from '../limits'
 import type { ContainerAdapter, ContainerProbeResult, Demuxer } from '../types'
+import { parseVp9KeyframeHeader, vp9CodecString } from '../vp9'
 import { parseEbmlBlock, type EbmlTrackState } from './blocks'
 import { EBML_IDS, EBML_TOP_LEVEL_IDS } from './ids'
 import {
@@ -363,6 +364,7 @@ async function parseEbmlContainer(
     offset = element.dataEnd
   }
   if (tracks.size === 0) throw new DemuxError(ErrorCodes.CONTAINER_INVALID, 'Container has no supported media tracks')
+  await refineVp9Codecs({ reader, limits, segmentEnd, timecodeScale, tracks }, clusters)
   cues = cuePayloads.flatMap((payload) => parseCues(payload, limits, timecodeScale, segment.dataStart, segmentEnd))
   if (cues.length > limits.maxKeyframes) {
     throw new DemuxError(ErrorCodes.CONTAINER_LIMIT_EXCEEDED, 'Cue count exceeds the configured budget')
@@ -409,6 +411,15 @@ interface BlockRecord {
   durationTimecodes: number | null
 }
 
+/** The slice of the parse state that reading Cluster payloads needs. */
+interface ClusterContext {
+  reader: BoundedRangeReader
+  limits: DemuxLimits
+  segmentEnd: number | null
+  timecodeScale: number
+  tracks: ReadonlyMap<number, EbmlTrackState>
+}
+
 function parseBlockGroup(data: Uint8Array, limits: DemuxLimits): BlockRecord {
   const elements = readMemoryElements(data, 0, data.byteLength, limits, 2)
   const block = findElement(elements, EBML_IDS.BLOCK)
@@ -420,7 +431,32 @@ function parseBlockGroup(data: Uint8Array, limits: DemuxLimits): BlockRecord {
   }
 }
 
-async function readClusterPackets(state: EbmlParseState, cluster: ClusterLocation): Promise<DemuxPacket[]> {
+async function readBlockRecord(context: ClusterContext, element: EbmlElement): Promise<BlockRecord | null> {
+  if (element.id === EBML_IDS.SIMPLE_BLOCK) {
+    const payloadInfo = requireKnownPayload(element)
+    const payload = await context.reader.readBuffered(
+      payloadInfo.start,
+      payloadInfo.length,
+      context.limits.maxPacketBytes + 16,
+      'SimpleBlock',
+    )
+    const trackLength = parseEbmlVint(payload, 0).length
+    const flags = payload[trackLength + 2]
+    return { data: payload, keyframe: flags !== undefined && (flags & 0x80) !== 0, durationTimecodes: null }
+  }
+  if (element.id === EBML_IDS.BLOCK_GROUP) {
+    const payloadInfo = requireKnownPayload(element)
+    return parseBlockGroup(await context.reader.readBuffered(
+      payloadInfo.start,
+      payloadInfo.length,
+      context.limits.maxPacketBytes + 64 * 1024,
+      'BlockGroup',
+    ), context.limits)
+  }
+  return null
+}
+
+async function readClusterPackets(state: ClusterContext, cluster: ClusterLocation): Promise<DemuxPacket[]> {
   const end = cluster.dataEnd ?? state.segmentEnd
   if (end === null) throw new DemuxError(ErrorCodes.CONTAINER_LIMIT_EXCEEDED, 'Cannot bound an unknown-length final Cluster')
   let offset = cluster.dataStart
@@ -430,25 +466,9 @@ async function readClusterPackets(state: EbmlParseState, cluster: ClusterLocatio
     const element = await readStreamElement(state.reader, offset, end, state.limits)
     if (element.id === EBML_IDS.TIMECODE) {
       clusterTimecode = readEbmlUnsigned(await readElementPayload(state.reader, element))
-    } else if (element.id === EBML_IDS.SIMPLE_BLOCK) {
-      const payloadInfo = requireKnownPayload(element)
-      const payload = await state.reader.readBuffered(
-        payloadInfo.start,
-        payloadInfo.length,
-        state.limits.maxPacketBytes + 16,
-        'SimpleBlock',
-      )
-      const trackLength = parseEbmlVint(payload, 0).length
-      const flags = payload[trackLength + 2]
-      records.push({ data: payload, keyframe: flags !== undefined && (flags & 0x80) !== 0, durationTimecodes: null })
-    } else if (element.id === EBML_IDS.BLOCK_GROUP) {
-      const payloadInfo = requireKnownPayload(element)
-      records.push(parseBlockGroup(await state.reader.readBuffered(
-        payloadInfo.start,
-        payloadInfo.length,
-        state.limits.maxPacketBytes + 64 * 1024,
-        'BlockGroup',
-      ), state.limits))
+    } else {
+      const record = await readBlockRecord(state, element)
+      if (record !== null) records.push(record)
     }
     if (element.dataEnd === null || element.dataEnd <= offset) {
       throw new DemuxError(ErrorCodes.CONTAINER_INVALID, 'Cluster child did not advance the parser')
@@ -476,6 +496,77 @@ async function readClusterPackets(state: EbmlParseState, cluster: ClusterLocatio
     }
   }
   return packets
+}
+
+/**
+ * Clusters to look through for a VP9 keyframe. The first one always starts with a keyframe in
+ * practice; the second is only there for a stream whose opening Cluster holds audio alone.
+ */
+const VP9_KEYFRAME_CLUSTER_BUDGET = 2
+
+/**
+ * Collects the first keyframe payload each requested track contributes to this Cluster, and stops
+ * as soon as every one is found. Walking the whole Cluster the way `readClusterPackets` does would
+ * put a needless multi-megabyte read on every probe.
+ */
+async function readFirstKeyframes(
+  context: ClusterContext,
+  cluster: ClusterLocation,
+  trackIds: ReadonlySet<number>,
+): Promise<Map<number, Uint8Array>> {
+  const found = new Map<number, Uint8Array>()
+  const end = cluster.dataEnd ?? context.segmentEnd
+  if (end === null) return found
+  let offset = cluster.dataStart
+  while (offset < end && found.size < trackIds.size) {
+    const element = await readStreamElement(context.reader, offset, end, context.limits)
+    const record = element.id === EBML_IDS.TIMECODE ? null : await readBlockRecord(context, element)
+    if (record !== null && record.keyframe) {
+      const packets = parseEbmlBlock(record.data, {
+        clusterTimecode: 0,
+        timecodeScale: context.timecodeScale,
+        keyframe: true,
+        blockDurationTimecodes: null,
+        tracks: context.tracks,
+        limits: context.limits,
+      })
+      for (const packet of packets) {
+        if (!trackIds.has(packet.trackId) || found.has(packet.trackId)) continue
+        found.set(packet.trackId, packet.data)
+      }
+    }
+    if (element.dataEnd === null || element.dataEnd <= offset) return found
+    offset = element.dataEnd
+  }
+  return found
+}
+
+/**
+ * Replaces the bare `vp09` a VP9 track metadata can produce with `vp09.PP.LL.DD` read from the
+ * first keyframe. Failure is never fatal: a track that keeps the bare id behaves exactly as it did
+ * before, so a probe that used to succeed still does.
+ */
+async function refineVp9Codecs(context: ClusterContext, clusters: readonly ClusterLocation[]): Promise<void> {
+  const pending = new Map(
+    [...context.tracks.values()]
+      .filter((track) => track.info.kind === 'video' && track.info.codec === 'vp09')
+      .map((track) => [track.info.id, track]),
+  )
+  if (pending.size === 0) return
+  try {
+    for (const cluster of clusters.slice(0, VP9_KEYFRAME_CLUSTER_BUDGET)) {
+      const keyframes = await readFirstKeyframes(context, cluster, new Set(pending.keys()))
+      for (const [trackId, data] of keyframes) {
+        const track = pending.get(trackId)
+        if (track === undefined) continue
+        const header = parseVp9KeyframeHeader(data)
+        if (header === null) continue
+        track.info = { ...track.info, codec: vp9CodecString(header, track.info.frameRate) }
+        pending.delete(trackId)
+      }
+      if (pending.size === 0) return
+    }
+  } catch { /* a malformed Cluster surfaces on the first next() call, not as a probe failure */ }
 }
 
 class EbmlDemuxer implements Demuxer {

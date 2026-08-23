@@ -108,22 +108,69 @@ test.describe('real media SDK paths', () => {
   })
 
   /**
-   * The EBML demuxer reports a VP9 track as a bare `vp09`, which no WebCodecs decoder accepts,
-   * so VP9 has no custom-pipeline route in any container today — the corpus marks the VP9
-   * samples `native` only. This pins the reason so the day a full `vp09.PP.LL.DD` string is
-   * derived, the manifest gets updated with it.
+   * A bare `vp09` is what VP9 track metadata yields on its own, and neither WebCodecs nor
+   * `canPlayType` accepts it — so this pins the browser fact that forces the demuxer to derive a
+   * full `vp09.PP.LL.DD` string from the keyframe header.
    */
-  test('has no WebCodecs route for a bare VP9 codec string', async ({ page }) => {
+  test('rejects a bare VP9 codec string and accepts the derived one', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     const support = await page.evaluate(async () => {
       const probe = async (codec: string): Promise<boolean> => {
         try { return (await VideoDecoder.isConfigSupported({ codec, codedWidth: 320, codedHeight: 180 })).supported === true } catch { return false }
       }
-      return { bare: await probe('vp09'), full: await probe('vp09.00.10.08'), vp8: await probe('vp8') }
+      const element = document.createElement('video')
+      return {
+        bare: await probe('vp09'),
+        profile0: await probe('vp09.00.11.08'),
+        profile2: await probe('vp09.02.11.10'),
+        vp8: await probe('vp8'),
+        bareContentType: element.canPlayType('video/webm; codecs="vp09, opus"'),
+        derivedContentType: element.canPlayType('video/webm; codecs="vp09.00.11.08, opus"'),
+      }
     })
-    test.skip(!support.full, `VP9 decoding unavailable in ${test.info().project.name}`)
+    test.skip(!support.profile0, `VP9 decoding unavailable in ${test.info().project.name}`)
     expect(support.bare).toBe(false)
+    expect(support.profile2).toBe(true)
     expect(support.vp8).toBe(true)
+    expect(support.bareContentType).toBe('')
+    expect(support.derivedContentType).not.toBe('')
+  })
+
+  /**
+   * VP9 track metadata carries no profile, level or bit depth and WebM gives the track no
+   * CodecPrivate, so the demuxer used to publish a bare `vp09` and both samples ended up with zero
+   * candidates. These three cases are the evidence behind the `expectedPaths` the corpus now claims
+   * for them. They deliberately skip on a browser-level VP9 probe rather than on an `unsupported`
+   * result: a regression in the derivation reports exactly the `STRATEGY_NO_VIABLE_BACKEND` that
+   * `unsupported` forgives, which would let these tests skip the thing they exist to check.
+   */
+  test('plays VP9 profile 0 through the custom pipeline with a derived codec string', async ({ page }) => {
+    test.skip(!await supportsWebCodecsVp9(page), `WebCodecs VP9 unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'vp9')
+    expect(result).toMatchObject({ status: 'passed', mode: 'vp9', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null, videoCodec: 'vp09.00.11.08' })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  test('plays 10-bit VP9 profile 2 through the custom pipeline', async ({ page }) => {
+    test.skip(!await supportsWebCodecsVp9(page, 'vp09.02.11.10'), `WebCodecs 10-bit VP9 unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'vp9-p2')
+    expect(result).toMatchObject({ status: 'passed', mode: 'vp9-p2', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null, videoCodec: 'vp09.02.11.10' })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  test('plays both VP9 profiles on the Native path', async ({ page }) => {
+    test.skip(!await playsVp9Natively(page), `Native VP9 unavailable in ${test.info().project.name}`)
+    for (const [mode, codec] of [['vp9-native', 'vp09.00.11.08'], ['vp9-p2-native', 'vp09.02.11.10']] as const) {
+      const result = await runAcceptance(page, mode)
+      expect(result).toMatchObject({ status: 'passed', mode, backend: 'html-video', surface: 'video', errorCode: null, videoCodec: codec })
+      expect(result.nonEmptyPixels).toBeGreaterThan(100)
+      expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+    }
   })
 
   test('keeps Native video and WebCodecs canvas pixel statistics consistent', async ({ page }) => {
@@ -184,9 +231,10 @@ test.describe('real media SDK paths', () => {
 async function runAcceptance(page: Page, mode: string): Promise<MediaAcceptanceResult> {
   await page.goto(`/?mediaAcceptance=${mode}`, { waitUntil: 'domcontentloaded' })
   await page.locator('#media-start').click({ noWaitAfter: true })
-  // The scripted acceptance plays, seeks and replays the sample. Firefox needs roughly 45 s of
-  // that on the custom path, so waiting exactly 45 s turned a slow run into a failure.
-  await page.waitForFunction(() => /^(passed|failed|unsupported)$/.test(document.body.dataset.status ?? ''), undefined, { timeout: 90_000 })
+  // The scripted acceptance plays, seeks and replays the sample, and each of its steps has its own
+  // budget. This has to outlast the sum of them so a step timeout surfaces as its own labelled code
+  // rather than as an opaque Playwright timeout.
+  await page.waitForFunction(() => /^(passed|failed|unsupported)$/.test(document.body.dataset.status ?? ''), undefined, { timeout: 120_000 })
   return readAcceptance(page)
 }
 
@@ -194,6 +242,20 @@ async function readAcceptance(page: Page): Promise<MediaAcceptanceResult> {
   const result = await page.evaluate(() => (window as typeof window & { __mediaAcceptance?: MediaAcceptanceResult }).__mediaAcceptance)
   if (result === undefined) throw new Error('Media acceptance did not publish a result')
   return result
+}
+
+/** Whether the browser itself can decode VP9, independent of what the demuxer publishes. */
+async function supportsWebCodecsVp9(page: Page, codec = 'vp09.00.11.08'): Promise<boolean> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  return page.evaluate(async (value) => {
+    try { return (await VideoDecoder.isConfigSupported({ codec: value, codedWidth: 320, codedHeight: 180 })).supported === true } catch { return false }
+  }, codec)
+}
+
+async function playsVp9Natively(page: Page): Promise<boolean> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  return page.evaluate(() => ['vp09.00.11.08', 'vp09.02.11.10']
+    .every((codec) => document.createElement('video').canPlayType(`video/webm; codecs="${codec}, opus"`) !== ''))
 }
 
 interface MediaAcceptanceResult {
@@ -224,6 +286,7 @@ interface MediaAcceptanceResult {
   readonly sourceChanges: number
   readonly subtitleTrackIds: readonly string[]
   readonly selectedSubtitleTrackId: string | null
+  readonly videoCodec: string | null
   readonly audioClockSource: 'audio-context' | 'wall-clock' | null
   readonly audioRenderedFrames: number
   readonly engineErrorCode: string | null

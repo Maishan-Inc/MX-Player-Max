@@ -238,12 +238,31 @@ function codecString(type: string, privateData: Uint8Array | undefined): string 
     const values = [privateData[1] ?? 0, privateData[2] ?? 0, privateData[3] ?? 0]
     return `${type}.${values.map((value) => value.toString(16).padStart(2, '0')).join('').toUpperCase()}`
   }
+  // A bare `vp08`/`vp09` is rejected by both WebCodecs and canPlayType. vpcC carries the profile,
+  // level and bit depth outright, so no bitstream parsing is needed on this container.
+  if (type === 'vp08' || type === 'vp09') {
+    const vp9 = vpcCCodecSuffix(privateData)
+    if (vp9 !== null) return `${type}.${vp9}`
+  }
   if (type === 'mp4a' && privateData !== undefined && privateData.byteLength > 0) {
     const objectType = (privateData[0] ?? 0) >> 3
     if (objectType > 0) return `mp4a.40.${objectType}`
   }
   if (type === '.mp3' || type === 'mp3 ') return 'mp3'
   return type
+}
+
+/**
+ * `vpcC` is a FullBox, so its payload starts with version and flags. Only version 1 has the layout
+ * below; anything else keeps the bare sample entry type rather than risk a fabricated string.
+ */
+function vpcCCodecSuffix(privateData: Uint8Array | undefined): string | null {
+  if (privateData === undefined || privateData.byteLength < 7 || privateData[0] !== 1) return null
+  const profile = privateData[4] ?? 0
+  const level = privateData[5] ?? 0
+  const bitDepth = (privateData[6] ?? 0) >> 4
+  if (profile > 3 || level < 10 || level > 99 || (bitDepth !== 8 && bitDepth !== 10 && bitDepth !== 12)) return null
+  return [profile, level, bitDepth].map((value) => String(value).padStart(2, '0')).join('.')
 }
 
 function parseSampleDescription(

@@ -78,23 +78,37 @@ function hdlr(): Uint8Array {
   return box('hdlr', payload)
 }
 
-function visualSampleEntry(): Uint8Array {
+interface VisualSampleEntryOptions {
+  type?: string
+  configType?: string
+  config?: Uint8Array
+}
+
+interface MoovOptions {
+  empty?: boolean
+  fragmented?: boolean
+  co64?: boolean
+  overflowOffset?: boolean
+  videoSampleEntry?: VisualSampleEntryOptions
+}
+
+function visualSampleEntry(options: VisualSampleEntryOptions = {}): Uint8Array {
   const fields = new Uint8Array(70)
   const view = new DataView(fields.buffer)
   view.setUint16(6, 1)
   view.setUint16(24, 320)
   view.setUint16(26, 180)
-  const avcC = box('avcC', Uint8Array.of(1, 0x64, 0, 0x1f, 0xff))
-  return box('avc1', concat(fields, avcC))
+  const config = box(options.configType ?? 'avcC', options.config ?? Uint8Array.of(1, 0x64, 0, 0x1f, 0xff))
+  return box(options.type ?? 'avc1', concat(fields, config))
 }
 
 function table(type: string, entries: readonly Uint8Array[]): Uint8Array {
   return box(type, fullBox(0, 0, concat(u32(entries.length), ...entries)))
 }
 
-function createStbl(chunkOffset: bigint, options: { empty?: boolean; co64?: boolean; overflowOffset?: boolean }): Uint8Array {
+function createStbl(chunkOffset: bigint, options: MoovOptions): Uint8Array {
   const empty = options.empty === true
-  const stsd = box('stsd', fullBox(0, 0, concat(u32(1), visualSampleEntry())))
+  const stsd = box('stsd', fullBox(0, 0, concat(u32(1), visualSampleEntry(options.videoSampleEntry))))
   const stts = table('stts', empty ? [] : [concat(u32(2), u32(1_000))])
   const ctts = empty ? null : table('ctts', [concat(u32(1), u32(0)), concat(u32(1), u32(500))])
   const stsc = table('stsc', empty ? [] : [concat(u32(1), u32(2), u32(1))])
@@ -111,7 +125,7 @@ function createStbl(chunkOffset: bigint, options: { empty?: boolean; co64?: bool
   return box('stbl', concat(stsd, stts, ...(ctts === null ? [] : [ctts]), stsc, stsz, offsets, ...(stss === null ? [] : [stss])))
 }
 
-function createMoov(chunkOffset: bigint, options: { empty?: boolean; fragmented?: boolean; co64?: boolean; overflowOffset?: boolean }): Uint8Array {
+function createMoov(chunkOffset: bigint, options: MoovOptions): Uint8Array {
   const stbl = createStbl(chunkOffset, options)
   const minf = box('minf', stbl)
   const mdia = box('mdia', concat(mdhd(options.empty === true ? 0 : 2_000), hdlr(), minf))
@@ -126,6 +140,7 @@ export interface Mp4FixtureOptions {
   sizeZeroMdat?: boolean
   co64?: boolean
   overflowOffset?: boolean
+  videoSampleEntry?: VisualSampleEntryOptions
 }
 
 export function createMp4Fixture(options: Mp4FixtureOptions = {}): Uint8Array {

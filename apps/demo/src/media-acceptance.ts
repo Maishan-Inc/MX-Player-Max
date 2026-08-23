@@ -31,6 +31,8 @@ export interface MediaAcceptanceResult {
   readonly subtitleTrackIds: readonly string[]
   /** The track that was selected, so an `embedded-<trackId>` id proves a muxed track was used. */
   readonly selectedSubtitleTrackId: string | null
+  /** The codec string the demuxer published, which for VP9 must be a full `vp09.PP.LL.DD`. */
+  readonly videoCodec: string | null
   /**
    * `audio-context` proves the AudioWorklet module loaded and is driving the clock.
    * A worklet that fails to load takes the whole custom candidate down, so these two
@@ -55,6 +57,21 @@ const MP4_SAMPLE = '/quality-media/mp4-h264-baseline-8bit-aac.mp4'
 const MKV_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac.mkv'
 const MKV_VP8_SAMPLE = '/quality-media/mkv-vp8-p0-8bit-opus.mkv'
 const MKV_EMBEDDED_ASS_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac-embedded-ass.mkv'
+const VP9_SAMPLE = '/quality-media/webm-vp9-p0-8bit-opus.webm'
+const VP9_P2_SAMPLE = '/quality-media/webm-vp9-p2-10bit-opus.webm'
+/** A Map rather than an object literal so a crafted mode cannot reach `Object.prototype`. */
+const MODE_SAMPLES = new Map([
+  ['webcodecs', CUSTOM_SAMPLE],
+  ['fault-corrupt', MP4_SAMPLE],
+  ['mkv', MKV_SAMPLE],
+  ['mkv-native', MKV_SAMPLE],
+  ['mkv-vp8', MKV_VP8_SAMPLE],
+  ['mkv-embedded-subs', MKV_EMBEDDED_ASS_SAMPLE],
+  ['vp9', VP9_SAMPLE],
+  ['vp9-native', VP9_SAMPLE],
+  ['vp9-p2', VP9_P2_SAMPLE],
+  ['vp9-p2-native', VP9_P2_SAMPLE],
+])
 /**
  * `webcodecs` runs a video-only sample, so it never touched the AudioWorklet and could
  * not catch a worklet asset that only breaks in a production build. `webcodecs-audio`
@@ -64,8 +81,13 @@ const MKV_EMBEDDED_ASS_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac-embed
  * so nothing exercised it. `mkv-native` proves Chrome plays H.264/AAC in Matroska on the
  * media element, and the two custom modes prove the demuxer feeds WebCodecs with two
  * different codec pairs.
+ *
+ * The `vp9*` modes cover the derived `vp09.PP.LL.DD` codec string. A bare `vp09` is rejected by
+ * both `VideoDecoder.isConfigSupported` and `canPlayType`, so before the string was derived from
+ * the keyframe header these samples had no route at all — not even the native one the corpus
+ * claimed.
  */
-const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8', 'mkv-embedded-subs'])
+const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8', 'mkv-embedded-subs', 'vp9', 'vp9-p2'])
 /**
  * Every other mode attaches an external subtitle file, so the demux-and-parse path for a muxed
  * track had no coverage at all. This mode selects the track the container itself published.
@@ -79,6 +101,14 @@ const EMBEDDED_SUBTITLE_MODES = new Set(['mkv-embedded-subs'])
  * keeps the acceptance deterministic without touching the shipped default.
  */
 const OPERATION_TIMEOUT_MS = 30_000
+/**
+ * Budgets for the scripted steps. A GPU-less box decodes 10-bit VP9 and Matroska H.264 through the
+ * custom pipeline slowly enough in Firefox that the original 15 s per step turned a slow run into a
+ * failure. Each wait names its step so a timeout says which one ran out instead of only that the
+ * script failed.
+ */
+const PLAYBACK_WAIT_MS = 25_000
+const CUE_WAIT_MS = 5_000
 /** Codes that mean the browser genuinely cannot run the path, as opposed to a defect. */
 const CAPABILITY_CODES = new Set([
   'NATIVE_NOT_SUPPORTED',
@@ -117,12 +147,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
   try {
     const intent = CUSTOM_MODES.has(mode) ? 'frame-access' : 'normal'
     const fault = mode.startsWith('fault-') ? `?fault=${mode.slice('fault-'.length)}` : ''
-    const sample = mode === 'webcodecs' ? CUSTOM_SAMPLE
-      : mode === 'fault-corrupt' ? MP4_SAMPLE
-      : mode === 'mkv-vp8' ? MKV_VP8_SAMPLE
-      : mode === 'mkv-embedded-subs' ? MKV_EMBEDDED_ASS_SAMPLE
-      : mode === 'mkv' || mode === 'mkv-native' ? MKV_SAMPLE
-      : SAMPLE
+    const sample = MODE_SAMPLES.get(mode) ?? SAMPLE
     player = new MXPlayer({
       target: host,
       source: { kind: 'url', url: new URL(`${sample}${fault}`, location.href).href },
@@ -148,9 +173,9 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
     }
     selectedSubtitleTrackId = player.selectedSubtitleTrack
     await player.play()
-    await waitFor(() => player?.playback.currentTime !== null && (player?.playback.currentTime ?? 0) >= 500_000, 15_000)
+    await waitFor('first-playback-position', () => player?.playback.currentTime !== null && (player?.playback.currentTime ?? 0) >= 500_000, PLAYBACK_WAIT_MS)
     const cueTime = player.playback.currentTime ?? 0
-    await waitFor(() => cueTimes.length > 0, 3_000)
+    await waitFor('first-cue', () => cueTimes.length > 0, CUE_WAIT_MS)
     await player.pause()
     const paused = player.playback.currentTime
     await delay(150)
@@ -159,7 +184,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
     await player.seek(700_000)
     observedEpoch = Math.max(observedEpoch, player.audioClock?.epoch ?? player.playback.sessionEpoch)
     await player.play()
-    await waitFor(() => player?.playback.state === 'ended', 15_000)
+    await waitFor('ended', () => player?.playback.state === 'ended', PLAYBACK_WAIT_MS)
     const initialSize = surfaceSize(host.querySelector('canvas,video'))
     await player.load({
       target: host,
@@ -173,7 +198,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
     sourceChanges += 1
     if (mode === 'webcodecs') player.setVideoTransform({ outputWidth: 240, outputHeight: 135, devicePixelRatio: 2 })
     await player.play()
-    await waitFor(() => (player?.playback.currentTime ?? 0) >= 250_000, 10_000)
+    await waitFor('replay-position', () => (player?.playback.currentTime ?? 0) >= 250_000, PLAYBACK_WAIT_MS)
     player.pause()
     const surface = host.querySelector('canvas,video')
     if (surface instanceof HTMLVideoElement) { surface.style.width = '480px'; surface.style.height = '270px' }
@@ -194,7 +219,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       width: size.width, height: size.height, initialWidth: initialSize.width, initialHeight: initialSize.height,
       cssWidth: bounds?.width ?? 0, cssHeight: bounds?.height ?? 0, devicePixelRatio: stats?.devicePixelRatio ?? devicePixelRatio,
       sourceChanges,
-      subtitleTrackIds, selectedSubtitleTrackId,
+      subtitleTrackIds, selectedSubtitleTrackId, videoCodec: videoCodec(player),
       audioClockSource: player.audioClock?.source ?? null,
       audioRenderedFrames: player.audioClock?.renderedFrames ?? 0,
       engineErrorCode: engineErrors[0] ?? null,
@@ -213,7 +238,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
      */
     const unsupported = CAPABILITY_CODES.has(code)
       || code === 'STRATEGY_ALL_CANDIDATES_FAILED' && attemptErrorCodes.length > 0 && attemptErrorCodes.every((entry) => CAPABILITY_CODES.has(entry))
-    const faultPassed = mode.startsWith('fault-') && code !== 'MEDIA_ACCEPTANCE_FAILED'
+    const faultPassed = mode.startsWith('fault-') && !code.startsWith('MEDIA_ACCEPTANCE_')
     window.__mediaAcceptance = {
       status: faultPassed ? 'passed' : unsupported ? 'unsupported' : 'failed',
       mode, backend: player?.selection?.backend.kind ?? null, renderer: player?.rendererKind ?? null, surface: null,
@@ -224,7 +249,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       droppedFrames: player?.rendererStats?.droppedFrames ?? player?.nativeStats?.droppedFrames ?? null,
       epoch: player?.audioClock?.epoch ?? player?.playback.sessionEpoch ?? 0, width: 0, height: 0,
       initialWidth: 0, initialHeight: 0, cssWidth: 0, cssHeight: 0, devicePixelRatio, sourceChanges,
-      subtitleTrackIds, selectedSubtitleTrackId,
+      subtitleTrackIds, selectedSubtitleTrackId, videoCodec: videoCodec(player),
       audioClockSource: player?.audioClock?.source ?? null,
       audioRenderedFrames: player?.audioClock?.renderedFrames ?? 0,
       engineErrorCode: engineErrors[0] ?? null,
@@ -281,15 +306,29 @@ function attemptErrors(player: MXPlayer | null): string[] {
     .filter((value): value is string => typeof value === 'string')
 }
 
+function videoCodec(player: MXPlayer | null): string | null {
+  const track = player?.media?.tracks.find((entry) => entry.kind === 'video')
+  return track?.codec ?? track?.codecId ?? null
+}
+
 function errorCode(cause: unknown): string {
   if (typeof cause === 'object' && cause !== null && 'code' in cause && typeof cause.code === 'string') return cause.code
   return 'MEDIA_ACCEPTANCE_FAILED'
 }
 
-async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
+class AcceptanceTimeout extends Error {
+  readonly code: string
+
+  constructor(step: string) {
+    super(`MEDIA_ACCEPTANCE_TIMEOUT_${step}`)
+    this.code = `MEDIA_ACCEPTANCE_TIMEOUT_${step}`
+  }
+}
+
+async function waitFor(step: string, predicate: () => boolean, timeoutMs: number): Promise<void> {
   const deadline = performance.now() + timeoutMs
   while (!predicate()) {
-    if (performance.now() >= deadline) throw new Error('MEDIA_ACCEPTANCE_TIMEOUT')
+    if (performance.now() >= deadline) throw new AcceptanceTimeout(step)
     await delay(20)
   }
 }

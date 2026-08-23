@@ -27,12 +27,12 @@ export default defineConfig({
     { name: 'chromium-mobile', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
     { name: 'firefox-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
     { name: 'webkit-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
-    { name: 'media-chromium', testDir: './tests/browser/media', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
-    // Firefox runs the custom path roughly 60% slower than Chromium; a scripted acceptance that
-    // plays, seeks and replays a 3 s sample lands within a second or two of the 45 s default
-    // there, so it needs the same headroom as the WebKit automation project.
-    { name: 'media-firefox', testDir: './tests/browser/media', timeout: 120_000, use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
-    { name: 'media-webkit-automation', testDir: './tests/browser/media', timeout: 120_000, use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
+    { name: 'media-chromium', testDir: './tests/browser/media', timeout: 180_000, use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
+    // Firefox runs the custom path roughly 60% slower than Chromium, and 10-bit VP9 through the
+    // custom pipeline is the slowest case in the corpus. The acceptance harness gives each scripted
+    // step its own budget, so this only has to outlast their sum.
+    { name: 'media-firefox', testDir: './tests/browser/media', timeout: 180_000, use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
+    { name: 'media-webkit-automation', testDir: './tests/browser/media', timeout: 180_000, use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
     { name: 'performance-chromium', dependencies: [...concurrentProjectNames], testDir: './tests/browser/performance', use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
     { name: 'performance-firefox', dependencies: ['performance-chromium'], testDir: './tests/browser/performance', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
   ],
