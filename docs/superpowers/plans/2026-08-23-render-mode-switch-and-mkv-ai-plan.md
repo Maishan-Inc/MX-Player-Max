@@ -156,21 +156,26 @@ Vorbis 不在自定义管线的音频范围内（`packages/decoder-webcodecs/src
 
 **已完成（2026-08-23）**：`DemoRenderMode` 适配器 + `apps/demo/src/render-mode.ts` 里的纯映射函数（`renderModePlayerOptions` / `renderModeFromIntentValue` / `intentValueFromRenderMode`）；启动器的 `#playback-intent` 选择器保留（ADR-0006 要求），三个 option 值不变但改为渲染模式的两个视图之一，两个控件写同一份状态因此不会互相打架；`resolveAiModelBaseUrl` 在 `--mode pages` 下返回 `undefined`，其余情况指向 `/models/`；`serveModelAssets()` 中间件按显式白名单在 dev 与 preview 下提供 `weights/**`，权重不进 `public/` 因此 Pages 拦截依旧有效。实测：设置面板选 WebGPU 档后启动器同步成 `frame-access`、反向也同步；渲染器变成 `webgpu`，AI 原因从 `renderer-path` 变成 `device-capability`（本机软件适配器）；`/models/weights/rt4ksr/rt4ksr_x2.mxai` 返回 200 且路径穿越请求拿不到仓库文件。
 
-### A3b 自定义会话带音轨时在 demo 里根本不起播（先于 A3 存在，A1b 未覆盖）
+### A3b 起播延迟（原先误判为「不起播」，已排除缺陷）
 
-A1b 修掉了致命的 `AUDIO_BUFFER_OVERFLOW`，但 demo 启动器这条路上「带音轨就不前进」的现象仍在：
+A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺陷。**这是观测窗口太短造成的误判，不是缺陷。**
+给它 25 秒后同一个会话正常播到 `ended`：`audioClock.renderedFrames = 132895`、presented 90 帧、无错误码。
 
-| 场景 | 结果 |
-|---|---|
-| `?mediaAcceptance=webcodecs-audio`（新建 player，canvas2d，显式队列上限） | **通过**，`audioRenderedFrames = 11179` |
-| demo 启动器 + 无音轨样本 + `custom-webgpu` | **通过**，`state: playing`，presented 33 帧 |
-| demo 启动器 + VP8/Opus + `custom-webgpu`（webgpu） | 停在 `state: ready`，音视频各项统计全 0，无错误码 |
-| demo 启动器 + VP8/Opus + `custom-fallback`（webgl2） | 同上 |
-| demo 启动器 + VP8/Opus + 临时改成 canvas2d | 同上 |
+在 pipeline 的 `#runPump` 上加临时 instrumentation 后测到的起播时间线（本机 headless + SwiftShader，
+`play()` 为零点）：
 
-所以既不是渲染器的问题（canvas2d 也停），也不是 core 音频路径的问题（验收模式同一个样本同一个渲染器能跑）。`customAudioStats` 显示 `decodedBlocks: 0`、`decodeQueueSize: 0`，`customVideoStats` 也全 0——**解复用喂数根本没开始**，`inputSampleRate` 始终为 `null`。
+| 源 | `state: playing` | 首个音频块 | 首帧呈现 |
+|---|---|---|---|
+| VP8 + Opus | 5877 ms | 5858 ms | 5958 ms |
+| VP8 无音轨 | 2240 ms | – | 2328 ms |
 
-尚未排除的差异（按可疑度）：demo 不传 `customVideo.maxDecodedFrames` / `maxDecodeQueueSize` 而验收模式传 6/6；demo 走 React 组件的 `player.load()` 复用同一个实例而验收模式每次新建 `MXPlayer`；验收模式在 `play()` 前挂了一条外挂字幕轨。下一步应当加instrumentation 定位喂数循环为什么在有音轨时不启动，而不是继续黑盒试探。
+带音轨的会话要等音频缓冲到 `startBufferDuration` 才会 `#startIfReady()`，所以引擎的 `playing` 状态本就
+落在首个音频块之后；两条路径的差值约 3.6 秒。这些绝对值在本机没有意义（软件光栅化器 + 软解，
+`docs/development/webgpu-harness.md:61` 明确禁止把本机计时当性能证据），需要在真机上重新量，
+因此归入 B 组而不是 A 组。
+
+**验收用例的教训**：黑盒探测时给起播留足窗口。`webcodecs-audio` 验收模式用的 45 秒超时是合适的，
+手写探针用 3–4 秒就会把慢启动读成死锁。
 
 ### A4 MKV 测试样本与自动化用例
 
@@ -218,6 +223,8 @@ A1b 修掉了致命的 `AUDIO_BUFFER_OVERFLOW`，但 demo 启动器这条路上�
 
 - `scripts/quality/collect-performance-baseline.mjs` 采集 1080p→4K 的每帧耗时，填进性能证据（SwiftShader 下的计时**不得**作为证据，`docs/development/webgpu-harness.md:61` 已有明文）
 - 超分输出与上游 oracle 的数值比对可以在本机用 `pnpm quality:webgpu:oracle` / `pnpm quality:webgpu:rife` 跑（SwiftShader 做纯计算是可信的），**只有实时性与画面观感需要真机**
+- 起播时间：本机实测 `play()` → `state: playing` 在无音轨时约 2.2 秒、带 Opus 音轨时约 5.9 秒（见 A3b）。
+  需要在真机上复量并判断是否要优化 `startBufferDuration` 与首帧路径。
 
 ### B3 真实浏览器矩阵
 
@@ -239,12 +246,12 @@ A1b 修掉了致命的 `AUDIO_BUFFER_OVERFLOW`，但 demo 启动器这条路上�
 2. `fix(core): hold decoded PCM the audio transport cannot take yet` — A1b ✅ 已完成
 3. `feat(ui): add a render-mode control to the settings panel` — A2 ✅ 已完成
 4. `feat(demo): wire the render-mode switch and the AI model root` — A3 ✅ 已完成
-5. `fix(core): start the demux feed for a custom session with audio` — A3b ← 当前阻塞项
-6. `test(quality): add Matroska fixtures and media coverage` — A4
-7. `fix(core): surface the real codec failure instead of a generic strategy error` — A5
-8. `chore(quality): refresh test counts and evidence` — A6
+5. `test(quality): add Matroska fixtures and media coverage` — A4 ← 下一步
+6. `fix(core): surface the real codec failure instead of a generic strategy error` — A5
+7. `chore(quality): refresh test counts and evidence` — A6
 
-切档本身已经可用，但带音轨的源在 demo 启动器这条路上不起播（A3b），MKV 验收（A4）在那之前无从谈起。
+A 组没有阻塞项了：三档切换可用，带音轨的自定义会话能播到 `ended`（起播慢的问题归 B 组真机复量）。
+接下来是 A4 的 MKV 夹具，那是最终 MKV 验收的前置。
 
 ## 7. 最终验收清单（demo 里要能看见的）
 
