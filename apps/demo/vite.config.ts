@@ -10,6 +10,12 @@ const QUALITY_ASSETS = new Map([
   ['mp4-h264-baseline-8bit-aac.mp4', { path: fileURLToPath(new URL('mp4-h264-baseline-8bit-aac.mp4', QUALITY_FIXTURE_DIRECTORY)), type: 'video/mp4' }],
   ['webm-vp8-p0-8bit-opus.webm', { path: fileURLToPath(new URL('webm-vp8-p0-8bit-opus.webm', QUALITY_FIXTURE_DIRECTORY)), type: 'video/webm' }],
   ['webm-vp8-p0-8bit-video-only.webm', { path: fileURLToPath(new URL('webm-vp8-p0-8bit-video-only.webm', QUALITY_FIXTURE_DIRECTORY)), type: 'video/webm' }],
+  ['webm-vp9-p0-8bit-opus.webm', { path: fileURLToPath(new URL('webm-vp9-p0-8bit-opus.webm', QUALITY_FIXTURE_DIRECTORY)), type: 'video/webm' }],
+  ['webm-vp9-p2-10bit-opus.webm', { path: fileURLToPath(new URL('webm-vp9-p2-10bit-opus.webm', QUALITY_FIXTURE_DIRECTORY)), type: 'video/webm' }],
+  ['mp4-av1-main-8bit-aac.mp4', { path: fileURLToPath(new URL('mp4-av1-main-8bit-aac.mp4', QUALITY_FIXTURE_DIRECTORY)), type: 'video/mp4' }],
+  ['mp4-hevc-main10-10bit-aac.mp4', { path: fileURLToPath(new URL('mp4-hevc-main10-10bit-aac.mp4', QUALITY_FIXTURE_DIRECTORY)), type: 'video/mp4' }],
+  ['mkv-h264-baseline-8bit-aac.mkv', { path: fileURLToPath(new URL('mkv-h264-baseline-8bit-aac.mkv', QUALITY_FIXTURE_DIRECTORY)), type: 'video/x-matroska' }],
+  ['mkv-vp8-p0-8bit-opus.mkv', { path: fileURLToPath(new URL('mkv-vp8-p0-8bit-opus.mkv', QUALITY_FIXTURE_DIRECTORY)), type: 'video/x-matroska' }],
   ['basic-timing.srt', { path: fileURLToPath(new URL('basic-timing.srt', QUALITY_FIXTURE_DIRECTORY)), type: 'text/plain; charset=utf-8' }],
   ['basic-style.ass', { path: fileURLToPath(new URL('basic-style.ass', QUALITY_FIXTURE_DIRECTORY)), type: 'text/plain; charset=utf-8' }],
 ])

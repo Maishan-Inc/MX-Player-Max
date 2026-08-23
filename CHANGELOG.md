@@ -4,6 +4,12 @@
 
 ### Added
 
+- Matroska 进入媒体语料矩阵：新增 `mkv-h264-baseline-8bit-aac.mkv` 与 `mkv-vp8-p0-8bit-opus.mkv`
+  两条夹具，以及 `mkv-native` / `mkv` / `mkv-vp8` 三个验收模式和四条浏览器用例（chromium 与
+  firefox 都通过）。容器此前有 `MatroskaContainerAdapter` 但没有任何夹具，端到端从未被跑过。
+  Matroska 夹具必须用 `-bitexact` 生成：否则复用器每次写随机 `SegmentUID`，哈希不可复现，
+  语料校验会拒收。
+
 - Demo 接上渲染模式切换：启动器的 `playback-intent` 选择器（ADR-0006 保留的那个）与播放器设置面板
   现在是同一份状态的两个视图，都写 `DemoRenderMode` 适配器，因此不会互相打架。映射抽成
   `apps/demo/src/render-mode.ts` 的纯函数：`native` → `intent: normal`；`custom-webgpu` →
@@ -41,6 +47,12 @@
   五级 flow 累积、graph IR 与最终 blend 仍未实现，门禁会显式列出。
 
 ### Fixed
+
+- 媒体语料里 VP9 样本的路径声明修正为仅 `native`。EBML 解复用把 VP9 轨道报成裸 `vp09`，而
+  `VideoDecoder.isConfigSupported({ codec: 'vp09' })` 返回 `false`、`video-config.ts` 要求完整的
+  `vp09.PP.LL.DD`，所以 VP9 在任何容器里都走不了自定义管线——两个 WebM VP9 样本实测都是
+  `STRATEGY_NO_VIABLE_BACKEND` 且候选数为 0。原先 `["native", "webcodecs"]` 的声明从未被用例
+  验证过；新增用例把「裸 `vp09` 不被接受」钉住，补齐 codec 字符串推导后需要一并更新语料。
 
 - 自定义管线带音轨时音频时钟不前进，约 4 秒后以不可恢复的 `AUDIO_BUFFER_OVERFLOW` 结束会话。
   处理器在暂停期间不消费任何数据，而 `startBufferDuration`（150 ms）恰好能填满 MessagePort 队列

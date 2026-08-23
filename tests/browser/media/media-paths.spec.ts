@@ -56,6 +56,57 @@ test.describe('real media SDK paths', () => {
     expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
   })
 
+  /**
+   * Matroska had a container adapter but no fixture, so nothing exercised it end to end. These
+   * three cases pin the routes the corpus manifest claims for the two `.mkv` samples.
+   */
+  test('plays H.264/AAC in Matroska on the Native path', async ({ page }) => {
+    const result = await runAcceptance(page, 'mkv-native')
+    test.skip(result.status === 'unsupported', `Native Matroska unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-native', backend: 'html-video', surface: 'video', errorCode: null })
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+  })
+
+  test('plays H.264/AAC in Matroska through the custom pipeline', async ({ page }) => {
+    const result = await runAcceptance(page, 'mkv')
+    test.skip(result.status === 'unsupported', `WebCodecs Matroska H.264/AAC unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.audioClockSource).toBe('audio-context')
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  test('plays VP8/Opus in Matroska through the custom pipeline', async ({ page }) => {
+    const result = await runAcceptance(page, 'mkv-vp8')
+    test.skip(result.status === 'unsupported', `WebCodecs Matroska VP8/Opus unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp8', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+  })
+
+  /**
+   * The EBML demuxer reports a VP9 track as a bare `vp09`, which no WebCodecs decoder accepts,
+   * so VP9 has no custom-pipeline route in any container today — the corpus marks the VP9
+   * samples `native` only. This pins the reason so the day a full `vp09.PP.LL.DD` string is
+   * derived, the manifest gets updated with it.
+   */
+  test('has no WebCodecs route for a bare VP9 codec string', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    const support = await page.evaluate(async () => {
+      const probe = async (codec: string): Promise<boolean> => {
+        try { return (await VideoDecoder.isConfigSupported({ codec, codedWidth: 320, codedHeight: 180 })).supported === true } catch { return false }
+      }
+      return { bare: await probe('vp09'), full: await probe('vp09.00.10.08'), vp8: await probe('vp8') }
+    })
+    test.skip(!support.full, `VP9 decoding unavailable in ${test.info().project.name}`)
+    expect(support.bare).toBe(false)
+    expect(support.vp8).toBe(true)
+  })
+
   test('keeps Native video and WebCodecs canvas pixel statistics consistent', async ({ page }) => {
     const native = await runAcceptance(page, 'native')
     test.skip(native.status === 'unsupported', `Native playback unsupported in ${test.info().project.name}`)

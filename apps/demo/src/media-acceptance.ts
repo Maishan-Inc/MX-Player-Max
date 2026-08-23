@@ -48,12 +48,19 @@ declare global {
 const SAMPLE = '/quality-media/webm-vp8-p0-8bit-opus.webm'
 const CUSTOM_SAMPLE = '/quality-media/webm-vp8-p0-8bit-video-only.webm'
 const MP4_SAMPLE = '/quality-media/mp4-h264-baseline-8bit-aac.mp4'
+const MKV_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac.mkv'
+const MKV_VP8_SAMPLE = '/quality-media/mkv-vp8-p0-8bit-opus.mkv'
 /**
  * `webcodecs` runs a video-only sample, so it never touched the AudioWorklet and could
  * not catch a worklet asset that only breaks in a production build. `webcodecs-audio`
  * takes the same custom path with an Opus track for exactly that reason.
+ *
+ * The `mkv-*` modes are the Matroska coverage: the container had a demuxer but no fixture,
+ * so nothing exercised it. `mkv-native` proves Chrome plays H.264/AAC in Matroska on the
+ * media element, and the two custom modes prove the demuxer feeds WebCodecs with two
+ * different codec pairs.
  */
-const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio'])
+const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8'])
 /** Codes that mean the browser genuinely cannot run the path, as opposed to a defect. */
 const CAPABILITY_CODES = new Set([
   'NATIVE_NOT_SUPPORTED',
@@ -90,7 +97,11 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
   try {
     const intent = CUSTOM_MODES.has(mode) ? 'frame-access' : 'normal'
     const fault = mode.startsWith('fault-') ? `?fault=${mode.slice('fault-'.length)}` : ''
-    const sample = mode === 'webcodecs' ? CUSTOM_SAMPLE : mode === 'fault-corrupt' ? MP4_SAMPLE : SAMPLE
+    const sample = mode === 'webcodecs' ? CUSTOM_SAMPLE
+      : mode === 'fault-corrupt' ? MP4_SAMPLE
+      : mode === 'mkv-vp8' ? MKV_VP8_SAMPLE
+      : mode === 'mkv' || mode === 'mkv-native' ? MKV_SAMPLE
+      : SAMPLE
     player = new MXPlayer({
       target: host,
       source: { kind: 'url', url: new URL(`${sample}${fault}`, location.href).href },

@@ -29,7 +29,7 @@ for (const entry of [...manifest.subtitles, ...manifest.samples]) {
   }
 }
 for (const sample of manifest.samples) {
-  if (!['mp4', 'webm'].includes(sample.container)) failures.push(`${sample.id}: unsupported container label`)
+  if (!['mp4', 'webm', 'matroska'].includes(sample.container)) failures.push(`${sample.id}: unsupported container label`)
   if (![8, 10].includes(sample.video?.bitDepth)) failures.push(`${sample.id}: invalid bit depth`)
   if (!sample.video?.codec || !sample.video?.profile || (sample.audio !== null && !sample.audio?.codec)) failures.push(`${sample.id}: codec metadata incomplete`)
   if (!Array.isArray(sample.expectedPaths) || sample.expectedPaths.length === 0) failures.push(`${sample.id}: expectedPaths missing`)

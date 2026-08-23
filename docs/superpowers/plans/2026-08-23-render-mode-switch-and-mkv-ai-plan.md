@@ -190,6 +190,24 @@ A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺
 - `apps/demo/src/media-acceptance.ts` 加 `mkv` 模式（`intent: 'frame-access'`，先用 `canvas2d` 保证与现有用例同构），并在 `tests/browser/media/media-paths.spec.ts` 接上
 - 顺手验证 MKV 内嵌 ASS 字幕轨（`packages/subtitles/src/embedded.ts` 已有能力，但没有 MKV 覆盖）
 
+**已完成（2026-08-23）**：两条 Matroska 夹具 `mkv-h264-baseline-8bit-aac.mkv` 与
+`mkv-vp8-p0-8bit-opus.mkv`，都要 `-bitexact` —— 否则 matroska 复用器每次写一个随机 `SegmentUID`，
+文件哈希不可复现，语料校验会直接拒收（实测：不加时两次生成哈希不同，加了完全一致）。
+`verify-media-manifest.mjs` 的容器白名单加上 `matroska`。三个新验收模式 `mkv-native` / `mkv` /
+`mkv-vp8` 加四条用例，chromium 与 firefox 都通过（Firefox 原生也能放 Matroska）。
+
+**计划外的发现：VP9 在任何容器里都没有自定义管线路径。** EBML 解复用把 VP9 轨道报成裸 `vp09`
+（`matroska-adapter.ts` 的 `mapCodec`），而 `VideoDecoder.isConfigSupported({ codec: 'vp09' })`
+返回 `false`，`video-config.ts` 的 `VP9_CODEC` 也要求完整的 `vp09.PP.LL.DD`。实测两个 WebM VP9
+样本在自定义档下都是 `STRATEGY_NO_VIABLE_BACKEND`、候选数为 0。因此：
+
+- 第二条 MKV 夹具从 VP9 改成 VP8 —— VP9 那条根本跑不起来，留着就是个假样本
+- `webm-vp9-p0-8bit-opus` 与 `webm-vp9-p2-10bit-opus` 的 `expectedPaths` 从
+  `["native", "webcodecs"]` 修正为 `["native"]`，原先的 webcodecs 声明从来没有用例验证过
+- 新增一条用例把「裸 `vp09` 不被接受」钉住，等哪天补上完整 codec 字符串推导时它会提醒改回来
+- 补全 codec 字符串（从 VP9 bitstream 或 CodecPrivate 推 profile/level/bitDepth）是独立工作，
+  不在本任务内；`mkv-vp8` 已经覆盖了「Matroska + 第二组编码对」这个维度
+
 验收：`pnpm quality:media`、`pnpm test:browser --project=media-chromium`。
 
 ### A5 不支持的编码要给出可读原因
@@ -246,12 +264,13 @@ A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺
 2. `fix(core): hold decoded PCM the audio transport cannot take yet` — A1b ✅ 已完成
 3. `feat(ui): add a render-mode control to the settings panel` — A2 ✅ 已完成
 4. `feat(demo): wire the render-mode switch and the AI model root` — A3 ✅ 已完成
-5. `test(quality): add Matroska fixtures and media coverage` — A4 ← 下一步
-6. `fix(core): surface the real codec failure instead of a generic strategy error` — A5
+5. `test(quality): add Matroska fixtures and media coverage` — A4 ✅ 已完成
+6. `fix(core): surface the real codec failure instead of a generic strategy error` — A5 ← 下一步
 7. `chore(quality): refresh test counts and evidence` — A6
+8. `feat(demux): derive a full VP9 codec string` — A7（A4 的计划外发现，独立工作）
 
-A 组没有阻塞项了：三档切换可用，带音轨的自定义会话能播到 `ended`（起播慢的问题归 B 组真机复量）。
-接下来是 A4 的 MKV 夹具，那是最终 MKV 验收的前置。
+A 组没有阻塞项了：三档切换可用，带音轨的自定义会话能播到 `ended`，Matroska 两条路径都有用例。
+A5 之后 MKV + AI 的最终验收就只剩真机（B 组）。
 
 ## 7. 最终验收清单（demo 里要能看见的）
 

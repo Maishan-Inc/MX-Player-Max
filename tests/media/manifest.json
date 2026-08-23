@@ -41,7 +41,7 @@
       "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
       "subtitleIds": ["ass-basic-style"], "durationSeconds": 3.008, "bytes": 116674,
       "sha256": "03994a3fda205cb6492fec594361347e6724b467a0a9bfab1170d8a50f6ebbc7",
-      "minimumReproduction": "VP9 profile 0 decode and external ASS cue", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+      "minimumReproduction": "VP9 profile 0 decode and external ASS cue. Native only: the EBML demuxer reports a bare vp09 codec string, which no WebCodecs decoder accepts", "expectedPaths": ["native"], "wasmStatus": "not-implemented"
     },
     {
       "id": "webm-vp9-p2-10bit-opus", "path": "fixtures/webm-vp9-p2-10bit-opus.webm", "container": "webm",
@@ -49,7 +49,23 @@
       "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
       "subtitleIds": [], "durationSeconds": 3.008, "bytes": 122388,
       "sha256": "486bef6ea4c41cad518fe50cde5cce40d3171c3650f9e03f088f80d35638a0ea",
-      "minimumReproduction": "10-bit VP9 capability and decode result", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+      "minimumReproduction": "10-bit VP9 capability and decode result. Native only, same bare vp09 codec string as profile 0", "expectedPaths": ["native"], "wasmStatus": "not-implemented"
+    },
+    {
+      "id": "mkv-h264-baseline-8bit-aac", "path": "fixtures/mkv-h264-baseline-8bit-aac.mkv", "container": "matroska",
+      "video": { "codec": "h264", "profile": "Constrained Baseline", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["srt-basic-timing", "ass-basic-style"], "durationSeconds": 3.021, "bytes": 136184,
+      "sha256": "61e78c2b4a544ec52e2062473a31f0032a4e23195324b4c588f486a86557f7fc",
+      "minimumReproduction": "Matroska probe, normal playback, first frame/audio, seek to 1.5 s, ended", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+    },
+    {
+      "id": "mkv-vp8-p0-8bit-opus", "path": "fixtures/mkv-vp8-p0-8bit-opus.mkv", "container": "matroska",
+      "video": { "codec": "vp8", "profile": "0", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["ass-basic-style"], "durationSeconds": 3.008, "bytes": 158026,
+      "sha256": "d6396053fcc292310838022761bcfd77bdb15ce5228e62a03ad94f6f7d4b3679",
+      "minimumReproduction": "Matroska with a second codec pair: probe, playback, seek, ended", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-covered-by-vp8-video-only-scope"
     },
     {
       "id": "mp4-av1-main-8bit-aac", "path": "fixtures/mp4-av1-main-8bit-aac.mp4", "container": "mp4",
