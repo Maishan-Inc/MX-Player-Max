@@ -39,7 +39,19 @@ export function createDecisionTrace(
       duration: media.duration,
     },
     candidates,
-    attempts: [],
+    /**
+     * A candidate the strategy layer withheld is recorded as skipped with the code the backend
+     * would have raised. Otherwise the only thing left to explain the load is the summary
+     * `STRATEGY_NO_VIABLE_BACKEND`. Indexed past the ranked candidates so a real attempt, whose
+     * index is its rank, never overwrites one of these.
+     */
+    attempts: (evaluation.exclusions ?? []).map((exclusion, offset) => ({
+      index: candidates.length + offset,
+      candidateId: exclusion.candidateId,
+      kind: exclusion.kind,
+      status: 'skipped' as const,
+      errorCode: exclusion.errorCode,
+    })),
     selectedCandidateId: null,
     finalErrorCode: null,
   })

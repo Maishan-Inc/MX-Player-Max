@@ -110,12 +110,37 @@ function createContext(
   snapshot = createSnapshot(),
   report = createReport(),
   wasmDecoders?: CapabilityContext['wasmDecoders'],
+  webCodecsCodecs?: CapabilityContext['webCodecsCodecs'],
 ): CapabilityContext {
   return {
     snapshot,
     media: report,
     ...(wasmDecoders ? { wasmDecoders } : {}),
+    ...(webCodecsCodecs ? { webCodecsCodecs } : {}),
   }
+}
+
+/** What `@mx-player-max/decoder-webcodecs` declares, trimmed to the entries these cases need. */
+const ENGINE_SCOPE: NonNullable<CapabilityContext['webCodecsCodecs']> = [
+  { kind: 'video', match: 'prefix', codec: 'avc1.' },
+  { kind: 'video', match: 'exact', codec: 'vp8' },
+  { kind: 'audio', match: 'prefix', codec: 'mp4a.40.', maxChannels: 2 },
+  { kind: 'audio', match: 'exact', codec: 'opus', maxChannels: 2 },
+]
+
+/** A report where the browser verifies the track but the engine's own scope may not cover it. */
+function createVerifiedReport(
+  video: { codec: string },
+  audio: { codec: string; numberOfChannels?: number } | null,
+): MediaCapabilityReport {
+  return createReport({
+    query: {
+      container: 'matroska',
+      mimeType: 'video/x-matroska',
+      video: { codec: video.codec, codedWidth: 320, codedHeight: 180, framerate: 30 },
+      audio: audio === null ? null : { codec: audio.codec, sampleRate: 48_000, numberOfChannels: audio.numberOfChannels ?? 2 },
+    },
+  })
 }
 
 describe('strategy engine', () => {
@@ -256,6 +281,53 @@ describe('strategy engine', () => {
     ])
 
     expect(createStrategyEngine().rank(createMedia(), 'frame-access', context)).toEqual([])
+  })
+
+  /**
+   * Capability probing reports what the browser can decode; the engine's own WebCodecs backend
+   * covers less. Chrome decodes Vorbis given the container's CodecPrivate, so `flower.webm` used to
+   * be ranked, selected, and then fail with `WEBCODECS_AUDIO_NOT_SUPPORTED` while the pipeline was
+   * initialising. The candidate is now withheld, and the code it would have failed with is kept.
+   */
+  it.each([
+    ['an audio codec', { codec: 'vp8' }, { codec: 'vorbis' }, 'WEBCODECS_AUDIO_NOT_SUPPORTED', 'audio-codec-outside-engine-scope:vorbis'],
+    ['a video codec', { codec: 'hvc1.2.4.L120.B0' }, { codec: 'opus' }, 'WEBCODECS_NOT_SUPPORTED', 'video-codec-outside-engine-scope:hvc1.2.4.L120.B0'],
+    ['a channel layout', { codec: 'vp8' }, { codec: 'opus', numberOfChannels: 6 }, 'AUDIO_CHANNEL_LAYOUT_UNSUPPORTED', 'audio-channels-outside-engine-scope:6'],
+  ] as const)('withholds the WebCodecs candidate when the engine scope excludes %s', (_label, video, audio, errorCode, reason) => {
+    const report = createVerifiedReport(video, audio)
+    const context = createContext(createSnapshot(), report, undefined, ENGINE_SCOPE)
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'filters', context)
+
+    expect(evaluation.rankedCandidates).toEqual([])
+    expect(evaluation.exclusions).toEqual([{ candidateId: 'webcodecs-custom', kind: 'webcodecs', errorCode, reasons: [reason] }])
+    expect(() => createStrategyEngine().select(createMedia(), 'filters', context)).toThrow(StrategySelectionError)
+  })
+
+  it('names the ai-enhance candidate in its exclusion so the reason survives per intent', () => {
+    const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'vp8' }, { codec: 'vorbis' }), undefined, ENGINE_SCOPE)
+    expect(createStrategyEngine().evaluate(createMedia(), 'ai-enhance', context).exclusions?.[0]?.candidateId).toBe('webcodecs-ai')
+  })
+
+  it('still ranks WebCodecs for codecs inside the engine scope and reports no exclusions', () => {
+    const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'avc1.640028' }, { codec: 'mp4a.40.2' }), undefined, ENGINE_SCOPE)
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'filters', context)
+
+    expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['webcodecs-custom'])
+    expect(evaluation.exclusions).toBeUndefined()
+  })
+
+  /** A host that declares no scope keeps the behaviour that existed before the scope was plumbed. */
+  it('keeps ranking WebCodecs when the host declares no codec scope', () => {
+    const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'vp8' }, { codec: 'vorbis' }))
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'filters', context)
+
+    expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['webcodecs-custom'])
+    expect(evaluation.exclusions).toBeUndefined()
+  })
+
+  it('leaves a video-only track in scope when the engine declares no audio codec for it', () => {
+    const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'vp8' }, null), undefined, ENGINE_SCOPE)
+    expect(createStrategyEngine().evaluate(createMedia(), 'filters', context).rankedCandidates).toHaveLength(1)
   })
 
   it('uses deterministic tie-breaking without mutating candidates', () => {

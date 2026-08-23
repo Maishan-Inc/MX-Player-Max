@@ -12,9 +12,10 @@ import type {
   PlaybackSelection,
   RendererKind,
   StrategyEvaluation,
+  StrategyExclusion,
   WasmDecoderDeclaration,
 } from '@mx-player-max/types'
-import { ErrorCodes } from '@mx-player-max/types'
+import { codecWithinDecoderScope, ErrorCodes } from '@mx-player-max/types'
 
 export interface PlatformPolicy {
   adjustScores(
@@ -43,7 +44,7 @@ export class StrategySelectionError extends Error implements EngineError {
 
 export function createStrategyEngine(policy?: PlatformPolicy): StrategyEngine {
   const evaluate = (media: MediaDescriptor, intent: PlaybackIntent, context: CapabilityContext): StrategyEvaluation => {
-    const baseCandidates = createCandidates(media, intent, context)
+    const { candidates: baseCandidates, exclusions } = createCandidates(media, intent, context)
     const policyInput = baseCandidates.map(cloneCandidate)
     const requestedAdjustments = policy?.adjustScores(policyInput, media, intent, context) ?? []
     const adjustments = normalizePlatformAdjustments(baseCandidates, requestedAdjustments)
@@ -64,6 +65,7 @@ export function createStrategyEngine(policy?: PlatformPolicy): StrategyEngine {
       adjustments: adjustments.map(cloneAdjustment),
       rankedCandidates: rankedCandidates.map(cloneCandidate),
       selection,
+      ...(exclusions.length === 0 ? {} : { exclusions: exclusions.map(cloneExclusion) }),
     }
   }
 
@@ -117,8 +119,9 @@ function createCandidates(
   media: MediaDescriptor,
   intent: PlaybackIntent,
   context: CapabilityContext,
-): BackendCandidate[] {
+): { candidates: BackendCandidate[]; exclusions: StrategyExclusion[] } {
   const candidates: BackendCandidate[] = []
+  const exclusions: StrategyExclusion[] = []
   const videoCodec = context.media.query.video?.codec ?? null
   const audioCodec = context.media.query.audio?.codec ?? null
   const nativeIntent = intent === 'normal' || intent === 'low-power'
@@ -155,32 +158,43 @@ function createCandidates(
 
   const renderer = selectCustomRenderer(context.snapshot)
   if (renderer && context.media.webCodecs.playable === 'supported' && supportsRequiredWebCodecs(context)) {
-    const advancedIntent = intent !== 'normal' && intent !== 'low-power'
-    const aiCapable = !context.snapshot.webGpuFeatures.isFallbackAdapter
-      && context.snapshot.webGpu
-      && context.snapshot.webGpuFeatures.maxTextureDimension2d > 0
-      && renderer === 'webgpu'
-    const reasons = [advancedIntent ? 'custom-frame-access' : 'webcodecs-fallback', `renderer:${renderer}`, `renderer-fallback-chain:${rendererFallbackChain(context.snapshot).join('>')}`]
-    if (aiIntent && !aiCapable) reasons.push('ai-passthrough-fallback')
-    let score = advancedIntent ? 120 : 70
-    if (renderer === 'webgpu') {
-      score += 20
-      reasons.push('webgpu-renderer')
+    const webCodecsId = intent === 'ai-enhance' ? 'webcodecs-ai' : 'webcodecs-custom'
+    const outsideEngineScope = codecOutsideEngineScope(context)
+    if (outsideEngineScope !== null) {
+      exclusions.push({
+        candidateId: webCodecsId,
+        kind: 'webcodecs',
+        errorCode: outsideEngineScope.errorCode,
+        reasons: sortStrings(outsideEngineScope.reasons),
+      })
+    } else {
+      const advancedIntent = intent !== 'normal' && intent !== 'low-power'
+      const aiCapable = !context.snapshot.webGpuFeatures.isFallbackAdapter
+        && context.snapshot.webGpu
+        && context.snapshot.webGpuFeatures.maxTextureDimension2d > 0
+        && renderer === 'webgpu'
+      const reasons = [advancedIntent ? 'custom-frame-access' : 'webcodecs-fallback', `renderer:${renderer}`, `renderer-fallback-chain:${rendererFallbackChain(context.snapshot).join('>')}`]
+      if (aiIntent && !aiCapable) reasons.push('ai-passthrough-fallback')
+      let score = advancedIntent ? 120 : 70
+      if (renderer === 'webgpu') {
+        score += 20
+        reasons.push('webgpu-renderer')
+      }
+      if (hdr) {
+        score -= 20
+        reasons.push('custom-hdr-color-management-required')
+      }
+      candidates.push({
+        id: webCodecsId,
+        kind: 'webcodecs',
+        videoCodec,
+        audioCodec,
+        renderer,
+        score,
+        reasons: sortStrings(reasons),
+        requires: webCodecsRequirements(context),
+      })
     }
-    if (hdr) {
-      score -= 20
-      reasons.push('custom-hdr-color-management-required')
-    }
-    candidates.push({
-      id: intent === 'ai-enhance' ? 'webcodecs-ai' : 'webcodecs-custom',
-      kind: 'webcodecs',
-      videoCodec,
-      audioCodec,
-      renderer,
-      score,
-      reasons: sortStrings(reasons),
-      requires: webCodecsRequirements(context),
-    })
   }
 
   if (!aiIntent && renderer && supportsRequiredWasmDecoders(context)) {
@@ -206,7 +220,36 @@ function createCandidates(
     })
   }
 
-  return candidates
+  return { candidates, exclusions }
+}
+
+/**
+ * The probe result says whether the browser can decode the track; this says whether the WebCodecs
+ * backend will attempt it. Chrome's `AudioDecoder` decodes Vorbis given the container's
+ * CodecPrivate, so `flower.webm` used to be ranked, selected, and then fail with
+ * `WEBCODECS_AUDIO_NOT_SUPPORTED` during pipeline initialisation. Returning the code the backend
+ * would have raised keeps that reason available to callers without creating the candidate.
+ * A host that declares no scope keeps the previous behaviour.
+ */
+function codecOutsideEngineScope(context: CapabilityContext): { errorCode: string; reasons: string[] } | null {
+  const declarations = context.webCodecsCodecs
+  if (declarations === undefined || declarations.length === 0) return null
+  const video = context.media.query.video
+  if (video !== null && !codecWithinDecoderScope(declarations, 'video', video.codec)) {
+    return { errorCode: ErrorCodes.WEBCODECS_NOT_SUPPORTED, reasons: [`video-codec-outside-engine-scope:${video.codec}`] }
+  }
+  const audio = context.media.query.audio
+  if (audio === null) return null
+  if (!codecWithinDecoderScope(declarations, 'audio', audio.codec)) {
+    return { errorCode: ErrorCodes.WEBCODECS_AUDIO_NOT_SUPPORTED, reasons: [`audio-codec-outside-engine-scope:${audio.codec}`] }
+  }
+  if (!codecWithinDecoderScope(declarations, 'audio', audio.codec, audio.numberOfChannels)) {
+    return {
+      errorCode: ErrorCodes.AUDIO_CHANNEL_LAYOUT_UNSUPPORTED,
+      reasons: [`audio-channels-outside-engine-scope:${audio.numberOfChannels ?? 'unknown'}`],
+    }
+  }
+  return null
 }
 
 function supportsRequiredWebCodecs(context: CapabilityContext): boolean {
@@ -279,6 +322,15 @@ function cloneAdjustment(adjustment: PlatformScoreAdjustment): PlatformScoreAdju
     candidateId: adjustment.candidateId,
     scoreDelta: adjustment.scoreDelta,
     reasons: [...adjustment.reasons],
+  }
+}
+
+function cloneExclusion(exclusion: StrategyExclusion): StrategyExclusion {
+  return {
+    candidateId: exclusion.candidateId,
+    kind: exclusion.kind,
+    errorCode: exclusion.errorCode,
+    reasons: [...exclusion.reasons],
   }
 }
 

@@ -1,4 +1,4 @@
-import type { CapabilityContext, CapabilitySnapshot, MediaCapabilityReport, MediaDescriptor, WasmDecoderDeclaration } from '@mx-player-max/types'
+import type { CapabilityContext, CapabilitySnapshot, DecoderCodecDeclaration, MediaCapabilityReport, MediaDescriptor, WasmDecoderDeclaration } from '@mx-player-max/types'
 import {
   defaultCapabilityCache,
   isCapabilitySnapshot,
@@ -108,10 +108,12 @@ export function createCapabilityContext(
   snapshot: CapabilitySnapshot,
   media: MediaCapabilityReport,
   wasmDecoders?: readonly WasmDecoderDeclaration[],
+  webCodecsCodecs?: readonly DecoderCodecDeclaration[],
 ): CapabilityContext {
   return {
     snapshot,
     media,
     ...(wasmDecoders === undefined ? {} : { wasmDecoders: [...wasmDecoders] }),
+    ...(webCodecsCodecs === undefined ? {} : { webCodecsCodecs: [...webCodecsCodecs] }),
   }
 }

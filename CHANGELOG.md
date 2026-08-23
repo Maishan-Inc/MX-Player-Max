@@ -55,6 +55,23 @@
 
 ### Fixed
 
+- 策略层不再排出注定失败的候选。能力探测回答的是**浏览器**能不能解码，而引擎自己的 WebCodecs
+  后端覆盖面更窄：Chrome 的 `AudioDecoder` 配合容器 CodecPrivate 能解 Vorbis，于是 `flower.webm`
+  （VP8 + Vorbis）会先被排进 `webcodecs` 候选、被选中，再在管线初始化时以
+  `WEBCODECS_AUDIO_NOT_SUPPORTED` 硬失败。`CapabilityContext` 新增 `webCodecsCodecs`
+  （照 `wasmDecoders` 的先例），`@mx-player-max/decoder-webcodecs` 以 `WEBCODECS_CODEC_SCOPE`
+  公布自己接受的编码族与两声道上限，引擎构造 context 时传进去；范围之外的编码不再产出候选。
+  声明格式只有一个解释器 `codecWithinDecoderScope()`（在 types 里），
+  `packages/decoder-webcodecs/tests/codec-scope.test.ts` 把声明与两个 config 构造器的实际行为
+  逐个编码比对，两边漂移就转红。
+
+- 撤下候选不会把原因一起丢掉。`StrategyEvaluation` 新增 `exclusions`，决策轨迹把它记成
+  `status: 'skipped'` 的 attempt 并带上后端本会报的错误码，所以 A5 的归因文案照旧
+  （「这个音频编码在此处无法解码」），报告的 `candidates` 行显示
+  `webcodecs-custom:WEBCODECS_AUDIO_NOT_SUPPORTED` 而不是 `none`。真正尝试过的失败优先于被撤下的
+  候选来解释失败。实测 `flower.webm` 切自定义档：错误码从 `STRATEGY_ALL_CANDIDATES_FAILED` 变成
+  `STRATEGY_NO_VIABLE_BACKEND`，逐候选原因不变，原生档仍正常播放。
+
 - VP9 现在能走自定义管线，原生路径也才真正通。EBML 解复用此前把 VP9 轨道报成裸 `vp09`
   （`V_VP9` 在 WebM/Matroska 里没有 CodecPrivate，容器元数据里根本没有 profile/level/bitDepth），
   而 `VideoDecoder.isConfigSupported({ codec: 'vp09' })` 与

@@ -40,6 +40,7 @@
 | A4 补 | 内嵌 `S_TEXT/ASS` 轨的容器级覆盖：夹具 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv` + 验收模式 `mkv-embedded-subs` | `media-paths.spec.ts` 的 embedded-ASS 用例（断言选中的是 `embedded-<trackId>`、cue 落在 0.4–1.2 s）；`embedded.test.ts` 的 reduced-format 用例；`verify-media-manifest.mjs` 校验 `embeddedSubtitleTracks` 的引用与格式 |
 | A5 | 失败归因（视频/音频编码、声道、容器、无路径） | `player-ui-menu.test.ts` 7 条，含陈旧轨迹忽略与状态文案回落 |
 | A7 | 从关键帧头部推导 `vp09.PP.LL.DD`（MP4 侧从 `vpcC`） | `packages/demux/tests/codec-vp9.test.ts` 20 条（头部解析、拒绝路径、level 表、两个容器的推导与回落）；4 条浏览器用例，按浏览器 VP9 探测而非验收 `unsupported` 决定 skip |
+| A8 | 引擎自身的编码范围传进策略层，范围外不产出候选；撤下的候选以 `skipped` attempt 保留原因 | `packages/strategy/tests/strategy.test.ts` 7 条（三类范围外、两种 intent 的候选 id、范围内仍排出、未声明时行为不变、纯视频轨）；`packages/decoder-webcodecs/tests/codec-scope.test.ts` 24 条声明与构造器逐编码比对；`packages/core/tests/decision-trace.test.ts` 的 skipped attempt 索引；`player-ui-menu.test.ts` 2 条归因优先级与报告行 |
 
 ## 手工核对（构建产物 + preview）
 
@@ -48,7 +49,7 @@
 | 设置面板切 WebGPU 档 | 启动器同步为 `frame-access`，反向亦同步；诊断面板渲染器 `webgpu` |
 | 切 WebGL2 档 | 渲染器 `webgl2`，AI 两个开关灰显并给出渲染路径原因 |
 | `/models/weights/rt4ksr/rt4ksr_x2.mxai` | 200，612953 字节；`/models/../package.json` 取不到仓库文件 |
-| `flower.webm`（VP8 + Vorbis）切自定义档 | 状态文案指出音频编码不支持，报告含 `WEBCODECS_AUDIO_NOT_SUPPORTED`、`audioCodec: vorbis 2ch` |
+| `flower.webm`（VP8 + Vorbis）切自定义档 | 状态文案指出音频编码不支持，报告含 `WEBCODECS_AUDIO_NOT_SUPPORTED`、`audioCodec: vorbis 2ch`；A8 之后候选不再产出，错误码由 `STRATEGY_ALL_CANDIDATES_FAILED` 变为 `STRATEGY_NO_VIABLE_BACKEND`，逐候选原因不变 |
 | HEVC MP4 切自定义档 | 状态文案指出没有可用路径，报告含 `videoCodec: hvc1`、`candidates: none` |
 
 ## 已知限制与未完项
@@ -66,8 +67,9 @@
   `vp09.PP.LL.DD`，MP4 侧从 `vpcC` 取同样三个字段。顺带纠正原先的一条记录：裸 `vp09` 让
   `canPlayType` 返回空串，所以 VP9 样本此前连原生路径也不通——语料里的 `expectedPaths: ["native"]`
   是个从未被用例验证的声明。现在两个样本都是 `["native", "webcodecs"]`，四条用例背书。
-- **策略层不知道引擎自身的编码范围（A8）。** 能力探测反映浏览器支持，`decoder-webcodecs` 的范围更窄，
-  于是 Vorbis 这类会先被排进候选再硬失败。A5 让这个失败可读，但没有消除它。
+- **策略层已经知道引擎自身的编码范围（A8 已完成）。** `CapabilityContext.webCodecsCodecs` 由
+  `decoder-webcodecs` 的 `WEBCODECS_CODEC_SCOPE` 提供，范围外的编码不再产出候选；被撤下的候选以
+  `status: 'skipped'` 的 attempt 留在决策轨迹里，因此 A5 的归因文案不受影响。
 - 真实浏览器矩阵 [`tests/browser/evidence/real-browser-matrix.json`](../../tests/browser/evidence/real-browser-matrix.json)
   仍全部 `pending`：本工作区没有物理 latest-two-stable 浏览器，Playwright 自动化不充当该证据。
 

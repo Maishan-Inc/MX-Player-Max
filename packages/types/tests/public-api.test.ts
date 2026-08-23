@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from 'vitest'
 import type {
   ByteRange,
   CapabilityContext,
+  DecoderCodecDeclaration,
   DemuxPacket,
   EngineEventListener,
   EngineEventMap,
@@ -15,7 +16,7 @@ import type {
   StrategyEvaluation,
   VideoCodecConfig,
 } from '../src/index'
-import { ErrorCodes } from '../src/index'
+import { codecWithinDecoderScope, ErrorCodes } from '../src/index'
 
 describe('@mx-player-max/types public API', () => {
   it('exports stable Phase 1 error codes', () => {
@@ -57,5 +58,32 @@ describe('@mx-player-max/types public API', () => {
     expectTypeOf<StrategyEvaluation>().toHaveProperty('selection')
     expectTypeOf<EngineEventMap['decisionchange']>().toEqualTypeOf<{ trace: PlaybackDecisionTrace }>()
     expect(ErrorCodes.STRATEGY_ALL_CANDIDATES_FAILED).toBe('STRATEGY_ALL_CANDIDATES_FAILED')
+  })
+
+  /**
+   * The declaration format has exactly one interpreter so that the package publishing a codec scope
+   * and the package consuming it cannot disagree about what an entry means.
+   */
+  it('matches decoder codec declarations by exact id, family prefix and channel limit', () => {
+    const scope: DecoderCodecDeclaration[] = [
+      { kind: 'video', match: 'exact', codec: 'vp8' },
+      { kind: 'video', match: 'prefix', codec: 'avc1.' },
+      { kind: 'audio', match: 'prefix', codec: 'mp4a.40.', maxChannels: 2 },
+    ]
+
+    expect(codecWithinDecoderScope(scope, 'video', 'VP8')).toBe(true)
+    expect(codecWithinDecoderScope(scope, 'video', ' vp8 ')).toBe(true)
+    expect(codecWithinDecoderScope(scope, 'audio', 'vp8')).toBe(false)
+    expect(codecWithinDecoderScope(scope, 'video', 'vp8.00')).toBe(false)
+    expect(codecWithinDecoderScope(scope, 'video', 'avc1.640028')).toBe(true)
+    // A prefix needs something after it, so the bare family name is not itself in scope.
+    expect(codecWithinDecoderScope(scope, 'video', 'avc1.')).toBe(false)
+    expect(codecWithinDecoderScope(scope, 'video', 'avc1')).toBe(false)
+    expect(codecWithinDecoderScope(scope, 'video', '')).toBe(false)
+    expect(codecWithinDecoderScope(scope, 'audio', 'mp4a.40.2', 2)).toBe(true)
+    expect(codecWithinDecoderScope(scope, 'audio', 'mp4a.40.2', 6)).toBe(false)
+    expect(codecWithinDecoderScope(scope, 'audio', 'mp4a.40.2')).toBe(true)
+    expect(codecWithinDecoderScope(scope, 'video', 'vp8', 6)).toBe(true)
+    expect(codecWithinDecoderScope([], 'video', 'vp8')).toBe(false)
   })
 })

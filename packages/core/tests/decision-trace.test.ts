@@ -73,4 +73,30 @@ describe('decision trace', () => {
     expect(closed).toMatchObject({ status: 'closed', generatedAtMs: 160 })
     expect(Object.isFrozen(closed)).toBe(true)
   })
+
+  /**
+   * A candidate the strategy layer refused to produce leaves nothing but the summary error behind,
+   * so the trace records it as skipped with the code the backend would have raised. Its index sits
+   * past the ranked candidates because a real attempt is keyed by its rank.
+   */
+  it('records a withheld candidate as a skipped attempt without shadowing real attempts', () => {
+    const withheld: StrategyEvaluation = {
+      ...evaluation,
+      rankedCandidates: [rankedNative],
+      exclusions: [{ candidateId: 'custom', kind: 'webcodecs', errorCode: 'WEBCODECS_AUDIO_NOT_SUPPORTED', reasons: ['audio-codec-outside-engine-scope:vorbis'] }],
+    }
+    const initial = createDecisionTrace(withheld, media, 'filters', 4, 100)
+
+    expect(initial.candidates.map((candidate) => candidate.candidateId)).toEqual(['native'])
+    expect(initial.attempts).toEqual([
+      { index: 1, candidateId: 'custom', kind: 'webcodecs', status: 'skipped', errorCode: 'WEBCODECS_AUDIO_NOT_SUPPORTED' },
+    ])
+
+    const failed = failDecisionAttempt(beginDecisionAttempt(initial, rankedNative, 0, 110), rankedNative, 0, 'NATIVE_NOT_SUPPORTED', 120)
+    expect(failed.attempts).toEqual([
+      { index: 1, candidateId: 'custom', kind: 'webcodecs', status: 'skipped', errorCode: 'WEBCODECS_AUDIO_NOT_SUPPORTED' },
+      { index: 0, candidateId: 'native', kind: 'html-video', status: 'failed', errorCode: 'NATIVE_NOT_SUPPORTED' },
+    ])
+    expect(Object.isFrozen(initial.attempts[0])).toBe(true)
+  })
 })

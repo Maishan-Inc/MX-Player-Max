@@ -36,6 +36,7 @@ export type {
 } from './contracts'
 export { createAudioDecoderConfig } from './audio-config'
 export { AudioDecoderAdapter } from './audio-decoder-adapter'
+export { WEBCODECS_CODEC_SCOPE } from './codec-scope'
 export { createEncodedAudioChunk } from './encoded-audio-chunk'
 export { createEncodedVideoChunk } from './encoded-chunk'
 export { createWebCodecsError, WebCodecsError } from './errors'

@@ -323,7 +323,7 @@ worker/configure/flush/seek 预算。处理：验收 harness 通过公开选项�
 6. `fix(ui): explain why a load failed instead of showing a generic error` — A5 ✅ 已完成
 7. `chore(quality): refresh test counts and evidence` — A6 ✅ 已完成
 8. `feat(demux): derive a full VP9 codec string` — A7 ✅ 已完成（2026-08-23）
-9. `fix(strategy): stop ranking a backend whose codec scope the engine will reject` — A8（A5 的计划外发现，跨四个包）
+9. `fix(strategy): stop ranking a backend whose codec scope the engine will reject` — A8 ✅ 已完成（2026-08-23）
 
 **A7 的结论。** 解复用现在读第一个关键帧的 uncompressed header 取 profile 与 bit depth，按 VP9
 level 表用帧尺寸和帧率推出 level，产出 `vp09.PP.LL.DD`；关键帧读不出或头部校验不过时保留裸 id，
@@ -340,6 +340,25 @@ Firefox 都是），所以原生候选同样被判 unsupported。去掉推导后
 于是抽掉推导后它们全部 skip 而不是转红——`STRATEGY_NO_VIABLE_BACKEND` 正在 `CAPABILITY_CODES` 里。
 改成先用 `VideoDecoder.isConfigSupported` / `canPlayType` 探浏览器能力再决定 skip，然后无条件断言
 `passed`；这样才真的钉住推导。
+
+**A8 的结论。** `CapabilityContext` 新增 `webCodecsCodecs`（照 `wasmDecoders` 的先例），
+`decoder-webcodecs` 以 `WEBCODECS_CODEC_SCOPE` 公布自己的编码族与两声道上限，`core` 只改两处
+（一行 import、一行构造 context）。声明格式的解释器 `codecWithinDecoderScope()` 放在 types 里，
+让声明方与消费方共用同一份语义；`codec-scope.test.ts` 把声明与两个 config 构造器逐个编码比对。
+
+**这条改动本会牺牲 A5 的文案，所以顺带补了轨迹。** 候选不产出以后，失败只剩汇总码
+`STRATEGY_NO_VIABLE_BACKEND`，A5 的「这个音频编码在此处无法解码」会退化成「没有任何播放路径」。
+`StrategyEvaluation` 因此新增 `exclusions`，决策轨迹把撤下的候选记成 `status: 'skipped'` 的 attempt
+并带上后端本会报的错误码（`PlaybackDecisionAttemptStatus` 本来就有 `'skipped'`）。
+`playbackFailureCause()` 先读真实尝试、再读被撤下的候选，因为试过才失败的路径更能解释失败。
+
+实测 `flower.webm`（VP8 + Vorbis，构建产物 + preview）：
+
+| 档位 | 改动前 | 改动后 |
+|---|---|---|
+| 自定义（`frame-access`） | `STRATEGY_ALL_CANDIDATES_FAILED`，候选先建后败 | `STRATEGY_NO_VIABLE_BACKEND`，候选不再产出 |
+| 逐候选原因 | `WEBCODECS_AUDIO_NOT_SUPPORTED` | 同上（来自 skipped attempt） |
+| 原生（`normal`） | 正常播放 | 正常播放，轨迹里多一条被撤下的候选记录 |
 
 **A 组全部完成。** 剩下的 A7 / A8 是这轮挖出来的两个独立缺陷，都不阻塞 MKV + AI 的最终验收；
 真正的终局验收（AI 开关端到端、性能与画质、真实浏览器矩阵）在 B 组，需要一台有真实 GPU 的机器。

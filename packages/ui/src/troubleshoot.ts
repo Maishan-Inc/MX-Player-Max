@@ -55,7 +55,11 @@ export function playbackFailureCause(input: StatsInput): { readonly cause: Playb
   if (!error) return null
   const trace = input.decisionTrace
   if (trace && trace.sessionEpoch === input.snapshot.sessionEpoch) {
-    for (const attempt of trace.attempts) {
+    // A path that was tried and failed explains the failure better than one that was never
+    // offered, so real attempts are read before the withheld ones.
+    const attempted = trace.attempts.filter((attempt) => attempt.status !== 'skipped')
+    const skipped = trace.attempts.filter((attempt) => attempt.status === 'skipped')
+    for (const attempt of [...attempted, ...skipped]) {
       const cause = attempt.errorCode === null || attempt.errorCode === undefined ? undefined : CAUSE_BY_CODE[attempt.errorCode]
       if (cause && attempt.errorCode) return { cause, code: attempt.errorCode }
     }
@@ -107,12 +111,17 @@ export function buildTroubleshootReport(input: StatsInput, labels: PlayerUiLabel
 
 function describeCandidates(input: StatsInput): string | null {
   const trace = input.decisionTrace
-  if (!trace || trace.candidates.length === 0) return trace ? 'none' : null
-  return trace.candidates
-    .map((candidate) => {
-      const attempt = trace.attempts.find((entry) => entry.candidateId === candidate.candidateId)
-      const outcome = attempt === undefined ? 'ranked' : attempt.errorCode ?? attempt.status
-      return `${candidate.candidateId}:${outcome}`
-    })
-    .join(' ')
+  if (!trace) return null
+  const ranked = trace.candidates.map((candidate) => {
+    const attempt = trace.attempts.find((entry) => entry.candidateId === candidate.candidateId)
+    const outcome = attempt === undefined ? 'ranked' : attempt.errorCode ?? attempt.status
+    return `${candidate.candidateId}:${outcome}`
+  })
+  // A withheld candidate has no ranking entry, so it would otherwise vanish from the report.
+  const ids = new Set(trace.candidates.map((candidate) => candidate.candidateId))
+  const withheld = trace.attempts
+    .filter((attempt) => !ids.has(attempt.candidateId))
+    .map((attempt) => `${attempt.candidateId}:${attempt.errorCode ?? attempt.status}`)
+  const described = [...ranked, ...withheld]
+  return described.length === 0 ? 'none' : described.join(' ')
 }

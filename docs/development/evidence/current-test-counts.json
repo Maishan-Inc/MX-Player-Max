@@ -33,8 +33,8 @@
       "name": "@mx-player-max/core",
       "directory": "packages/core",
       "testFiles": 26,
-      "tests": 132,
-      "passed": 132,
+      "tests": 133,
+      "passed": 133,
       "skipped": 0,
       "todo": 0
     },
@@ -59,9 +59,9 @@
     {
       "name": "@mx-player-max/decoder-webcodecs",
       "directory": "packages/decoder-webcodecs",
-      "testFiles": 7,
-      "tests": 57,
-      "passed": 57,
+      "testFiles": 8,
+      "tests": 81,
+      "passed": 81,
       "skipped": 0,
       "todo": 0
     },
@@ -141,8 +141,8 @@
       "name": "@mx-player-max/strategy",
       "directory": "packages/strategy",
       "testFiles": 1,
-      "tests": 14,
-      "passed": 14,
+      "tests": 21,
+      "passed": 21,
       "skipped": 0,
       "todo": 0
     },
@@ -159,8 +159,8 @@
       "name": "@mx-player-max/types",
       "directory": "packages/types",
       "testFiles": 8,
-      "tests": 22,
-      "passed": 22,
+      "tests": 23,
+      "passed": 23,
       "skipped": 0,
       "todo": 0
     },
@@ -168,8 +168,8 @@
       "name": "@mx-player-max/ui",
       "directory": "packages/ui",
       "testFiles": 3,
-      "tests": 79,
-      "passed": 79,
+      "tests": 81,
+      "passed": 81,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 101,
-    "tests": 629,
-    "passed": 629,
+    "testFiles": 102,
+    "tests": 664,
+    "passed": 664,
     "skipped": 0,
     "todo": 0
   }

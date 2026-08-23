@@ -5,6 +5,7 @@ import {
   probeMediaCapabilities,
 } from '@mx-player-max/capabilities'
 import { createRangeLoader, probeContainer, type RangeLoader } from '@mx-player-max/demux'
+import { WEBCODECS_CODEC_SCOPE } from '@mx-player-max/decoder-webcodecs'
 import { createWasmDecoderRegistry, resolveWasmAssetUrl } from '@mx-player-max/decoder-wasm'
 import {
   createLibvpxVp8Plugin,
@@ -599,7 +600,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         const capabilities = await detectCapabilities({ includeWasm: false })
         const report = await probeMediaCapabilities(media, { snapshot: capabilities })
         const wasmSession = createWasmSession(options.wasmBaseUrl)
-        const context = createCapabilityContext(capabilities, report, wasmSession?.declarations)
+        const context = createCapabilityContext(capabilities, report, wasmSession?.declarations, WEBCODECS_CODEC_SCOPE)
         emit('capabilities', { context })
         const policy = createPlatformPolicy(capabilities)
         const strategy = createStrategyEngine(policy)

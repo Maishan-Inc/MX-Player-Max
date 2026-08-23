@@ -489,6 +489,45 @@ export interface WasmDecoderDeclaration {
   variants?: readonly ('single' | 'simd' | 'threaded')[]
 }
 
+/**
+ * A codec a decoder backend will actually attempt. Capability probing answers whether the *browser*
+ * can decode something; this answers whether the backend behind a candidate is willing to, which is
+ * a narrower question. Chrome's `AudioDecoder` handles Vorbis given the container's CodecPrivate,
+ * for instance, while a backend may deliberately not cover it.
+ */
+export interface DecoderCodecDeclaration {
+  readonly kind: 'video' | 'audio'
+  /** `exact` matches the whole codec string; `prefix` matches a family such as `mp4a.40.`. */
+  readonly match: 'exact' | 'prefix'
+  readonly codec: string
+  /** Highest channel count the backend accepts, when it is limited. */
+  readonly maxChannels?: number
+}
+
+/**
+ * The one interpreter of {@link DecoderCodecDeclaration}, so a producer and a consumer in different
+ * packages cannot drift apart on what a declaration means.
+ */
+export function codecWithinDecoderScope(
+  declarations: readonly DecoderCodecDeclaration[],
+  kind: 'video' | 'audio',
+  codec: string,
+  channels?: number,
+): boolean {
+  const normalized = codec.trim().toLowerCase()
+  if (normalized.length === 0) return false
+  return declarations.some((declaration) => {
+    if (declaration.kind !== kind) return false
+    const target = declaration.codec.trim().toLowerCase()
+    if (target.length === 0) return false
+    const matches = declaration.match === 'exact'
+      ? normalized === target
+      : normalized.length > target.length && normalized.startsWith(target)
+    if (!matches) return false
+    return declaration.maxChannels === undefined || channels === undefined || channels <= declaration.maxChannels
+  })
+}
+
 export interface WebGpuFeatureSnapshot {
   available: boolean
   float32Filterable: boolean
@@ -528,6 +567,11 @@ export interface CapabilityContext {
   snapshot: CapabilitySnapshot
   media: MediaCapabilityReport
   wasmDecoders?: readonly WasmDecoderDeclaration[]
+  /**
+   * What the WebCodecs backend itself will attempt. Without it the strategy layer can only see the
+   * browser's verdict and will rank a candidate the backend rejects at initialisation time.
+   */
+  webCodecsCodecs?: readonly DecoderCodecDeclaration[]
 }
 
 export type BackendKind = 'html-video' | 'webcodecs' | 'wasm' | 'mse'
@@ -559,11 +603,25 @@ export interface PlaybackSelection {
   aiPlan?: AiPlan
 }
 
+/**
+ * A candidate the strategy layer deliberately did not produce, and the code the backend behind it
+ * would have failed with. Without this the reason disappears: the load ends as
+ * `STRATEGY_NO_VIABLE_BACKEND`, which cannot tell an unsupported audio codec from an unknown
+ * container.
+ */
+export interface StrategyExclusion {
+  readonly candidateId: string
+  readonly kind: BackendKind
+  readonly errorCode: string
+  readonly reasons: readonly string[]
+}
+
 export interface StrategyEvaluation {
   readonly baseCandidates: readonly Readonly<BackendCandidate>[]
   readonly adjustments: readonly Readonly<PlatformScoreAdjustment>[]
   readonly rankedCandidates: readonly Readonly<BackendCandidate>[]
   readonly selection: PlaybackSelection | null
+  readonly exclusions?: readonly Readonly<StrategyExclusion>[]
 }
 
 export type PlaybackDecisionStatus = 'evaluating' | 'initializing' | 'selected' | 'failed' | 'closed'

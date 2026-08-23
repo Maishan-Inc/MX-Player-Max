@@ -837,4 +837,37 @@ describe('@mx-player-max/ui playback failure explanation', () => {
     expect(host.querySelector('.mxp-status-message')?.textContent).toBe(labels.error)
     ui.destroy()
   })
+
+  /**
+   * The strategy layer withholds a candidate whose codec the engine's own backend would reject, so
+   * the reason arrives as a skipped attempt with no ranked candidate behind it. Without this the
+   * only thing left is `STRATEGY_NO_VIABLE_BACKEND`, which explains nothing.
+   */
+  it('explains a withheld candidate that was never ranked', () => {
+    const withheld = trace({
+      candidates: [],
+      attempts: [{ index: 0, candidateId: 'webcodecs-custom', kind: 'webcodecs', status: 'skipped', errorCode: 'WEBCODECS_AUDIO_NOT_SUPPORTED' }],
+      finalErrorCode: 'STRATEGY_NO_VIABLE_BACKEND',
+    })
+    const report = buildTroubleshootReport(failed(withheld), labels, 'agent/1.0')
+
+    expect(report.findings[1]?.message).toBe(labels.troubleshootUnsupportedAudioCodec)
+    expect(report.environment.find(([key]) => key === 'candidates')?.[1]).toBe('webcodecs-custom:WEBCODECS_AUDIO_NOT_SUPPORTED')
+  })
+
+  /** A path that was tried and failed is a better explanation than one that was never offered. */
+  it('prefers a real attempt over a withheld candidate', () => {
+    const mixed = trace({
+      candidates: [{ candidateId: 'native-html-video', kind: 'html-video', renderer: 'native', initialScore: 100, finalScore: 100, reasons: [], requires: [], adjustment: null }],
+      attempts: [
+        { index: 1, candidateId: 'webcodecs-custom', kind: 'webcodecs', status: 'skipped', errorCode: 'WEBCODECS_AUDIO_NOT_SUPPORTED' },
+        { index: 0, candidateId: 'native-html-video', kind: 'html-video', status: 'failed', errorCode: 'CONTAINER_UNSUPPORTED' },
+      ],
+    })
+    const report = buildTroubleshootReport(failed(mixed), labels, 'agent/1.0')
+
+    expect(report.findings[1]?.message).toBe(labels.troubleshootUnsupportedContainer)
+    expect(report.environment.find(([key]) => key === 'candidates')?.[1])
+      .toBe('native-html-video:CONTAINER_UNSUPPORTED webcodecs-custom:WEBCODECS_AUDIO_NOT_SUPPORTED')
+  })
 })
