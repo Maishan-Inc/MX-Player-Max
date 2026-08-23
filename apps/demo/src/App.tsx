@@ -212,7 +212,7 @@ export default function App() {
           pendingLabel: copy.player.mediaPending,
         })
       } catch { parts = [copy.player.mediaPending] }
-      setMediaParts((current) => current.join(' ') === parts.join(' ') ? current : parts)
+      setMediaParts((current) => current.join('\0') === parts.join('\0') ? current : parts)
     }
     read()
     const offReady = player.on('ready', read)
