@@ -77,9 +77,9 @@
     {
       "name": "@mx-player-max/demo",
       "directory": "apps/demo",
-      "testFiles": 6,
-      "tests": 24,
-      "passed": 24,
+      "testFiles": 7,
+      "tests": 29,
+      "passed": 29,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 99,
-    "tests": 596,
-    "passed": 596,
+    "testFiles": 100,
+    "tests": 601,
+    "passed": 601,
     "skipped": 0,
     "todo": 0
   }

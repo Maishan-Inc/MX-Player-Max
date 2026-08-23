@@ -4,6 +4,16 @@
 
 ### Added
 
+- Demo 接上渲染模式切换：启动器的 `playback-intent` 选择器（ADR-0006 保留的那个）与播放器设置面板
+  现在是同一份状态的两个视图，都写 `DemoRenderMode` 适配器，因此不会互相打架。映射抽成
+  `apps/demo/src/render-mode.ts` 的纯函数：`native` → `intent: normal`；`custom-webgpu` →
+  `ai-enhance` + `renderer: webgpu`（策略层只在这个 intent 下算 `aiPlan`）；`custom-fallback` →
+  `filters` + `renderer: webgl2`。选择器三个 option 值保持不变，文案改为直接点明管线。
+- Demo 现在给引擎配置 `aiModelBaseUrl`。新增的 vite 中间件按显式白名单从
+  `packages/postprocess/assets/weights/**` 提供权重（dev 与 preview 都装），权重不进 `public/`
+  因此不会进入 Pages 产物；`--mode pages` 下 `resolveAiModelBaseUrl` 返回 `undefined`，让 Pages
+  照旧报 `model-unavailable`，而不是指向一个 404 的模型根目录、把开关显示成可用再点崩。
+
 - 播放器设置面板新增「渲染模式」三档选择：`native`（原生 `<video>`）/ `custom-webgpu`
   （WebGPU 自定义管线，AI 增强只在这一档可用）/ `custom-fallback`（WebGL2 自定义管线）。
   渲染路径在会话创建时固定，切换等于用不同引擎选项重新 `load()`，所以这一节走宿主适配器

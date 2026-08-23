@@ -22,13 +22,42 @@ const WASM_ASSETS = new Map([
   ['libvpx-vp8-simd.wasm', fileURLToPath(new URL('libvpx-vp8-simd.wasm', WASM_ASSET_DIRECTORY))],
   ['libvpx-vp8-threaded.wasm', fileURLToPath(new URL('libvpx-vp8-threaded.wasm', WASM_ASSET_DIRECTORY))],
 ])
+/**
+ * AI model roots for `aiModelBaseUrl`, served straight out of the workspace so the weights
+ * never enter `public/` and therefore never reach the Pages artifact — `prepare-pages.mjs`
+ * rejects `.mxai` on purpose. Paths are an explicit allowlist rather than a directory mount,
+ * so a crafted request cannot walk out of the weights folder.
+ */
+const MODEL_ASSET_DIRECTORY = new URL('../../packages/postprocess/assets/weights/', import.meta.url)
+const MODEL_ASSETS = new Map([
+  ['weights/rt4ksr/rt4ksr_x2.mxai', fileURLToPath(new URL('rt4ksr/rt4ksr_x2.mxai', MODEL_ASSET_DIRECTORY))],
+  ['weights/rife/rife_v4.25.mxai', fileURLToPath(new URL('rife/rife_v4.25.mxai', MODEL_ASSET_DIRECTORY))],
+])
 
 export default defineConfig(({ mode }) => ({
   base: mode === 'pages' ? './' : '/',
-  plugins: [serveAcceptanceAssets(), serveQualityAssets(), serveSampleRanges(), react()],
+  plugins: [serveAcceptanceAssets(), serveModelAssets(), serveQualityAssets(), serveSampleRanges(), react()],
   server: { host: true, port: 4173 },
   preview: { host: true, port: 4173 },
 }))
+
+function serveModelAssets(): Plugin {
+  const install = (server: Pick<ViteDevServer | PreviewServer, 'middlewares'>): void => {
+    server.middlewares.use((request, response, next) => {
+      if (request.method !== 'GET' || request.url === undefined) { next(); return }
+      const url = new URL(request.url, 'http://localhost')
+      if (!url.pathname.startsWith('/models/')) { next(); return }
+      const assetPath = MODEL_ASSETS.get(url.pathname.slice('/models/'.length))
+      if (assetPath === undefined) { response.writeHead(404); response.end(); return }
+      serveFile(request.headers.range, response, assetPath, 'application/octet-stream')
+    })
+  }
+  return {
+    name: 'mxp-ai-model-assets',
+    configureServer(server): void { install(server) },
+    configurePreviewServer(server): void { install(server) },
+  }
+}
 
 function serveQualityAssets(): Plugin {
   const install = (server: Pick<ViteDevServer | PreviewServer, 'middlewares'>): void => {

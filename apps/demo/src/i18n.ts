@@ -1,4 +1,5 @@
 import type { CopyItem, QaItem, StepItem } from './landing'
+import type { RenderModeIntentValue } from './render-mode'
 
 export type DemoLocale = 'zh-CN' | 'zh-TW' | 'en' | 'ja'
 
@@ -98,9 +99,8 @@ export interface DemoCopy {
     readonly openLocal: string
     readonly attachSubtitle: string
     readonly intentLabel: string
-    readonly intentNormal: string
-    readonly intentFilters: string
-    readonly intentFrameAccess: string
+    /** Keyed by the `playback-intent` option values ADR-0006 pins down. */
+    readonly renderModes: Readonly<Record<RenderModeIntentValue, string>>
     /** `{name}` is substituted with the attached subtitle file name. */
     readonly subtitleAttached: string
     readonly subtitleError: string
@@ -158,9 +158,11 @@ const ZH_CN: DemoCopy = {
     openLocal: '打开本地媒体',
     attachSubtitle: '挂载字幕',
     intentLabel: '播放意图',
-    intentNormal: 'Normal / 原生优先',
-    intentFilters: 'Filters / 自定义管线',
-    intentFrameAccess: 'Frame access / 自定义管线',
+    renderModes: {
+      normal: '原生播放',
+      filters: 'WebGL2 自定义管线',
+      'frame-access': 'WebGPU 自定义管线（AI）',
+    },
     subtitleAttached: '已挂载字幕 {name}',
     subtitleError: '字幕文件无法挂载，请检查是否为 SRT 或 ASS 文本轨。',
     unknownSize: '未知大小',
@@ -274,9 +276,11 @@ const ZH_TW: DemoCopy = {
     openLocal: '開啟本機媒體',
     attachSubtitle: '掛載字幕',
     intentLabel: '播放意圖',
-    intentNormal: 'Normal / 原生優先',
-    intentFilters: 'Filters / 自訂管線',
-    intentFrameAccess: 'Frame access / 自訂管線',
+    renderModes: {
+      normal: '原生播放',
+      filters: 'WebGL2 自訂管線',
+      'frame-access': 'WebGPU 自訂管線（AI）',
+    },
     subtitleAttached: '已掛載字幕 {name}',
     subtitleError: '字幕檔案無法掛載，請確認是否為 SRT 或 ASS 文字軌。',
     unknownSize: '大小未知',
@@ -390,9 +394,11 @@ const EN: DemoCopy = {
     openLocal: 'Open local media',
     attachSubtitle: 'Attach subtitles',
     intentLabel: 'Playback intent',
-    intentNormal: 'Normal / native first',
-    intentFilters: 'Filters / custom pipeline',
-    intentFrameAccess: 'Frame access / custom pipeline',
+    renderModes: {
+      normal: 'Native playback',
+      filters: 'WebGL2 custom pipeline',
+      'frame-access': 'WebGPU custom pipeline (AI)',
+    },
     subtitleAttached: '{name} subtitle attached',
     subtitleError: 'The subtitle file could not be attached. Check that it is an SRT or ASS text track.',
     unknownSize: 'unknown size',
@@ -506,9 +512,11 @@ const JA: DemoCopy = {
     openLocal: 'ローカルメディアを開く',
     attachSubtitle: '字幕を読み込む',
     intentLabel: '再生インテント',
-    intentNormal: 'Normal / ネイティブ優先',
-    intentFilters: 'Filters / カスタムパイプライン',
-    intentFrameAccess: 'Frame access / カスタムパイプライン',
+    renderModes: {
+      normal: 'ネイティブ再生',
+      filters: 'WebGL2 カスタムパイプライン',
+      'frame-access': 'WebGPU カスタムパイプライン（AI）',
+    },
     subtitleAttached: '字幕 {name} を読み込みました',
     subtitleError: '字幕ファイルを読み込めません。SRT または ASS のテキストトラックか確認してください。',
     unknownSize: 'サイズ不明',

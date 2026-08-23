@@ -154,6 +154,24 @@ Vorbis 不在自定义管线的音频范围内（`packages/decoder-webcodecs/src
 
 验收：`pnpm --filter @mx-player-max/demo test`；dev 与 preview 下手动切三档，诊断面板的渲染器分别是 `native` / `webgpu` / `webgl2`。
 
+**已完成（2026-08-23）**：`DemoRenderMode` 适配器 + `apps/demo/src/render-mode.ts` 里的纯映射函数（`renderModePlayerOptions` / `renderModeFromIntentValue` / `intentValueFromRenderMode`）；启动器的 `#playback-intent` 选择器保留（ADR-0006 要求），三个 option 值不变但改为渲染模式的两个视图之一，两个控件写同一份状态因此不会互相打架；`resolveAiModelBaseUrl` 在 `--mode pages` 下返回 `undefined`，其余情况指向 `/models/`；`serveModelAssets()` 中间件按显式白名单在 dev 与 preview 下提供 `weights/**`，权重不进 `public/` 因此 Pages 拦截依旧有效。实测：设置面板选 WebGPU 档后启动器同步成 `frame-access`、反向也同步；渲染器变成 `webgpu`，AI 原因从 `renderer-path` 变成 `device-capability`（本机软件适配器）；`/models/weights/rt4ksr/rt4ksr_x2.mxai` 返回 200 且路径穿越请求拿不到仓库文件。
+
+### A3b 自定义会话带音轨时在 demo 里根本不起播（先于 A3 存在，A1b 未覆盖）
+
+A1b 修掉了致命的 `AUDIO_BUFFER_OVERFLOW`，但 demo 启动器这条路上「带音轨就不前进」的现象仍在：
+
+| 场景 | 结果 |
+|---|---|
+| `?mediaAcceptance=webcodecs-audio`（新建 player，canvas2d，显式队列上限） | **通过**，`audioRenderedFrames = 11179` |
+| demo 启动器 + 无音轨样本 + `custom-webgpu` | **通过**，`state: playing`，presented 33 帧 |
+| demo 启动器 + VP8/Opus + `custom-webgpu`（webgpu） | 停在 `state: ready`，音视频各项统计全 0，无错误码 |
+| demo 启动器 + VP8/Opus + `custom-fallback`（webgl2） | 同上 |
+| demo 启动器 + VP8/Opus + 临时改成 canvas2d | 同上 |
+
+所以既不是渲染器的问题（canvas2d 也停），也不是 core 音频路径的问题（验收模式同一个样本同一个渲染器能跑）。`customAudioStats` 显示 `decodedBlocks: 0`、`decodeQueueSize: 0`，`customVideoStats` 也全 0——**解复用喂数根本没开始**，`inputSampleRate` 始终为 `null`。
+
+尚未排除的差异（按可疑度）：demo 不传 `customVideo.maxDecodedFrames` / `maxDecodeQueueSize` 而验收模式传 6/6；demo 走 React 组件的 `player.load()` 复用同一个实例而验收模式每次新建 `MXPlayer`；验收模式在 `play()` 前挂了一条外挂字幕轨。下一步应当加instrumentation 定位喂数循环为什么在有音轨时不启动，而不是继续黑盒试探。
+
 ### A4 MKV 测试样本与自动化用例
 
 仓库现在**没有任何 `.mkv` 夹具**（只有 mp4 与 webm），MKV 解复用有 `MatroskaContainerAdapter` 但没进过媒体矩阵。本机有 ffmpeg 9.0 与 pwsh 7，可以直接生成。
@@ -219,13 +237,14 @@ Vorbis 不在自定义管线的音频范围内（`packages/decoder-webcodecs/src
 
 1. `fix(audio): ship a self-contained AudioWorklet module` — A1 ✅ 已完成
 2. `fix(core): hold decoded PCM the audio transport cannot take yet` — A1b ✅ 已完成
-3. `feat(ui): add a render-mode control to the settings panel` — A2 ← 下一步
-4. `feat(demo): wire the render-mode switch and the AI model root` — A3
-5. `test(quality): add Matroska fixtures and media coverage` — A4
-6. `fix(core): surface the real codec failure instead of a generic strategy error` — A5
-7. `chore(quality): refresh test counts and evidence` — A6
+3. `feat(ui): add a render-mode control to the settings panel` — A2 ✅ 已完成
+4. `feat(demo): wire the render-mode switch and the AI model root` — A3 ✅ 已完成
+5. `fix(core): start the demux feed for a custom session with audio` — A3b ← 当前阻塞项
+6. `test(quality): add Matroska fixtures and media coverage` — A4
+7. `fix(core): surface the real codec failure instead of a generic strategy error` — A5
+8. `chore(quality): refresh test counts and evidence` — A6
 
-自定义管线现在能带音轨正常播放，A2/A3 不再被阻塞。
+切档本身已经可用，但带音轨的源在 demo 启动器这条路上不起播（A3b），MKV 验收（A4）在那之前无从谈起。
 
 ## 7. 最终验收清单（demo 里要能看见的）
 
