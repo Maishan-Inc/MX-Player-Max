@@ -50,6 +50,26 @@ describe('embedded subtitle packets', () => {
     expect(result.cues[0]).toMatchObject({ start: 4_000_000, end: 5_000_000, text: 'SSA, text', layer: 0 })
   })
 
+  /**
+   * A block carries the fields the CodecPrivate `Format:` line declares, minus Start and End —
+   * not a fixed nine-field layout. `tests/media/fixtures/basic-style.ass` declares only
+   * `Layer, Start, End, Style, Text`, so FFmpeg copies it into Matroska as four-field blocks and
+   * assuming the canonical order rejected every one of them as incomplete.
+   */
+  it('follows a reduced CodecPrivate event format instead of the canonical nine fields', () => {
+    const header = '[Script Info]\nScriptType: v4.00+\n\n[Events]\nFormat: Layer, Start, End, Style, Text\n'
+    const codecPrivate = new TextEncoder().encode(header).buffer
+    const result = parseEmbeddedSubtitlePackets([
+      packet(400_000, '0,0,Default,PHASE 13 FIRST CUE', 800_000),
+      packet(1_500_000, '1,2,Default,{\\c&H00FFFF&}PHASE 13 SECOND, CUE', 1_100_000),
+    ], { trackId: 'embedded-3', format: 'ass', codecPrivate })
+
+    expect(result.diagnostics).toEqual([])
+    expect(result.cues[0]).toMatchObject({ start: 400_000, end: 1_200_000, text: 'PHASE 13 FIRST CUE', layer: 0 })
+    expect(result.cues[1]).toMatchObject({ start: 1_500_000, end: 2_600_000, text: 'PHASE 13 SECOND, CUE', layer: 2 })
+    expect(result.cues[1]?.style?.color).toBe('#FFFF00')
+  })
+
   it('returns stable diagnostics for invalid times and caps diagnostics', () => {
     const invalid: DemuxPacket[] = Array.from({ length: 20 }, (_, index) => ({
       ...packet(index * 1_000_000, 'bad', 0),

@@ -208,6 +208,18 @@ A3 记录中曾把「带音轨的源在 demo 里停在 `ready`」当成阻塞缺
 - 补全 codec 字符串（从 VP9 bitstream 或 CodecPrivate 推 profile/level/bitDepth）是独立工作，
   不在本任务内；`mkv-vp8` 已经覆盖了「Matroska + 第二组编码对」这个维度
 
+**内嵌 ASS 字幕轨（2026-08-23 补做）**：新增第三条 Matroska 夹具
+`mkv-h264-baseline-8bit-aac-embedded-ass.mkv`，把 `basic-style.ass` 以 `S_TEXT/ASS` 流拷贝进容器，
+验收模式 `mkv-embedded-subs` 用 `selectSubtitleTrack('embedded-<trackId>')` 选中它。这条夹具
+**不能加 `-shortest`**：字幕流在 2.60 s 结束，`-shortest` 会把视频和音频一起截断到那里。
+
+**这一步不是纯加夹具：`AssPacketParser` 有个真实缺陷。** Matroska 的 ASS 块携带的是 CodecPrivate
+里 `Format:` 行声明的字段（减去 Start/End、前置 ReadOrder），而 `packetDialoguePayload()` 硬要求
+固定的九字段布局。`basic-style.ass` 的 `Format:` 只有 `Layer, Start, End, Style, Text`，FFmpeg
+原样拷贝后每个块只有四个字段，于是每一块都被判为「字段不全」，整条轨道一条 cue 都出不来
+（实测：两个块各得一条 `SUBTITLE_PACKET_INVALID`，cues 为空）。改为按 `context.eventFormat`
+推导块布局后端到端通过；规范格式下的行为逐字不变。
+
 验收：`pnpm quality:media`、`pnpm test:browser --project=media-chromium`。
 
 ### A5 不支持的编码要给出可读原因

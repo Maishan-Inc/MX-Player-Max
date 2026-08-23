@@ -20,8 +20,8 @@
 | `pnpm test` | passed；总数见 `evidence/current-test-counts.json`，与生成计数一致 |
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json` |
 | `pnpm quality:acceptance-drift` | passed |
-| `pnpm quality:media` | passed；9 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（新增 2 条 Matroska） |
-| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；30/30，含 4 条新增 Matroska/VP9 用例 |
+| `pnpm quality:media` | passed；10 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（新增 3 条 Matroska） |
+| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；32/32，含 5 条新增 Matroska/VP9 用例 |
 | `pnpm exec playwright test --project=chromium-desktop` | passed；6/6 |
 | `pnpm release:manifest` | passed；新增 audio-worklet 自包含断言，回填坏文件时会中断发布 |
 | `pnpm verify:packages` | passed；19 个公开包 |
@@ -37,6 +37,7 @@
 | A2 | 设置面板「渲染模式」三档 | `packages/ui/tests/player-ui-menu.test.ts` 5 条：三档渲染、回调、外部同步、两种不渲染路径、本地化 |
 | A3 | Demo 宿主接线 + AI 模型根目录 | `apps/demo/src/render-mode.test.ts` 4 条纯映射用例；`deployment.test.ts` 覆盖 Pages 下不给模型根目录 |
 | A4 | 两条 Matroska 夹具与三个验收模式 | 4 条浏览器用例（chromium + firefox）；`quality:media` 校验哈希；裸 `vp09` 拒绝被单独钉住 |
+| A4 补 | 内嵌 `S_TEXT/ASS` 轨的容器级覆盖：夹具 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv` + 验收模式 `mkv-embedded-subs` | `media-paths.spec.ts` 的 embedded-ASS 用例（断言选中的是 `embedded-<trackId>`、cue 落在 0.4–1.2 s）；`embedded.test.ts` 的 reduced-format 用例；`verify-media-manifest.mjs` 校验 `embeddedSubtitleTracks` 的引用与格式 |
 | A5 | 失败归因（视频/音频编码、声道、容器、无路径） | `player-ui-menu.test.ts` 7 条，含陈旧轨迹忽略与状态文案回落 |
 
 ## 手工核对（构建产物 + preview）

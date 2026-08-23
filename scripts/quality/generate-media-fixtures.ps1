@@ -20,4 +20,8 @@ Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 330),'-ma
 # changes on every run, which the corpus verification would reject.
 Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 990),'-map_metadata','-1','-bitexact','-c:v','libx264','-preset','medium','-profile:v','baseline','-level','3.0','-pix_fmt','yuv420p','-x264-params','threads=1:lookahead_threads=1:sliced_threads=0','-c:a','aac','-b:a','96k','-shortest','-y',(Join-Path $output 'mkv-h264-baseline-8bit-aac.mkv'))
 Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 220),'-map_metadata','-1','-bitexact','-c:v','libvpx','-deadline','good','-cpu-used','4','-threads','1','-pix_fmt','yuv420p','-b:v','350k','-c:a','libopus','-b:a','64k','-shortest','-y',(Join-Path $output 'mkv-vp8-p0-8bit-opus.mkv'))
+# The embedded ASS track is a stream copy of basic-style.ass, so the muxed CodecPrivate keeps that
+# script's own `Format: Layer, Start, End, Style, Text` line. No -shortest here: the subtitle stream
+# ends at 2.60 s and -shortest would truncate the video and audio to match.
+Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 1100),'-i',(Join-Path $output 'basic-style.ass'),'-map','0:v','-map','1:a','-map','2:s','-map_metadata','-1','-bitexact','-c:v','libx264','-preset','medium','-profile:v','baseline','-level','3.0','-pix_fmt','yuv420p','-x264-params','threads=1:lookahead_threads=1:sliced_threads=0','-c:a','aac','-b:a','96k','-c:s','copy','-metadata:s:s:0','language=eng','-y',(Join-Path $output 'mkv-h264-baseline-8bit-aac-embedded-ass.mkv'))
 Write-Host 'Fixtures regenerated. Run pnpm quality:media and review every hash before committing.'

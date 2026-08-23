@@ -89,6 +89,25 @@ test.describe('real media SDK paths', () => {
   })
 
   /**
+   * Embedded subtitles had unit coverage but never a real container: every other acceptance mode
+   * attaches an external file. This one selects the `S_TEXT/ASS` track the Matroska demuxer
+   * published, so it covers track registration, the second demux pass that collects the subtitle
+   * packets, and ASS cue rendering off the custom pipeline's clock.
+   */
+  test('renders the embedded ASS track of a Matroska sample', async ({ page }) => {
+    const result = await runAcceptance(page, 'mkv-embedded-subs')
+    test.skip(result.status === 'unsupported', `WebCodecs Matroska H.264/AAC unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-embedded-subs', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.subtitleTrackIds).toHaveLength(1)
+    expect(result.subtitleTrackIds[0]).toMatch(/^embedded-\d+$/)
+    expect(result.selectedSubtitleTrackId).toBe(result.subtitleTrackIds[0])
+    expect(result.cueTimes.length).toBeGreaterThan(0)
+    expect(result.cueTimes.some((time) => time >= 400_000 && time <= 1_200_000)).toBe(true)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+  })
+
+  /**
    * The EBML demuxer reports a VP9 track as a bare `vp09`, which no WebCodecs decoder accepts,
    * so VP9 has no custom-pipeline route in any container today — the corpus marks the VP9
    * samples `native` only. This pins the reason so the day a full `vp09.PP.LL.DD` string is
@@ -203,6 +222,8 @@ interface MediaAcceptanceResult {
   readonly cssHeight: number
   readonly devicePixelRatio: number
   readonly sourceChanges: number
+  readonly subtitleTrackIds: readonly string[]
+  readonly selectedSubtitleTrackId: string | null
   readonly audioClockSource: 'audio-context' | 'wall-clock' | null
   readonly audioRenderedFrames: number
   readonly engineErrorCode: string | null

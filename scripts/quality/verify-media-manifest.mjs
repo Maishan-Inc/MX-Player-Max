@@ -7,7 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const manifest = JSON.parse(await readFile(resolve(root, 'tests/media/manifest.json'), 'utf8'))
 const failures = []
 const ids = new Set()
-const subtitleIds = new Set(manifest.subtitles.map((entry) => entry.id))
+const subtitleFormats = new Map(manifest.subtitles.map((entry) => [entry.id, entry.format]))
 const hashPattern = /^[a-f0-9]{64}$/
 const wasmEvidenceStatuses = new Set(['approved-pending-real-browser', 'not-covered-by-vp8-video-only-scope', 'not-implemented'])
 
@@ -34,7 +34,15 @@ for (const sample of manifest.samples) {
   if (!sample.video?.codec || !sample.video?.profile || (sample.audio !== null && !sample.audio?.codec)) failures.push(`${sample.id}: codec metadata incomplete`)
   if (!Array.isArray(sample.expectedPaths) || sample.expectedPaths.length === 0) failures.push(`${sample.id}: expectedPaths missing`)
   if (!sample.minimumReproduction) failures.push(`${sample.id}: minimum reproduction missing`)
-  for (const subtitleId of sample.subtitleIds) if (!subtitleIds.has(subtitleId)) failures.push(`${sample.id}: unknown subtitle ${subtitleId}`)
+  for (const subtitleId of sample.subtitleIds) if (!subtitleFormats.has(subtitleId)) failures.push(`${sample.id}: unknown subtitle ${subtitleId}`)
+  // A muxed subtitle track has no file of its own, so its declaration is the only record of which
+  // corpus subtitle it carries and in which container codec.
+  for (const embedded of sample.embeddedSubtitleTracks ?? []) {
+    if (!subtitleFormats.has(embedded.subtitleId)) failures.push(`${sample.id}: unknown embedded subtitle ${embedded.subtitleId}`)
+    else if (subtitleFormats.get(embedded.subtitleId) !== embedded.format) failures.push(`${sample.id}: embedded subtitle ${embedded.subtitleId} is ${subtitleFormats.get(embedded.subtitleId)}, declared ${embedded.format}`)
+    if (typeof embedded.codecId !== 'string' || embedded.codecId.length === 0) failures.push(`${sample.id}: embedded subtitle track is missing a CodecID`)
+    if (!sample.subtitleIds.includes(embedded.subtitleId)) failures.push(`${sample.id}: embedded subtitle ${embedded.subtitleId} is missing from subtitleIds`)
+  }
   if (sample.wasmStatus !== undefined && !wasmEvidenceStatuses.has(sample.wasmStatus)) failures.push(`${sample.id}: invalid WASM evidence status`)
 }
 const dimensions = {

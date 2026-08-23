@@ -27,6 +27,10 @@ export interface MediaAcceptanceResult {
   readonly cssHeight: number
   readonly devicePixelRatio: number
   readonly sourceChanges: number
+  /** Subtitle track ids the demuxer published for the loaded media, before any external track. */
+  readonly subtitleTrackIds: readonly string[]
+  /** The track that was selected, so an `embedded-<trackId>` id proves a muxed track was used. */
+  readonly selectedSubtitleTrackId: string | null
   /**
    * `audio-context` proves the AudioWorklet module loaded and is driving the clock.
    * A worklet that fails to load takes the whole custom candidate down, so these two
@@ -50,6 +54,7 @@ const CUSTOM_SAMPLE = '/quality-media/webm-vp8-p0-8bit-video-only.webm'
 const MP4_SAMPLE = '/quality-media/mp4-h264-baseline-8bit-aac.mp4'
 const MKV_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac.mkv'
 const MKV_VP8_SAMPLE = '/quality-media/mkv-vp8-p0-8bit-opus.mkv'
+const MKV_EMBEDDED_ASS_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac-embedded-ass.mkv'
 /**
  * `webcodecs` runs a video-only sample, so it never touched the AudioWorklet and could
  * not catch a worklet asset that only breaks in a production build. `webcodecs-audio`
@@ -60,7 +65,12 @@ const MKV_VP8_SAMPLE = '/quality-media/mkv-vp8-p0-8bit-opus.mkv'
  * media element, and the two custom modes prove the demuxer feeds WebCodecs with two
  * different codec pairs.
  */
-const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8'])
+const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8', 'mkv-embedded-subs'])
+/**
+ * Every other mode attaches an external subtitle file, so the demux-and-parse path for a muxed
+ * track had no coverage at all. This mode selects the track the container itself published.
+ */
+const EMBEDDED_SUBTITLE_MODES = new Set(['mkv-embedded-subs'])
 /**
  * The engine defaults every worker, configure, flush and seek operation to a 10 s budget, which
  * suits a real machine. Firefox on a GPU-less CI box runs the custom path roughly 60% slower than
@@ -101,6 +111,8 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
   const engineErrors: string[] = []
   let sourceChanges = 0
   let observedEpoch = 0
+  let subtitleTrackIds: readonly string[] = []
+  let selectedSubtitleTrackId: string | null = null
   let player: MXPlayer | null = null
   try {
     const intent = CUSTOM_MODES.has(mode) ? 'frame-access' : 'normal'
@@ -108,6 +120,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
     const sample = mode === 'webcodecs' ? CUSTOM_SAMPLE
       : mode === 'fault-corrupt' ? MP4_SAMPLE
       : mode === 'mkv-vp8' ? MKV_VP8_SAMPLE
+      : mode === 'mkv-embedded-subs' ? MKV_EMBEDDED_ASS_SAMPLE
       : mode === 'mkv' || mode === 'mkv-native' ? MKV_SAMPLE
       : SAMPLE
     player = new MXPlayer({
@@ -122,10 +135,18 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
     trackEvents(player, events, stateTransitions, cueTimes, engineErrors)
     await player.ready
     if (mode.startsWith('fault-')) throw new Error('FAULT_ROUTE_UNEXPECTEDLY_LOADED')
-    const subtitleText = await fetch('/quality-subtitles/basic-timing.srt').then((response) => response.text())
-    const subtitleFile = new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' })
-    const track = await player.addSubtitleTrack({ kind: 'file', file: subtitleFile, format: 'srt' })
-    await player.selectSubtitleTrack(track.id)
+    subtitleTrackIds = player.listSubtitleTracks().map((track) => track.id)
+    if (EMBEDDED_SUBTITLE_MODES.has(mode)) {
+      const embedded = subtitleTrackIds.find((id) => id.startsWith('embedded-'))
+      if (embedded === undefined) throw new Error('EMBEDDED_SUBTITLE_TRACK_MISSING')
+      await player.selectSubtitleTrack(embedded)
+    } else {
+      const subtitleText = await fetch('/quality-subtitles/basic-timing.srt').then((response) => response.text())
+      const subtitleFile = new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' })
+      const track = await player.addSubtitleTrack({ kind: 'file', file: subtitleFile, format: 'srt' })
+      await player.selectSubtitleTrack(track.id)
+    }
+    selectedSubtitleTrackId = player.selectedSubtitleTrack
     await player.play()
     await waitFor(() => player?.playback.currentTime !== null && (player?.playback.currentTime ?? 0) >= 500_000, 15_000)
     const cueTime = player.playback.currentTime ?? 0
@@ -173,6 +194,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       width: size.width, height: size.height, initialWidth: initialSize.width, initialHeight: initialSize.height,
       cssWidth: bounds?.width ?? 0, cssHeight: bounds?.height ?? 0, devicePixelRatio: stats?.devicePixelRatio ?? devicePixelRatio,
       sourceChanges,
+      subtitleTrackIds, selectedSubtitleTrackId,
       audioClockSource: player.audioClock?.source ?? null,
       audioRenderedFrames: player.audioClock?.renderedFrames ?? 0,
       engineErrorCode: engineErrors[0] ?? null,
@@ -202,6 +224,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       droppedFrames: player?.rendererStats?.droppedFrames ?? player?.nativeStats?.droppedFrames ?? null,
       epoch: player?.audioClock?.epoch ?? player?.playback.sessionEpoch ?? 0, width: 0, height: 0,
       initialWidth: 0, initialHeight: 0, cssWidth: 0, cssHeight: 0, devicePixelRatio, sourceChanges,
+      subtitleTrackIds, selectedSubtitleTrackId,
       audioClockSource: player?.audioClock?.source ?? null,
       audioRenderedFrames: player?.audioClock?.renderedFrames ?? 0,
       engineErrorCode: engineErrors[0] ?? null,

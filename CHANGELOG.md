@@ -10,6 +10,13 @@
   Matroska 夹具必须用 `-bitexact` 生成：否则复用器每次写随机 `SegmentUID`，哈希不可复现，
   语料校验会拒收。
 
+- 内嵌字幕轨拿到了真实容器的端到端覆盖：新增夹具 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv`
+  （`basic-style.ass` 以 `S_TEXT/ASS` 流拷贝进 Matroska）、验收模式 `mkv-embedded-subs`，以及一条
+  chromium 与 firefox 都跑的用例。`embedded-<trackId>` 这条路径此前只有单测，所有验收模式都走
+  `addSubtitleTrack` 的外挂文件，容器解复用出来的字幕从未被端到端跑过。语料清单新增
+  `embeddedSubtitleTracks`，`verify-media-manifest.mjs` 校验它引用的字幕 id 存在、格式一致且已列入
+  `subtitleIds`。这条夹具不能用 `-shortest`：字幕流 2.60 s 就结束，会把视频和音频一起截断到那里。
+
 - Demo 接上渲染模式切换：启动器的 `playback-intent` 选择器（ADR-0006 保留的那个）与播放器设置面板
   现在是同一份状态的两个视图，都写 `DemoRenderMode` 适配器，因此不会互相打架。映射抽成
   `apps/demo/src/render-mode.ts` 的纯函数：`native` → `intent: normal`；`custom-webgpu` →
@@ -47,6 +54,10 @@
   五级 flow 累积、graph IR 与最终 blend 仍未实现，门禁会显式列出。
 
 ### Fixed
+
+- Matroska 里的 ASS/SSA 块现在按 CodecPrivate 的 `Format:` 行取字段（减去 Start/End、前置
+  ReadOrder），不再假定固定的九字段布局。`Format:` 行更短时——FFmpeg 原样拷贝这类脚本就会这样——
+  每个块都被判为字段不全，整条轨道一条 cue 都出不来。规范格式下的行为逐字不变。
 
 - `media-firefox` 上带音轨的自定义路径间歇失败（`WEBCODECS_WORKER_FAILED` / `CUSTOM_SEEK_FAILED`，
   偶尔 45 s 内拿不到终态）。不是解码缺陷：本机无 GPU，Firefox 走自定义管线比 Chromium 慢约 60%，

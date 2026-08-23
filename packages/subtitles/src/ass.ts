@@ -130,20 +130,21 @@ export class AssPacketParser {
   }
 }
 
-/** Matroska ASS/SSA blocks omit timestamps and prepend a container ReadOrder. */
+/**
+ * Matroska ASS/SSA blocks carry the header's own event fields minus Start and End, with a
+ * container ReadOrder prepended. Assuming the canonical nine-field layout instead dropped every
+ * cue of a track whose CodecPrivate declares a shorter `Format:` line, which is exactly what
+ * FFmpeg muxes when it copies such a script verbatim.
+ */
 function packetDialoguePayload(payload: string, context: AssContext): string | null {
-  const fields = splitWithLimit(payload, 8)
-  if (fields.length !== 9 || !/^\s*\d+\s*$/u.test(fields[0] ?? '')) return null
-  const packetValues = new Map<string, string>([
-    [context.v4Plus ? 'layer' : 'marked', fields[1] ?? ''],
-    ['style', fields[2] ?? ''],
-    ['name', fields[3] ?? ''],
-    ['marginl', fields[4] ?? ''],
-    ['marginr', fields[5] ?? ''],
-    ['marginv', fields[6] ?? ''],
-    ['effect', fields[7] ?? ''],
-    ['text', fields[8] ?? ''],
-  ])
+  const packetFields = context.eventFormat.filter((field) => field !== 'start' && field !== 'end')
+  if (packetFields.length === 0) return null
+  const fields = splitWithLimit(payload, packetFields.length)
+  if (fields.length !== packetFields.length + 1 || !/^\s*\d+\s*$/u.test(fields[0] ?? '')) return null
+  const packetValues = new Map<string, string>()
+  for (let index = 0; index < packetFields.length; index += 1) {
+    packetValues.set(packetFields[index] ?? '', fields[index + 1] ?? '')
+  }
   const values = context.eventFormat.map((field) => {
     if (field === 'start' || field === 'end') return ''
     return packetValues.get(field) ?? ''

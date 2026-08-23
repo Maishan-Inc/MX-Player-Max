@@ -68,6 +68,16 @@
       "minimumReproduction": "Matroska with a second codec pair: probe, playback, seek, ended", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-covered-by-vp8-video-only-scope"
     },
     {
+      "id": "mkv-h264-baseline-8bit-aac-embedded-ass", "path": "fixtures/mkv-h264-baseline-8bit-aac-embedded-ass.mkv", "container": "matroska",
+      "video": { "codec": "h264", "profile": "Constrained Baseline", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["ass-basic-style"],
+      "embeddedSubtitleTracks": [{ "subtitleId": "ass-basic-style", "codecId": "S_TEXT/ASS", "format": "ass", "language": "eng" }],
+      "durationSeconds": 3.021, "bytes": 136678,
+      "sha256": "8a9ed3fc93e036c5df9dcc65752513d5b97d10b3e9541091fd9b030638e41ee5",
+      "minimumReproduction": "Embedded S_TEXT/ASS track: select the demuxed subtitle track by id and render its cues, with no external subtitle file involved", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+    },
+    {
       "id": "mp4-av1-main-8bit-aac", "path": "fixtures/mp4-av1-main-8bit-aac.mp4", "container": "mp4",
       "video": { "codec": "av1", "profile": "Main", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
       "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },

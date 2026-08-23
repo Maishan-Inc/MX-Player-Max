@@ -150,8 +150,8 @@
       "name": "@mx-player-max/subtitles",
       "directory": "packages/subtitles",
       "testFiles": 5,
-      "tests": 46,
-      "passed": 46,
+      "tests": 47,
+      "passed": 47,
       "skipped": 0,
       "todo": 0
     },
@@ -185,8 +185,8 @@
   ],
   "totals": {
     "testFiles": 100,
-    "tests": 608,
-    "passed": 608,
+    "tests": 609,
+    "passed": 609,
     "skipped": 0,
     "todo": 0
   }
