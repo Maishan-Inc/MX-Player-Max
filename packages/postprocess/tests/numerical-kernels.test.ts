@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   PACKED_CONVOLUTION_WGSL,
   PACKED_LAYER_NORM_WGSL,
+  PACKED_MASK_BLEND_WGSL,
   PACKED_PIXEL_SHUFFLE_X4_WGSL,
   PACKED_PIXEL_UNSHUFFLE_WGSL,
-  RIFE_IFBLOCK_WGSL,
+  PACKED_WARP_WGSL,
 } from '../src/index'
 
 describe('WGSL numerical contracts', () => {
@@ -16,7 +17,10 @@ describe('WGSL numerical contracts', () => {
 
     const shifted = bilinear2x2(first, 0.75, 0.5)
     expect(shifted).toBeCloseTo(3.5, 6)
-    expect(RIFE_IFBLOCK_WGSL).toContain('mix(wa, wb, alpha)')
+    // IFNet composes with sigmoid(mask) between two warped frames, not with the phase,
+    // and its warp samples at (x + flowX, y + flowY) rather than in uv space.
+    expect(PACKED_MASK_BLEND_WGSL).toContain('first * blend + second * (1.0 - blend)')
+    expect(PACKED_WARP_WGSL).toContain('f32(gid.x) + flow[lane]')
   })
 
   it('computes a clamped 3x3 convolution with ReLU', () => {

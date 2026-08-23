@@ -34,15 +34,40 @@ export type { PooledTexture, TexturePoolOptions } from './gpu/texture-pool'
 export { PackedTexturePool } from './gpu/packed'
 export type { PackedTexture } from './gpu/packed'
 export { Rt4kSrGraphExecutor } from './gpu/rt4ksr'
+export { RifeGraphExecutor } from './gpu/rife'
+export type { RifeExecutorOptions, RifeSynthesisRequest, RifeSynthesisResult } from './gpu/rife'
 export { WebGpuInterpolationStage, WebGpuSuperResolutionStage } from './gpu/stages'
 export type { WebGpuStageOptions } from './gpu/stages'
-export { createRifeGraph, createRt4kSrGraph, graphTensorNames, uploadTensorStore } from './gpu/graph'
-export type { GpuGraphLayer, GpuGraphSlot, GpuModelGraph, GpuPadMode, GpuTensorBuffer, GpuTensorStore } from './gpu/graph'
+export { createRifeGraph, createRt4kSrGraph, graphTensorNames, nodeGraphInputs, uploadTensorStore, validateNodeGraph } from './gpu/graph'
+export type {
+  GpuActivation,
+  GpuAddNode,
+  GpuBlendNode,
+  GpuConvNode,
+  GpuFillNode,
+  GpuGatherNode,
+  GpuGatherSlot,
+  GpuGraphLayer,
+  GpuGraphNode,
+  GpuGraphSlot,
+  GpuInputNode,
+  GpuModelGraph,
+  GpuNodeGraph,
+  GpuPadMode,
+  GpuPixelShuffleNode,
+  GpuResizeNode,
+  GpuTensorBuffer,
+  GpuTensorStore,
+  GpuTransposedConvNode,
+  GpuWarpNode,
+} from './gpu/graph'
 export {
-  BILINEAR_WARP_WGSL,
   CONVOLUTION_WGSL,
+  PACKED_ACTIVATION_FORMAT,
   PACKED_ADD_WGSL,
   PACKED_CONVOLUTION_WGSL,
+  PACKED_FILL_WGSL,
+  PACKED_GATHER_WGSL,
   PACKED_INPUT_WGSL,
   PACKED_LAYER_NORM_WGSL,
   PACKED_MASK_BLEND_WGSL,
@@ -52,8 +77,8 @@ export {
   PACKED_RESIZE_WGSL,
   PACKED_TRANSPOSED_CONVOLUTION_WGSL,
   PACKED_WARP_WGSL,
-  RIFE_FLOW_WGSL,
-  RIFE_IFBLOCK_WGSL,
   RT4KSR_RECONSTRUCTION_WGSL,
   UPSCALE_X2_WGSL,
+  withPackedActivationFormat,
 } from './gpu/wgsl'
+export type { PackedActivationFormat } from './gpu/wgsl'

@@ -60,6 +60,35 @@ describe('CustomMediaPipeline backpressure', () => {
     harness.pipeline.close()
   })
 
+  it('keeps a lookahead frame queued for the interpolation stage', async () => {
+    // lowWaterMark 0 lets the pump stop at a single queued frame once backpressure
+    // has engaged. Interpolation needs `peekNext` to find a successor, so a
+    // lookahead of 1 has to raise the mark or the AI chain returns null forever.
+    const responses = Array.from({ length: 6 }, (_, index) => ({
+      packets: [packet(index * 10, { keyframe: index === 0, duration: 10 })], endOfStream: false,
+    }))
+    const harness = createCustomHarness({ responses, customVideo: { maxDecodedFrames: 3, lowWaterMark: 0, maxBufferedDuration: 100 } })
+    await harness.pipeline.initialize()
+    expect(harness.pipeline.videoLookahead).toBe(0)
+    harness.pipeline.setVideoLookahead(1)
+    expect(harness.pipeline.videoLookahead).toBe(1)
+    await harness.pipeline.play()
+    await vi.waitFor(() => expect(harness.pipeline.stats.queuedFrames).toBe(3))
+    const drained = [await harness.pipeline.readVideoFrame(), await harness.pipeline.readVideoFrame()]
+    await vi.waitFor(() => expect(harness.pipeline.stats.queuedFrames).toBeGreaterThanOrEqual(2))
+    for (const frame of drained) frame?.frame.close()
+    harness.pipeline.close()
+  })
+
+  it('refuses a lookahead the configured queue cannot hold', async () => {
+    const harness = createCustomHarness({ customVideo: { maxDecodedFrames: 2, lowWaterMark: 0 } })
+    await harness.pipeline.initialize()
+    expect(() => harness.pipeline.setVideoLookahead(1)).toThrow(/maxDecodedFrames of at least 3/)
+    expect(() => harness.pipeline.setVideoLookahead(-1)).toThrow(/integer in \[0, 8\]/)
+    expect(harness.pipeline.videoLookahead).toBe(0)
+    harness.pipeline.close()
+  })
+
   it('turns an unsolicited normal-frame overflow into an error instead of silently dropping', async () => {
     const harness = createCustomHarness({ customVideo: { maxDecodedFrames: 1, lowWaterMark: 0 } })
     await harness.pipeline.initialize()

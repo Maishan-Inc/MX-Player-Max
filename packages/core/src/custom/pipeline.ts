@@ -116,6 +116,7 @@ export class CustomMediaPipeline {
   #decoderEndOfStream = false
   #endedEmitted = false
   #backpressured = false
+  #videoLookahead = 0
   #pumpTask: Promise<void> | null = null
   #capacityWaiter: CapacityWaiter | null = null
   #seekCompletion: SeekCompletion | null = null
@@ -202,6 +203,41 @@ export class CustomMediaPipeline {
     if (frames.length > 0) this.#signalCapacity()
     this.#finishEndedIfDrained()
     return frames
+  }
+
+  get videoLookahead(): number { return this.#videoLookahead }
+
+  /**
+   * Keep `frames` decoded frames queued beyond the one being presented.
+   *
+   * Frame interpolation reads two decoded frames per output frame, so `peekNext`
+   * has to still find the successor of the frame at the clock. Without raising the
+   * low-water mark the pump is free to stop at a single queued frame once
+   * backpressure has engaged: the AI chain then returns null forever, nothing is
+   * consumed, and playback stalls with the pump asleep.
+   */
+  setVideoLookahead(frames: number): void {
+    this.#ensureUsable()
+    if (!Number.isSafeInteger(frames) || frames < 0 || frames > 8) {
+      throw createEngineError(ErrorCodes.CUSTOM_INVALID_QUEUE_CONFIG, 'The video lookahead must be an integer in [0, 8]', false)
+    }
+    if (frames > 0 && this.#options.maxDecodedFrames < frames + 2) {
+      throw createEngineError(
+        ErrorCodes.CUSTOM_INVALID_QUEUE_CONFIG,
+        `A lookahead of ${frames} frame(s) needs customVideo.maxDecodedFrames of at least ${frames + 2}`,
+        false,
+      )
+    }
+    if (this.#videoLookahead === frames) return
+    this.#videoLookahead = frames
+    this.#signalCapacity()
+    if (this.#playing || this.#seeking) this.#schedulePump()
+  }
+
+  /** Queue depth the pump refills to, raised by {@link setVideoLookahead}. */
+  #lowWaterMark(): number {
+    if (this.#videoLookahead === 0) return this.#options.lowWaterMark
+    return Math.min(this.#options.maxDecodedFrames - 1, Math.max(this.#options.lowWaterMark, this.#videoLookahead + 1))
   }
   get stats(): CustomVideoStats {
     return {
@@ -489,12 +525,12 @@ export class CustomMediaPipeline {
     if (this.#audio.atHighWater()) return true
     if (this.#queue.length + this.#reservedFrames >= this.#options.maxDecodedFrames) return true
     if (this.#queue.bufferedDuration + this.#reservedDuration >= this.#options.maxBufferedDuration) return true
-    return this.#backpressured && this.#queue.length > this.#options.lowWaterMark
+    return this.#backpressured && this.#queue.length > this.#lowWaterMark()
   }
 
   #canDecode(packet: DemuxPacket): boolean {
     if (this.#decoder.decodeQueueSize >= this.#options.maxDecodeQueueSize) return false
-    if (this.#backpressured && this.#queue.length > this.#options.lowWaterMark) return false
+    if (this.#backpressured && this.#queue.length > this.#lowWaterMark()) return false
     return this.#queue.canAccept(packet.duration, this.#reservedFrames, this.#reservedDuration)
   }
 

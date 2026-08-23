@@ -1,38 +1,26 @@
 /** Fixed, reviewable WGSL kernels used by the Phase 7 stages. */
-export const BILINEAR_WARP_WGSL = `
-struct Params { width: u32, height: u32, phase: f32, _pad: f32 }
-@group(0) @binding(0) var inputA: texture_2d<f32>;
-@group(0) @binding(1) var inputB: texture_2d<f32>;
-@group(0) @binding(2) var flowA: texture_2d<f32>;
-@group(0) @binding(3) var flowB: texture_2d<f32>;
-@group(0) @binding(4) var outputTex: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(5) var<uniform> params: Params;
-@group(0) @binding(6) var<storage, read> modelWeights: array<f32>;
-fn sampleBilinear(tex: texture_2d<f32>, uv: vec2<f32>) -> vec4<f32> {
-  let size = vec2<f32>(f32(textureDimensions(tex).x), f32(textureDimensions(tex).y));
-  let p = clamp(uv * size - vec2<f32>(0.5), vec2<f32>(0.0), size - vec2<f32>(1.0));
-  let i = vec2<i32>(floor(p));
-  let f = fract(p);
-  let p00 = textureLoad(tex, i, 0);
-  let p10 = textureLoad(tex, i + vec2<i32>(1, 0), 0);
-  let p01 = textureLoad(tex, i + vec2<i32>(0, 1), 0);
-  let p11 = textureLoad(tex, i + vec2<i32>(1, 1), 0);
-  return mix(mix(p00, p10, f.x), mix(p01, p11, f.x), f.y);
+
+/** Texel formats the packed activation kernels can be retargeted to. */
+export type PackedActivationFormat = 'rgba16float' | 'rgba32float'
+
+/** The storage format every packed kernel below declares as shipped. */
+export const PACKED_ACTIVATION_FORMAT: PackedActivationFormat = 'rgba16float'
+
+/**
+ * Retarget a packed kernel's activation storage.
+ *
+ * `rgba16float` is the right default for a feed-forward chain like RT4KSR, where the
+ * output is quantised to 8 bit anyway. IFNet is not feed-forward: its flow is a
+ * displacement in pixels that reaches |5| at 1080p, where a half-float ulp is 4e-3
+ * of a pixel, and five blocks feed each other's warps, so that quantisation is
+ * amplified by the whole network. `rgba32float` removes it at twice the memory.
+ *
+ * Kernels that write an `rgba8unorm` frame carry no packed storage and are returned
+ * unchanged.
+ */
+export function withPackedActivationFormat(code: string, format: PackedActivationFormat): string {
+  return format === PACKED_ACTIVATION_FORMAT ? code : code.replaceAll(PACKED_ACTIVATION_FORMAT, format)
 }
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= params.width || gid.y >= params.height) { return; }
-  let uv = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) / vec2<f32>(f32(params.width), f32(params.height));
-  let fa = textureLoad(flowA, vec2<i32>(gid.xy), 0).xy;
-  let fb = textureLoad(flowB, vec2<i32>(gid.xy), 0).xy;
-  let a = sampleBilinear(inputA, uv + fa * params.phase);
-  let b = sampleBilinear(inputB, uv + fb * (1.0 - params.phase));
-  // The graph host binds the verified first RIFE tensor here. The tiny
-  // bounded correction keeps this compatibility kernel numerically stable
-  // while the full packed graph is selected on devices that support it.
-  let learned = select(0.0, modelWeights[0] * 1e-8, arrayLength(&modelWeights) > 0u);
-  textureStore(outputTex, vec2<i32>(gid.xy), clamp(mix(a, b, params.phase) + vec4<f32>(learned), vec4<f32>(0.0), vec4<f32>(1.0)));
-}`
 
 export const CONVOLUTION_WGSL = `
 struct Params { width: u32, height: u32, channels: u32, kernelSize: u32 }
@@ -81,41 +69,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let uv = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) / vec2<f32>(f32(params.outputWidth), f32(params.outputHeight));
   let learned = select(0.0, modelWeights[0] * 1e-8, arrayLength(&modelWeights) > 0u);
   textureStore(outputTex, vec2<i32>(gid.xy), clamp(sampleBilinear(uv) + vec4<f32>(learned), vec4<f32>(0.0), vec4<f32>(1.0)));
-}`
-
-/** RIFE's bounded flow-estimation/fusion pass. The graph executor supplies the
- * learned feature/flow tensors; this kernel contains the temporal warp and
- * arbitrary-phase blend used by every RIFE timestep. */
-export const RIFE_FLOW_WGSL = `
-struct Params { width: u32, height: u32, phase: f32, channels: u32 }
-@group(0) @binding(0) var frameA: texture_2d<f32>;
-@group(0) @binding(1) var frameB: texture_2d<f32>;
-@group(0) @binding(2) var flowForward: texture_2d<f32>;
-@group(0) @binding(3) var flowBackward: texture_2d<f32>;
-@group(0) @binding(4) var outputTex: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(6) var<uniform> params: Params;
-@group(0) @binding(7) var<storage, read> modelWeights: array<f32>;
-fn bilinear(tex: texture_2d<f32>, uv: vec2<f32>) -> vec4<f32> {
-  let size = vec2<f32>(textureDimensions(tex));
-  let p = clamp(uv * size - vec2<f32>(0.5), vec2<f32>(0.0), size - vec2<f32>(1.0));
-  let i = vec2<i32>(floor(p));
-  let f = fract(p);
-  let p00 = textureLoad(tex, i, 0);
-  let p10 = textureLoad(tex, min(i + vec2<i32>(1, 0), vec2<i32>(size) - vec2<i32>(1)), 0);
-  let p01 = textureLoad(tex, min(i + vec2<i32>(0, 1), vec2<i32>(size) - vec2<i32>(1)), 0);
-  let p11 = textureLoad(tex, min(i + vec2<i32>(1, 1), vec2<i32>(size) - vec2<i32>(1)), 0);
-  return mix(mix(p00, p10, f.x), mix(p01, p11, f.x), f.y);
-}
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= params.width || gid.y >= params.height) { return; }
-  let uv = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) / vec2<f32>(f32(params.width), f32(params.height));
-  let forward = textureLoad(flowForward, vec2<i32>(gid.xy), 0).xy;
-  let backward = textureLoad(flowBackward, vec2<i32>(gid.xy), 0).xy;
-  let warpedA = bilinear(frameA, uv + forward * params.phase);
-  let warpedB = bilinear(frameB, uv + backward * (1.0 - params.phase));
-  let learned = select(0.0, modelWeights[0] * 1e-8, arrayLength(&modelWeights) > 0u);
-  textureStore(outputTex, vec2<i32>(gid.xy), clamp(mix(warpedA, warpedB, params.phase) + vec4<f32>(learned), vec4<f32>(0.0), vec4<f32>(1.0)));
 }`
 
 /** RT4KSR inference building blocks: packed 3x3 convolution, residual
@@ -237,15 +190,104 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   textureStore(outputTex, vec2<i32>(gid.xy), i32(gid.z), packed);
 }`
 
+/**
+ * Copy a 2d frame into array layer 0 of a packed tensor.
+ *
+ * `width`/`height` are the tensor's dimensions and `sourceWidth`/`sourceHeight`
+ * the frame's. IFNet needs both to differ: it requires a multiple of 64 in each
+ * axis, and upstream `inference` reaches that by right/bottom padding the frame
+ * with `F.pad(..., mode="constant", value=0)`, which is the zero fill below.
+ */
 export const PACKED_INPUT_WGSL = `
-struct Params { width: u32, height: u32, _pad: vec2<u32> }
+struct Params { width: u32, height: u32, sourceWidth: u32, sourceHeight: u32 }
 @group(0) @binding(0) var inputTex: texture_2d<f32>;
 @group(0) @binding(1) var outputTex: texture_storage_2d_array<rgba16float, write>;
 @group(0) @binding(2) var<uniform> params: Params;
 @compute @workgroup_size(8, 8, 1)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (gid.x >= params.width || gid.y >= params.height) { return; }
-  textureStore(outputTex, vec2<i32>(gid.xy), 0, textureLoad(inputTex, vec2<i32>(gid.xy), 0));
+  var value = vec4<f32>(0.0);
+  if (gid.x < params.sourceWidth && gid.y < params.sourceHeight) { value = textureLoad(inputTex, vec2<i32>(gid.xy), 0); }
+  textureStore(outputTex, vec2<i32>(gid.xy), 0, value);
+}`
+
+/** Fill every channel of a packed tensor with a constant. IFNet's `timestep`
+ * plane is a full-resolution single-channel constant equal to the phase. */
+export const PACKED_FILL_WGSL = `
+struct Params { width: u32, height: u32, groups: u32, _pad: u32, value0: f32, value1: f32, value2: f32, value3: f32 }
+@group(0) @binding(0) var outputTex: texture_storage_2d_array<rgba16float, write>;
+@group(0) @binding(1) var<uniform> params: Params;
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x >= params.width || gid.y >= params.height || gid.z >= params.groups) { return; }
+  textureStore(outputTex, vec2<i32>(gid.xy), i32(gid.z), vec4<f32>(params.value0, params.value1, params.value2, params.value3));
+}`
+
+/**
+ * Channel gather: concatenation, slicing and per-slice scaling in one pass.
+ *
+ * A packed storage texture can only be written a whole `vec4` at a time, so a
+ * concatenation whose parts are not multiples of four channels cannot be built
+ * by scattering each part into the destination. This kernel inverts the problem
+ * and gathers instead: output channel `c` walks the slot table, finds the slot
+ * whose range contains it and reads that slot's source texture.
+ *
+ * IFNet uses it for `cat(img0, img1, f0, f1, timestep)` (five slots, 15
+ * channels), `cat(warped0, warped1, wf0, wf1, timestep, mask, feat)` (seven
+ * slots, 24 channels), `cat(x, flow)` inside IFBlock, and the three-way split of
+ * `tmp` into `flow = tmp[:, :4] * scale`, `mask = tmp[:, 4:5]` and
+ * `feat = tmp[:, 5:]` — the `* scale` being `valueScale` on that slot.
+ *
+ * Slot `i` reads source `i`; a slot with `channels == 0` is inactive and its
+ * texture binding is ignored.
+ */
+export const PACKED_GATHER_WGSL = `
+struct GatherSlot { sourceOffset: u32, channels: u32, valueScale: f32, _pad: u32 }
+struct Params { width: u32, height: u32, channels: u32, groups: u32, slots: array<GatherSlot, 8> }
+@group(0) @binding(0) var source0: texture_2d_array<f32>;
+@group(0) @binding(1) var source1: texture_2d_array<f32>;
+@group(0) @binding(2) var source2: texture_2d_array<f32>;
+@group(0) @binding(3) var source3: texture_2d_array<f32>;
+@group(0) @binding(4) var source4: texture_2d_array<f32>;
+@group(0) @binding(5) var source5: texture_2d_array<f32>;
+@group(0) @binding(6) var source6: texture_2d_array<f32>;
+@group(0) @binding(7) var source7: texture_2d_array<f32>;
+@group(0) @binding(8) var outputTex: texture_storage_2d_array<rgba16float, write>;
+@group(0) @binding(9) var<uniform> params: Params;
+fn read(slot: u32, coord: vec2<i32>, channel: u32) -> f32 {
+  let layer = i32(channel / 4u);
+  let lane = channel & 3u;
+  switch slot {
+    case 0u: { return textureLoad(source0, coord, layer, 0)[lane]; }
+    case 1u: { return textureLoad(source1, coord, layer, 0)[lane]; }
+    case 2u: { return textureLoad(source2, coord, layer, 0)[lane]; }
+    case 3u: { return textureLoad(source3, coord, layer, 0)[lane]; }
+    case 4u: { return textureLoad(source4, coord, layer, 0)[lane]; }
+    case 5u: { return textureLoad(source5, coord, layer, 0)[lane]; }
+    case 6u: { return textureLoad(source6, coord, layer, 0)[lane]; }
+    case 7u: { return textureLoad(source7, coord, layer, 0)[lane]; }
+    default: { return 0.0; }
+  }
+}
+@compute @workgroup_size(8, 8, 1)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  if (gid.x >= params.width || gid.y >= params.height || gid.z >= params.groups) { return; }
+  let coord = vec2<i32>(gid.xy);
+  var packed = vec4<f32>(0.0);
+  for (var lane = 0u; lane < 4u; lane += 1u) {
+    let channel = gid.z * 4u + lane;
+    if (channel >= params.channels) { continue; }
+    var base = 0u;
+    for (var slot = 0u; slot < 8u; slot += 1u) {
+      let entry = params.slots[slot];
+      if (entry.channels > 0u && channel < base + entry.channels) {
+        packed[lane] = read(slot, coord, entry.sourceOffset + channel - base) * entry.valueScale;
+        break;
+      }
+      base += entry.channels;
+    }
+  }
+  textureStore(outputTex, coord, i32(gid.z), packed);
 }`
 
 export const PACKED_ADD_WGSL = `
@@ -335,37 +377,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   for (var c = 0u; c < min(params.channels, 4u); c += 1u) { out[c] = inputAt(sx, sy, c * block + plane); }
   out.a = 1.0;
   textureStore(outputTex, vec2<i32>(gid.xy), clamp(out, vec4<f32>(0.0), vec4<f32>(1.0)));
-}`
-
-export const RIFE_IFBLOCK_WGSL = `
-// RIFE HDv3's five coarse-to-fine blocks use PACKED_CONVOLUTION_WGSL for
-// learned features. This pass performs the learned residual flow/mask fusion
-// and preserves arbitrary timestep semantics in the same coordinate system.
-struct Params { width: u32, height: u32, phase: f32, _pad: f32 }
-@group(0) @binding(0) var frameA: texture_2d<f32>;
-@group(0) @binding(1) var frameB: texture_2d<f32>;
-@group(0) @binding(2) var flow: texture_2d<f32>;
-@group(0) @binding(3) var mask: texture_2d<f32>;
-@group(0) @binding(4) var outputTex: texture_storage_2d<rgba8unorm, write>;
-@group(0) @binding(5) var<uniform> params: Params;
-fn sample(tex: texture_2d<f32>, uv: vec2<f32>) -> vec4<f32> {
-  let size = vec2<f32>(textureDimensions(tex));
-  let p = clamp(uv * size - vec2<f32>(0.5), vec2<f32>(0.0), size - vec2<f32>(1.0));
-  let i = vec2<i32>(floor(p)); let f = fract(p);
-  let hi = vec2<i32>(size) - vec2<i32>(1);
-  let p00 = textureLoad(tex, i, 0); let p10 = textureLoad(tex, min(i + vec2<i32>(1, 0), hi), 0);
-  let p01 = textureLoad(tex, min(i + vec2<i32>(0, 1), hi), 0); let p11 = textureLoad(tex, min(i + vec2<i32>(1, 1), hi), 0);
-  return mix(mix(p00, p10, f.x), mix(p01, p11, f.x), f.y);
-}
-@compute @workgroup_size(8, 8, 1)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  if (gid.x >= params.width || gid.y >= params.height) { return; }
-  let uv = (vec2<f32>(gid.xy) + vec2<f32>(0.5)) / vec2<f32>(f32(params.width), f32(params.height));
-  let f = textureLoad(flow, vec2<i32>(gid.xy), 0);
-  let wa = sample(frameA, uv + f.xy * params.phase);
-  let wb = sample(frameB, uv + f.zw * (1.0 - params.phase));
-  let alpha = 1.0 / (1.0 + exp(-textureLoad(mask, vec2<i32>(gid.xy), 0).x));
-  textureStore(outputTex, vec2<i32>(gid.xy), clamp(mix(wa, wb, alpha), vec4<f32>(0.0), vec4<f32>(1.0)));
 }`
 
 /**
@@ -519,6 +530,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   textureStore(outputTex, vec2<i32>(gid.xy), i32(gid.z), packed);
 }`
 
+/**
+ * IFNet's final composition: `sigmoid(mask) * warped0 + (1 - sigmoid(mask)) * warped1`.
+ *
+ * `width`/`height` are the *unpadded* frame size while the packed inputs are
+ * padded to a multiple of 64, so dispatching over the frame size is also the crop
+ * back to the source resolution — IFNet pads at the right and bottom edges only.
+ */
 export const PACKED_MASK_BLEND_WGSL = `
 struct Params { width: u32, height: u32, maskChannel: u32, _pad: u32 }
 @group(0) @binding(0) var firstTex: texture_2d_array<f32>;

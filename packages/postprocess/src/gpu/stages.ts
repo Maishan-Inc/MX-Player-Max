@@ -2,9 +2,10 @@ import type { Micros } from '@mx-player-max/types'
 import type { MxaiModel } from '../assets/mxai'
 import type { PipelineFrame, SpatialStage, TemporalStage } from '../types'
 import { TexturePool, type PooledTexture } from './texture-pool'
-import { createRifeGraph, createRt4kSrGraph, graphTensorNames, uploadTensorStore, type GpuModelGraph, type GpuTensorStore } from './graph'
+import { createRifeGraph, createRt4kSrGraph, graphTensorNames, uploadTensorStore, type GpuModelGraph, type GpuNodeGraph, type GpuTensorStore } from './graph'
+import { RifeGraphExecutor } from './rife'
 import { Rt4kSrGraphExecutor } from './rt4ksr'
-import { BILINEAR_WARP_WGSL, RIFE_FLOW_WGSL, UPSCALE_X2_WGSL } from './wgsl'
+import { UPSCALE_X2_WGSL } from './wgsl'
 
 export interface WebGpuStageOptions {
   readonly device: GPUDevice
@@ -16,48 +17,46 @@ export interface WebGpuStageOptions {
   readonly onEpochStale?: () => void
 }
 
+/**
+ * Practical-RIFE 4.25 frame interpolation.
+ *
+ * The stage owns the tensor store and the graph executor and does nothing else:
+ * IFNet's semantics live in {@link createRifeGraph} and {@link RifeGraphExecutor}.
+ * A model is mandatory — there is no model-free approximation, because a bilinear
+ * cross-fade is not interpolation and shipping one as "AI" would be a lie.
+ */
 export class WebGpuInterpolationStage implements TemporalStage {
   readonly id = 'rife-v4.25'
+  /** IFNet synthesises between two decoded frames, so the queue needs one extra. */
   readonly lookaheadFrames = 1
+  readonly graph: GpuNodeGraph
   readonly #device: GPUDevice
   readonly #queue: GPUQueue
-  readonly #pool: TexturePool
-  readonly #pipeline: GPUComputePipeline
-  readonly #layout: GPUBindGroupLayout
-  readonly #params: GPUBuffer
-  readonly #modelWeights: GPUBuffer
-  readonly #tensorStore: GpuTensorStore | null
-  readonly graph: GpuModelGraph | null
+  readonly #tensorStore: GpuTensorStore
+  readonly #executor: RifeGraphExecutor
   #closed = false
   #epoch = 0
 
   constructor(options: WebGpuStageOptions) {
+    const model = options.model
+    if (!model) throw new Error('The RIFE interpolation stage requires a verified MXAI model')
     this.#device = options.device
     this.#queue = options.queue ?? options.device.queue
-    this.#pool = new TexturePool({ device: options.device, capacity: options.texturePoolCapacity ?? 4 })
-    this.graph = options.model ? createRifeGraph(options.model) : null
-    this.#tensorStore = options.model ? uploadTensorStore(options.device, options.model, this.graph ? graphTensorNames(this.graph) : undefined) : null
-    this.#modelWeights = createModelBindingBuffer(options.device, this.#tensorStore, 'module.encode.cnn0.weight')
-    const useRifeKernel = options.model !== undefined
-    const module = options.device.createShaderModule({ code: useRifeKernel ? RIFE_FLOW_WGSL : BILINEAR_WARP_WGSL })
-    this.#layout = options.device.createBindGroupLayout({ entries: [
-      { binding: 0, visibility: shaderComputeStage(), texture: { sampleType: 'float' } },
-      { binding: 1, visibility: shaderComputeStage(), texture: { sampleType: 'float' } },
-      { binding: 2, visibility: shaderComputeStage(), texture: { sampleType: 'float' } },
-      { binding: 3, visibility: shaderComputeStage(), texture: { sampleType: 'float' } },
-      { binding: 4, visibility: shaderComputeStage(), storageTexture: { access: 'write-only', format: 'rgba8unorm' } },
-      ...(useRifeKernel
-        ? [
-            { binding: 6, visibility: shaderComputeStage(), buffer: { type: 'uniform' as const } },
-            { binding: 7, visibility: shaderComputeStage(), buffer: { type: 'read-only-storage' as const } },
-          ]
-        : [
-            { binding: 5, visibility: shaderComputeStage(), buffer: { type: 'uniform' as const } },
-            { binding: 6, visibility: shaderComputeStage(), buffer: { type: 'read-only-storage' as const } },
-          ]),
-    ] })
-    this.#pipeline = options.device.createComputePipeline({ layout: options.device.createPipelineLayout({ bindGroupLayouts: [this.#layout] }), compute: { module, entryPoint: 'main' } })
-    this.#params = options.device.createBuffer({ size: 16, usage: uniformBufferUsage() })
+    this.graph = createRifeGraph(model)
+    this.#tensorStore = uploadTensorStore(options.device, model, new Set(this.graph.tensorNames), this.graph.derivedTensors)
+    try {
+      this.#executor = RifeGraphExecutor.create({
+        device: options.device,
+        queue: this.#queue,
+        model,
+        tensorStore: this.#tensorStore,
+        graph: this.graph,
+        ...(options.texturePoolCapacity === undefined ? {} : { texturePoolCapacity: options.texturePoolCapacity }),
+      })
+    } catch (cause) {
+      this.#tensorStore.close()
+      throw cause
+    }
   }
 
   async synthesize(a: PipelineFrame, b: PipelineFrame, phase: number, epoch: number): Promise<PipelineFrame> {
@@ -66,47 +65,21 @@ export class WebGpuInterpolationStage implements TemporalStage {
     this.#epoch = epoch
     const inputA = await ensureGpuTexture(this.#device, this.#queue, a)
     const inputB = await ensureGpuTexture(this.#device, this.#queue, b)
-    const output = this.#pool.acquire(inputA.width, inputA.height)
     try {
-      const params = new ArrayBuffer(16)
-      const paramsView = new DataView(params)
-      paramsView.setUint32(0, inputA.width, true)
-      paramsView.setUint32(4, inputA.height, true)
-      paramsView.setFloat32(8, phase, true)
-      paramsView.setUint32(12, 4, true)
-      this.#queue.writeBuffer(this.#params, 0, params)
-      const bindGroup = this.#device.createBindGroup({ layout: this.#layout, entries: [
-        { binding: 0, resource: inputA.texture.createView() },
-        { binding: 1, resource: inputB.texture.createView() },
-        { binding: 2, resource: inputA.texture.createView() },
-        { binding: 3, resource: inputB.texture.createView() },
-        { binding: 4, resource: output.texture.createView() },
-        ...(this.graph
-          ? [
-              { binding: 6, resource: { buffer: this.#params } },
-              { binding: 7, resource: { buffer: this.#modelWeights } },
-            ]
-          : [
-              { binding: 5, resource: { buffer: this.#params } },
-              { binding: 6, resource: { buffer: this.#modelWeights } },
-            ]),
-      ] })
-      const encoder = this.#device.createCommandEncoder()
-      const pass = encoder.beginComputePass()
-      pass.setPipeline(this.#pipeline)
-      pass.setBindGroup(0, bindGroup)
-      pass.dispatchWorkgroups(Math.ceil(output.width / 8), Math.ceil(output.height / 8))
-      pass.end()
-      this.#queue.submit([encoder.finish()])
-      await this.#queue.onSubmittedWorkDone()
+      if (inputA.width !== inputB.width || inputA.height !== inputB.height) throw new Error('RIFE requires both frames at the same resolution')
+      const result = await this.#executor.process({
+        source0: inputA.texture,
+        source1: inputB.texture,
+        width: inputA.width,
+        height: inputA.height,
+        timestep: phase,
+        timestamp: a.timestamp + Math.round((b.timestamp - a.timestamp) * phase),
+      })
       if (epoch !== this.#epoch) {
-        output.release()
+        if (result.frame.location === 'gpu') result.frame.release()
         throw new Error('Stale interpolation epoch')
       }
-      return gpuFrame(output, a.timestamp + Math.round((b.timestamp - a.timestamp) * phase))
-    } catch (error) {
-      output.release()
-      throw error
+      return result.frame
     } finally {
       releaseTemporary(inputA, a)
       releaseTemporary(inputB, b)
@@ -116,10 +89,8 @@ export class WebGpuInterpolationStage implements TemporalStage {
   close(): void {
     if (this.#closed) return
     this.#closed = true
-    try { this.#params.destroy() } catch { /* best effort */ }
-    try { this.#modelWeights.destroy() } catch { /* best effort */ }
-    this.#tensorStore?.close()
-    this.#pool.close()
+    this.#executor.close()
+    this.#tensorStore.close()
   }
 }
 

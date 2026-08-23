@@ -11,14 +11,23 @@ Phase 7 实现了拉取式 AI 链、WebGPU RIFE/RT4KSR stage、纹理池、gover
 参考张量，8-bit 输入下输出 `max |delta| = 3.7e-3`。验证跑在软件 adapter（SwiftShader）上，
 只覆盖正确性；`shader-f16`、性能和实机三浏览器矩阵仍未覆盖。
 
-**插帧（RIFE）仍是占位实现**：`createRifeGraph()` 只枚举层，没有 executor 消费它；
-`WebGpuInterpolationStage` 只 dispatch 一个 warp/blend pass，且把输入帧当作光流纹理绑定。
-不要把它当作 RIFE 推理。SDK 因此把该 stage 报成 `not-implemented`，UI 开关保持禁用。
+**插帧（RIFE 4.25）同样已与上游 `IFNet.forward` 端到端对齐**：`pnpm quality:webgpu:rife`
+用真实权重跑 shipped `RifeGraphExecutor`（155 个节点、单 encoder、单次 submit、单次 fence），
+对 `tools/generate_rife_reference.py` 生成的 31 个参考 stage 逐个比较：`encode`、`block0..4`
+的 `flow`/`mask`/`feat`/`warped0`/`warped1`、`mask.sigmoid` 全部在 `1.8e-4` 以内，最终
+`output` 为 `2.0e-3` —— 正好是 `rgba8unorm` 半个 8-bit 步长，也就是这条链的下限。SDK 因此
+按能力（模型是否配置 + 会话是否 WebGPU 自定义管线）报告该 stage，UI 开关随之可用。
 
-RIFE 所需的算子已逐个对上游验证：`pnpm quality:webgpu:rife` 覆盖 `Head`（含
-`ConvTranspose2d`）、`grid_sample` 反向 warp 和 `align_corners=False` 双线性 resize。
-仍缺 IFBlock body、五级 flow 累积、可表达 concat/slice/resize/warp 的 graph IR，以及最终
-sigmoid blend 的接线。
+IFNet 的中间激活默认存 `rgba32float` 而不是 `rgba16float`：flow 是以像素为单位的位移，在该
+fixture 上达到 `|5|`，半精度 ulp 已经是 4e-3 像素，而五个 block 会把各自的 flow 反馈进彼此的
+warp。同一 fixture 上半精度会让 `output` 偏到 `1.4e-1`（36 个 8-bit 步长），因此出厂默认就是
+门禁真正验证过的那个配置。代价是显存：1080p 下激活池约 1040 MiB（半精度约 520 MiB），
+`RifeExecutorOptions.activationFormat` 可以换，`RifeGraphExecutor.activationBytes` 可以读出来。
+细节与两个负向对照见 `docs/development/webgpu-harness.md`。
+
+插帧需要队列里多留一帧：`AiPipeline.lookaheadFrames` 由 core 接到
+`CustomMediaPipeline.setVideoLookahead()` 上，`AiPipeline.consumedThrough` 告诉消费者队列
+真正可以释放到哪一帧 —— 不能按刚呈现的那帧释放，因为两帧之间的每个相位都还要读较早那帧。
 
 模型失败、shader/device loss、fallback adapter 和预算超限都会保留解码/音频时钟并回退为 passthrough。Native HTMLVideo 路径不会启用 AI。
 

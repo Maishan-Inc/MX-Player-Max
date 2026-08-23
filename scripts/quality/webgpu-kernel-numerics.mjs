@@ -42,51 +42,73 @@ const report = await withWebGpuPage(async (page) => page.evaluate(async (sources
   const W = 32
   const H = 2
 
-  // 1. The interpolation stage builds an explicit bind-group layout by hand, so a
-  //    binding-number drift between layout and shader can only surface here.
+  // 1. PACKED_GATHER is how the RIFE graph expresses every concat and slice. A
+  //    packed storage texture is written a whole texel at a time, so parts that are
+  //    not multiples of four channels cannot be scattered into a destination; the
+  //    kernel inverts that and gathers per output channel. IFNet's block inputs are
+  //    15 and 28 channels and its `tmp` splits 13 into 4/1/8, so an off-by-one in
+  //    the slot walk would silently shift whole feature planes.
   {
-    const compute = GPUShaderStage.COMPUTE
-    device.pushErrorScope('validation')
-    const layout = device.createBindGroupLayout({
-      entries: [
-        { binding: 0, visibility: compute, texture: { sampleType: 'float' } },
-        { binding: 1, visibility: compute, texture: { sampleType: 'float' } },
-        { binding: 2, visibility: compute, texture: { sampleType: 'float' } },
-        { binding: 3, visibility: compute, texture: { sampleType: 'float' } },
-        { binding: 4, visibility: compute, storageTexture: { access: 'write-only', format: 'rgba8unorm' } },
-        { binding: 6, visibility: compute, buffer: { type: 'uniform' } },
-        { binding: 7, visibility: compute, buffer: { type: 'read-only-storage' } },
-      ],
+    const channels = 12
+    const first = makeArray(W, H, 3, (x, _y, c) => 100 + c * 10 + x)
+    const middle = makeArray(W, H, 1, (x) => 200 + x)
+    const last = makeArray(W, H, 8, (x, _y, c) => 300 + c * 10 + x)
+    const expected = (x, channel) => {
+      if (channel < 3) return 100 + channel * 10 + x
+      if (channel < 4) return 200 + x
+      return (300 + (channel - 4) * 10 + x) * 0.5
+    }
+    const slots = [[0, 3, 1], [0, 1, 1], [0, 8, 0.5]]
+    const output = makeArray(W, H, channels)
+    const buffer = new ArrayBuffer(16 + 8 * 16)
+    const view = new DataView(buffer)
+    ;[W, H, channels, output.groups].forEach((word, index) => view.setUint32(index * 4, word, true))
+    slots.forEach(([offset, count, scale], index) => {
+      view.setUint32(16 + index * 16, offset, true)
+      view.setUint32(16 + index * 16 + 4, count, true)
+      view.setFloat32(16 + index * 16 + 8, scale, true)
     })
-    device.createComputePipeline({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [layout] }),
-      compute: { module: device.createShaderModule({ code: sources.RIFE_FLOW_WGSL }), entryPoint: 'main' },
-    })
-    const error = await device.popErrorScope()
-    results.rifeStageExplicitLayout = { pass: !error, error: error?.message.split('\n')[0] ?? null, detail: 'stage layout matches RIFE_FLOW_WGSL bindings' }
+    const views = [first, middle, last]
+    const error = await run(sources.PACKED_GATHER_WGSL, [
+      ...Array.from({ length: 8 }, (_, index) => ({ binding: index, resource: (views[index] ?? first).view() })),
+      { binding: 8, resource: output.view() },
+      { binding: 9, resource: { buffer: uniform(new Uint8Array(buffer)) } },
+    ], Math.ceil(W / 8), Math.ceil(H / 8), output.groups)
+    let worst = 0
+    if (!error) {
+      const at = await readArray(output)
+      for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) for (let c = 0; c < channels; c += 1) {
+        worst = Math.max(worst, Math.abs(at(x, y, c) - expected(x, c)))
+      }
+    }
+    results.packedGatherConcatAndScale = { pass: !error && worst < 0.5, error, detail: `max |delta| = ${worst.toExponential(2)} over a 3+1+8 concat with a 0.5 slice scale` }
   }
 
-  // 2. PACKED_INPUT copies an rgba8unorm frame into array layer 0 unchanged.
+  // 2. PACKED_INPUT copies an rgba8unorm frame into array layer 0 unchanged, and
+  //    zero-fills beyond the frame — IFNet needs a multiple of 64 in both axes and
+  //    upstream reaches it with `F.pad(..., value=0)` at the right and bottom edges.
   {
     const source = device.createTexture({ size: { width: W, height: H }, format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST })
     const bytes = new Uint8Array(W * H * 4)
     for (let index = 0; index < bytes.length; index += 1) bytes[index] = (index * 7) % 256
     device.queue.writeTexture({ texture: source }, bytes, { bytesPerRow: W * 4, rowsPerImage: H }, { width: W, height: H })
-    const output = makeArray(W, H, 4)
-    const params = uniform(new Uint32Array([W, H, 0, 0]))
+    const padded = { width: W + 5, height: H + 3 }
+    const output = makeArray(padded.width, padded.height, 4)
+    const params = uniform(new Uint32Array([padded.width, padded.height, W, H]))
     const error = await run(sources.PACKED_INPUT_WGSL, [
       { binding: 0, resource: source.createView() },
       { binding: 1, resource: output.view() },
       { binding: 2, resource: { buffer: params } },
-    ], Math.ceil(W / 8), Math.ceil(H / 8), 1)
+    ], Math.ceil(padded.width / 8), Math.ceil(padded.height / 8), 1)
     let worst = 0
     if (!error) {
       const at = await readArray(output)
-      for (let y = 0; y < H; y += 1) for (let x = 0; x < W; x += 1) for (let c = 0; c < 4; c += 1) {
-        worst = Math.max(worst, Math.abs(at(x, y, c) - bytes[(y * W + x) * 4 + c] / 255))
+      for (let y = 0; y < padded.height; y += 1) for (let x = 0; x < padded.width; x += 1) for (let c = 0; c < 4; c += 1) {
+        const inside = x < W && y < H
+        worst = Math.max(worst, Math.abs(at(x, y, c) - (inside ? bytes[(y * W + x) * 4 + c] / 255 : 0)))
       }
     }
-    results.packedInputCopy = { pass: !error && worst < 2e-3, error, detail: `max |delta| = ${worst.toExponential(2)}` }
+    results.packedInputCopyAndPad = { pass: !error && worst < 2e-3, error, detail: `max |delta| = ${worst.toExponential(2)} over a ${W}x${H} frame in a ${padded.width}x${padded.height} tensor` }
   }
 
   // 3. PACKED_ADD sums every channel of two packed tensors.
@@ -244,7 +266,7 @@ const report = await withWebGpuPage(async (page) => page.evaluate(async (sources
 
   return results
 }, {
-  RIFE_FLOW_WGSL: wgsl.RIFE_FLOW_WGSL,
+  PACKED_GATHER_WGSL: wgsl.PACKED_GATHER_WGSL,
   PACKED_INPUT_WGSL: wgsl.PACKED_INPUT_WGSL,
   PACKED_ADD_WGSL: wgsl.PACKED_ADD_WGSL,
   PACKED_LAYER_NORM_WGSL: wgsl.PACKED_LAYER_NORM_WGSL,

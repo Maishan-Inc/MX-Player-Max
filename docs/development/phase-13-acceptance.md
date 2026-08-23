@@ -27,10 +27,10 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | `pnpm quality:media` | passed；媒体 + 字幕 fixture 的 FFprobe 元数据和 SHA-256 一致；语料条目以 `tests/media/manifest.json` 为准，2026-08-23 起新增两条 Matroska，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；含数值 kernel、packed graph、真实 device-lost、epoch、fallback、pool 长时复用/容量边界和 `copyExternalImageToTexture` usage 回归 |
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`，`pnpm test --check` 与其一致 |
-| `pnpm quality:webgpu` | passed；17/17 shipped WGSL kernel 通过真实 Dawn/Tint，`rgba16float` 2d-array 存储往返位级精确 |
-| `pnpm quality:webgpu:numerics` | passed；7 项 kernel 执行对比 CPU 参考（含 torch 通道序、layer norm、1x1 卷积、stage bind layout） |
+| `pnpm quality:webgpu` | passed；27/27 shipped WGSL kernel 通过真实 Dawn/Tint（含每个 packed kernel 的 `rgba32float` 变体），packed 2d-array 存储往返位级精确 |
+| `pnpm quality:webgpu:numerics` | passed；7 项 kernel 执行对比 CPU 参考（含 torch 通道序、layer norm、1x1 卷积、`PACKED_GATHER` 的 concat/slice、`PACKED_INPUT` 的补零） |
 | `pnpm quality:webgpu:oracle` | passed；shipped `Rt4kSrGraphExecutor` 对上游 RT4KSR forward 端到端，8-bit 输入下 3x16x16 输出 `max |delta| = 3.7e-3`；GELU 换 ReLU 的负向对照会升到 `2.7e-1` |
-| `pnpm quality:webgpu:rife` | passed；对上游 IFNet forward，`encode` `8.9e-4`、`warp` `1.2e-3`、`resize` `5.1e-4`；IFBlock body、flow 累积、graph IR 和最终 blend 明确列为未实现 |
+| `pnpm quality:webgpu:rife` | passed；算子级 `encode` `8.9e-4`、`warp` `1.2e-3`、`resize` `5.1e-4`，加整图级 shipped `RifeGraphExecutor` 对上游 `IFNet.forward`：`encode`/`block0..4` 全部 stage 与 `mask.sigmoid` 收敛到 `1.8e-4` 以内，`output` `2.0e-3`（`rgba8unorm` 半步长下限）。`--mutate=leaky-slope` 负向对照升到 `9.1e-1`；`--activation=rgba16float` 升到 `1.4e-1`，因此激活默认 `rgba32float` |
 | `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；20/20 real-media automation tests |
 | `pnpm exec playwright test --project=media-webkit-automation --trace=off` | 7 passed，3 unsupported skipped；automation-only，不是 Safari 证据 |
 | `pnpm exec playwright test --project=performance-chromium --project=performance-firefox` | passed；4/4，隔离/非隔离各一条 |

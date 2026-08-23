@@ -19,7 +19,15 @@ const failures = []
 let kernels
 try {
   const module = await import(pathToFileURL(wgslPath).href)
-  kernels = Object.fromEntries(Object.entries(module).filter(([, value]) => typeof value === 'string'))
+  // Every shader constant is named `*_WGSL`; other string exports (such as the
+  // packed activation format) are configuration, not code to compile.
+  kernels = Object.fromEntries(Object.entries(module).filter(([name, value]) => typeof value === 'string' && name.endsWith('_WGSL')))
+  // The RIFE executor compiles the rgba32float variant of every packed kernel, so
+  // the gate has to compile what actually ships, not only the default declaration.
+  for (const [name, code] of Object.entries({ ...kernels })) {
+    if (!code.includes(module.PACKED_ACTIVATION_FORMAT)) continue
+    kernels[`${name}@rgba32float`] = module.withPackedActivationFormat(code, 'rgba32float')
+  }
 } catch {
   console.error(`- ENVIRONMENT: ${wgslPath} is missing. Run "pnpm build" first.`)
   process.exit(1)

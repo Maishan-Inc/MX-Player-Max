@@ -77,6 +77,54 @@ describe('postprocess quality hardening', () => {
     pipeline.close()
   })
 
+  it('holds back the earlier interpolation input when reporting what the queue may release', async () => {
+    const frames = [gpuFrame(0), gpuFrame(40_000), gpuFrame(80_000)]
+    const stage: TemporalStage = {
+      id: 'rife',
+      lookaheadFrames: 1,
+      synthesize: vi.fn(async (a: PipelineFrame, b: PipelineFrame, phase: number) => gpuFrame(a.timestamp + Math.round((b.timestamp - a.timestamp) * phase))),
+      close: vi.fn(),
+    }
+    const pipeline = createAiPipeline({ upstream: queue(frames), interpolation: stage, initialTier: 'high' })
+    expect(pipeline.lookaheadFrames).toBe(1)
+    expect(pipeline.consumedThrough).toBe(-1)
+
+    // Half way between the first two frames: both are still needed, so nothing may go.
+    expect((await pipeline.frameAt(20_000, 0))?.timestamp).toBe(20_000)
+    expect(pipeline.consumedThrough).toBe(-1)
+
+    // Once the clock reaches the second frame, the first is finally releasable.
+    await pipeline.frameAt(60_000, 0)
+    expect(pipeline.consumedThrough).toBe(39_999)
+
+    // With interpolation off, the frame being presented is itself released.
+    pipeline.setStages({ interpolation: false })
+    expect((await pipeline.frameAt(60_000, 0))?.timestamp).toBe(40_000)
+    expect(pipeline.consumedThrough).toBe(40_000)
+    pipeline.close()
+  })
+
+  it('attaches a stage the pipeline was built without', async () => {
+    const frames = [gpuFrame(0), gpuFrame(40_000)]
+    const interpolation: TemporalStage = { id: 'rife', lookaheadFrames: 1, synthesize: vi.fn(async () => gpuFrame(20_000)), close: vi.fn() }
+    const pipeline = createAiPipeline({ upstream: queue(frames), initialTier: 'high' })
+    expect(pipeline.lookaheadFrames).toBe(0)
+    expect(() => pipeline.setStages({ interpolation: true })).toThrow('No interpolation stage is attached')
+
+    // The player builds each stage the first time its toggle is switched on, so the
+    // pipeline usually already exists by then.
+    pipeline.attachStages({ interpolation })
+    pipeline.setStages({ interpolation: true })
+    expect(pipeline.lookaheadFrames).toBe(1)
+    await pipeline.frameAt(20_000, 0)
+    expect(interpolation.synthesize).toHaveBeenCalledOnce()
+
+    const replacement: TemporalStage = { id: 'other', synthesize: vi.fn(), close: vi.fn() }
+    expect(() => pipeline.attachStages({ interpolation: replacement })).toThrow('An interpolation stage is already attached')
+    pipeline.close()
+    expect(interpolation.close).toHaveBeenCalledOnce()
+  })
+
   it('reports governor tier changes through pipeline events', () => {
     const events: AiPipelineEvent[] = []
     const pipeline = createAiPipeline({ upstream: queue([]), initialTier: 'high', governorOptions: { windowSize: 3 }, onEvent: (event) => events.push(event) })

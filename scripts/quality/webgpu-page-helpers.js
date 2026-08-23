@@ -4,17 +4,22 @@
  * texture plumbing inside each `page.evaluate` call.
  *
  * Packed tensors follow the postprocess convention: NCHW channels are stored four
- * per `rgba16float` array layer, so layer = floor(channel / 4), lane = channel % 4.
+ * per array layer, so layer = floor(channel / 4), lane = channel % 4. The texel
+ * format is read back from the texture, so `rgba16float` and `rgba32float`
+ * activations are both handled without the caller saying which it used.
  */
 export function createGpuHelpers(device) {
   const ARRAY_USAGE = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST
+  const LANE_VIEW = { rgba16float: Float16Array, rgba32float: Float32Array }
+  const texelBytes = (format) => (format === 'rgba32float' ? 16 : 8)
 
-  /** Allocate an rgba16float array texture, optionally filled from `valueAt(x, y, channel)`. */
-  const makeArray = (width, height, channels, valueAt) => {
+  /** Allocate a packed array texture, optionally filled from `valueAt(x, y, channel)`. */
+  const makeArray = (width, height, channels, valueAt, format = 'rgba16float') => {
     const groups = Math.ceil(channels / 4)
-    const texture = device.createTexture({ size: { width, height, depthOrArrayLayers: groups }, format: 'rgba16float', usage: ARRAY_USAGE })
+    const texture = device.createTexture({ size: { width, height, depthOrArrayLayers: groups }, format, usage: ARRAY_USAGE })
     if (valueAt) {
-      const data = new Float16Array(groups * height * width * 4)
+      const Lane = LANE_VIEW[format]
+      const data = new Lane(groups * height * width * 4)
       for (let layer = 0; layer < groups; layer += 1) {
         for (let y = 0; y < height; y += 1) {
           for (let x = 0; x < width; x += 1) {
@@ -25,7 +30,7 @@ export function createGpuHelpers(device) {
           }
         }
       }
-      device.queue.writeTexture({ texture }, data.buffer, { bytesPerRow: width * 8, rowsPerImage: height }, { width, height, depthOrArrayLayers: groups })
+      device.queue.writeTexture({ texture }, data.buffer, { bytesPerRow: width * texelBytes(format), rowsPerImage: height }, { width, height, depthOrArrayLayers: groups })
     }
     return { texture, width, height, channels, groups, view: () => texture.createView({ dimension: '2d-array', arrayLayerCount: groups }) }
   }
@@ -33,7 +38,11 @@ export function createGpuHelpers(device) {
   /** Read a packed texture back and return an `(x, y, channel) => number` accessor. */
   const readArray = async (target) => {
     const { width, height, groups } = target
-    const padded = Math.ceil((width * 8) / 256) * 256
+    const format = target.texture.format
+    const stride = texelBytes(format)
+    const Lane = LANE_VIEW[format]
+    if (!Lane) throw new Error(`readArray cannot decode ${format}`)
+    const padded = Math.ceil((width * stride) / 256) * 256
     const buffer = device.createBuffer({ size: padded * height * groups, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ })
     const encoder = device.createCommandEncoder()
     encoder.copyTextureToBuffer({ texture: target.texture }, { buffer, bytesPerRow: padded, rowsPerImage: height }, { width, height, depthOrArrayLayers: groups })
@@ -44,8 +53,8 @@ export function createGpuHelpers(device) {
     buffer.unmap()
     return (x, y, channel) => {
       const layer = Math.floor(channel / 4)
-      const offset = (layer * height + y) * padded + x * 8
-      return new Float16Array(bytes.buffer, bytes.byteOffset + offset, 4)[channel % 4]
+      const offset = (layer * height + y) * padded + x * stride
+      return new Lane(bytes.buffer, bytes.byteOffset + offset, 4)[channel % 4]
     }
   }
 

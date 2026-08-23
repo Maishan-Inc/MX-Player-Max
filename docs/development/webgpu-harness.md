@@ -15,12 +15,16 @@ pnpm quality:webgpu:rife
 ```
 
 `quality:webgpu` compiles every WGSL constant exported by `packages/postprocess`
-and executes an `rgba16float` 2d-array storage round-trip. `quality:webgpu:numerics`
-runs individual kernels against CPU references. `quality:webgpu:oracle` compares
-kernels against reference tensors captured from the real upstream RT4KSR forward
-pass, and `quality:webgpu:rife` does the same for the RIFE operator set. All four
-need `pnpm build` first — they read the built `dist/gpu/wgsl.js` so
-the gates measure shipped output, not TypeScript source.
+— including the `rgba32float` variant of each packed kernel, which is what the RIFE
+executor actually ships — and executes a packed 2d-array storage round-trip.
+`quality:webgpu:numerics` runs individual kernels against CPU references.
+`quality:webgpu:oracle` compares kernels against reference tensors captured from the
+real upstream RT4KSR forward pass, and `quality:webgpu:rife` does the same for RIFE,
+from single operators up to the whole IFNet graph. It takes two flags:
+`--mutate=leaky-slope` (a required-to-fail control) and
+`--activation=rgba16float|rgba32float`. All four gates need `pnpm build` first — they
+read the built `dist/gpu/wgsl.js` so the gates measure shipped output, not
+TypeScript source.
 
 In-page plumbing lives in `scripts/quality/webgpu-page-helpers.js`, which the
 harness serves at `/helpers.js`; a gate obtains it with
@@ -108,7 +112,10 @@ uniform block from its own 256-byte-aligned slot of a single buffer. The frame's
 fence is the trailing `onSubmittedWorkDone()`, which the governor needs in order to
 measure. `uploadTensorStore` takes the set from `graphTensorNames(graph)`, so the
 `hfb` convolutions and `gamma` — unreachable at inference — never reach GPU memory
-(RT4KSR 51 → 44 tensors, 90.5 KiB skipped; RIFE 198 → 118, 1.8 MiB skipped).
+(RT4KSR 51 → 44 tensors, 90.5 KiB skipped; RIFE 198 → 118, 1.8 MiB skipped, with
+`teacher` and `caltime` dropped and each `ResConv`'s `beta` folded into its
+convolution instead of uploaded — 80 of those 118 names are folded tensors supplied
+through `GpuNodeGraph.derivedTensors`).
 
 Both invariants are pinned by tests in `packages/postprocess/tests/model-graph.test.ts`
 rather than left to review.
@@ -122,28 +129,122 @@ Practical-RIFE 4.25. The architecture ships inside the vendored archive
 stage on a seeded 64x64 pair and checks the walk against `IFNet.forward` before
 writing `tests/fixtures/rife-reference.json`. Inputs and the tensors needed for the
 final warp are recorded at full resolution; the rest are stride-4 sampled with
-global stats, because a full dump of all 31 stages is several megabytes.
+global stats, because a full dump of all 31 stages is several megabytes. Comparisons
+must sample on that same grid — reading the values as if they were dense compares
+the wrong pixels and still looks plausible.
 
-`pnpm quality:webgpu:rife` runs the sub-networks whose kernels exist:
+`pnpm quality:webgpu:rife` checks two layers against that one fixture.
 
-| check | what it proves |
-|---|---|
-| `encode` | `Head`: conv 3x3 stride 2, LeakyReLU(0.2), and `ConvTranspose2d(16, 4, 4, 2, 1)` — `max delta 8.9e-4` |
-| `warp` | `grid_sample(bilinear, border, align_corners=True)` reduces to sampling at `(x + flowX, y + flowY)` — `max delta 1.2e-3` |
-| `resize` | `F.interpolate(bilinear, align_corners=False)` in both directions — `max delta 5.1e-4` |
+Operator level, driven directly so a single-op regression cannot hide inside the
+graph:
 
-The gate also prints what is still missing, so the interpolation stage's status is
-measurable rather than a claim. `IFBlock` bodies, flow accumulation, a graph IR that
-can express concat/slice/resize/warp nodes, and the final blend are not implemented;
-`WebGpuInterpolationStage` remains a placeholder and the SDK reports the stage as
-`not-implemented`, so the settings toggle stays disabled instead of shipping wrong
-frames.
+| check | what it proves | measured |
+|---|---|---|
+| `op.encode` | `Head`: conv 3x3 stride 2, LeakyReLU(0.2), `ConvTranspose2d(16, 4, 4, 2, 1)` | `8.9e-4` |
+| `op.warp` | `grid_sample(bilinear, border, align_corners=True)` reduces to sampling at `(x + flowX, y + flowY)` | `1.2e-3` |
+| `op.resize` | `F.interpolate(bilinear, align_corners=False)` in both directions | `5.1e-4` |
 
-## Requirements for the RIFE graph
+Graph level: the shipped `RifeGraphExecutor` runs the whole of IFNet from two 8-bit
+frames to the output frame — 155 nodes, one command encoder, one submission, one
+fence. Every stage the fixture records is compared in place, using the executor's
+`retain` option to hand the intermediate packed textures back to the gate:
+
+| stages | measured worst delta | reference `absMax` |
+|---|---|---|
+| `encode.f0`, `encode.f1` | `8.8e-7` | 2.1 |
+| `block0..3` flow / mask / feat / warped0 / warped1 | `≤ 9.5e-6` | 0.27 – 5.3 |
+| `block4.flow`, `block4.feat`, `block4.warped0/1` | `≤ 1.5e-5` | 3.1 – 4.6 |
+| `block4.mask` | `1.8e-4` | 15.1 |
+| `mask.sigmoid` | `6.7e-5` | 1.0 |
+| `output` | `2.0e-3` | 1.0 |
+
+`output` is the only one that is not at fp32 noise: it is stored as `rgba8unorm`, and
+`2.0e-3` is exactly half an 8-bit step. Every tolerance in the gate is about twenty
+times the measured value, which leaves room for another vendor's fp32 accumulation
+order and not for a semantic mistake.
+
+### Two controls
+
+`--mutate=leaky-slope` re-runs the graph with every LeakyReLU slope moved from 0.2
+to 0.05 and **requires** the comparison to fail; it currently moves the error to
+`9.1e-1` on `output`, four orders of magnitude past tolerance. A gate that cannot
+be made to go red proves nothing, so this is a checked property rather than a note.
+
+`--activation=rgba16float` measures the half-precision variant. It is not a passing
+configuration and that is the point — see below.
+
+### Why activations are fp32 here
+
+RT4KSR keeps activations in `rgba16float` because it is feed-forward and its output
+is quantised to 8 bit anyway. IFNet is not: its flow is a displacement in pixels
+that reaches `|5|` on this fixture, where a half-float ulp is 4e-3 of a pixel, and
+five blocks feed that flow back into each other's warps. Measured on the same
+fixture, `rgba16float` gives `3.9e-3` at `block0.flow`, `2.1e-2` by `block1.flow`,
+`7.5e-1` at `block4.mask` and `1.4e-1` on `output` — 36 8-bit steps. The random-noise
+input is the worst case for that amplification and real frames would fare better,
+but nothing here can measure "better", so the shipped default is the configuration
+the gate actually verifies:
+
+| | `rgba32float` (default) | `rgba16float` |
+|---|---|---|
+| `output` vs upstream | `2.0e-3` (the rgba8 floor) | `1.4e-1` |
+| pool at 1080p | 62 textures, ~1040 MiB | ~520 MiB |
+| pool at 4K | ~4160 MiB | ~2080 MiB |
+
+`RifeExecutorOptions.activationFormat` selects it, and `RifeGraphExecutor` reports
+`activationTextures` / `activationBytes` so the cost is measurable rather than
+assumed. Both are large: IFNet keeps about 33 full-resolution channel groups live,
+and the pool never shrinks. A frame size whose pool does not fit fails at texture
+creation, which `AiPipeline` turns into a fallback to passthrough rather than a
+broken frame.
+
+`rgba32float` is bound through `layout: 'auto'`, which is only valid because the
+packed kernels read every texture with `textureLoad` and never with a sampler, so
+the derived layout is `unfilterable-float` and no `float32-filterable` feature is
+required. This is verified on Dawn; a stricter implementation would reject pipeline
+creation, and the stage would fall back rather than render.
+
+### What the RIFE gate still does not cover
+
+- **f16 kernel variants.** The fallback adapter has no `shader-f16`, so
+  half-precision *weights* remain untested anywhere.
+- **Performance.** SwiftShader is a CPU rasteriser; the gate records no timings.
+- **Frames that are not a multiple of 64.** The fixture is 64x64, so the pad/crop
+  wrapper is pinned by `packages/postprocess/tests/model-graph.test.ts` instead
+  (`paddedSize(1920, 1080) === {1920, 1088}`, and the blend dispatches over the
+  unpadded frame) plus a `PACKED_INPUT` zero-fill check in
+  `pnpm quality:webgpu:numerics`.
+
+## How the RIFE graph is expressed
 
 Reading `IFNet_HDv3.py` at the vendored version fixes the operator set:
 
 - `Head`: conv s2 → LReLU(0.2) → conv → LReLU → conv → LReLU → `ConvTranspose2d`, no trailing activation.
 - `IFBlock(x, flow, scale)`: resize `x` by `1/scale`; when a flow exists, resize it the same way, multiply by `1/scale` and concatenate; `conv0` (two stride-2 3x3 with LReLU); 8x `ResConv`; `lastconv` = `ConvTranspose2d(c, 52, 4, 2, 1)` + `PixelShuffle(2)`; resize the result by `scale`; then `flow = tmp[:, :4] * scale`, `mask = tmp[:, 4:5]`, `feat = tmp[:, 5:]`.
-- `ResConv`: `LeakyReLU(0.2)(conv3x3(x) * beta + x)`. `beta` is per-output-channel, so it folds into the weight and bias at upload time and needs no new kernel.
+- `ResConv`: `LeakyReLU(0.2)(conv3x3(x) * beta + x)`. `beta` is per-output-channel, so it folds into the weight and bias at graph-build time and needs no new kernel.
 - `IFNet`: five blocks at scales 16/8/4/2/1; block 0 takes `cat(img0, img1, f0, f1, timestep)`; later blocks take `cat(warped0, warped1, warp(f0, flow), warp(f1, flow), timestep, mask, feat)`; `flow` accumulates additively; the output is `sigmoid(mask)` blended between the two warped frames.
+
+`GpuGraphLayer` cannot express that: it is a single-input chain. `GpuGraphNode` is a
+typed DAG — `input`, `fill`, `conv`, `transposed-conv`, `pixel-shuffle`, `resize`,
+`warp`, `gather`, `add`, `blend` — and `RifeGraphExecutor` maps each kind onto one
+audited kernel. Three decisions carry most of the weight:
+
+- **Sizes are symbolic.** Every resolution IFNet visits is the padded frame size
+  divided by a power of two up to 64, so each node carries one `divisor` and the
+  graph is built once per model rather than once per resolution.
+- **Concat gathers, it does not scatter.** A packed storage texture is written a
+  whole `vec4` at a time, so a 3+3+4+4+1 concat cannot be assembled by writing each
+  part into a channel offset. `PACKED_GATHER_WGSL` inverts it: output channel `c`
+  walks a slot table and reads the slot that owns it. The same kernel does the
+  13 → 4/1/8 split of `tmp` and the `* scale` on the flow.
+- **`F.interpolate` is per-channel**, so it commutes with concat and slice. Resizing
+  each part before the concat, and slicing before the upsample, keeps the wide
+  15/24/28-channel block inputs and the 13-channel `tmp` at the block's own
+  resolution instead of materialising them at full resolution, where IFNet already
+  holds about eighteen channel groups live at once. At `scale === 1` (block 4) the
+  resize is the identity and is skipped.
+
+`validateNodeGraph` rejects a graph whose ids are not unique or topologically
+ordered, whose multi-input nodes disagree on resolution, or whose channel arithmetic
+does not match the operator; `createRifeGraph` runs it on every build.
+

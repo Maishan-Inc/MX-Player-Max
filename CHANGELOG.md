@@ -41,17 +41,36 @@
   原生或非 WebGPU 会话以 `RENDERER_AI_UNSUPPORTED` 拒绝，`PlaybackChangeReason` 新增 `ai`。
 - 播放器设置面板新增「AI 增强」一节，插帧与超分两个独立开关（`features.aiPostProcess`，默认开启），
   不可用时保持可见但禁用并给出原因（渲染路径 / 缺模型根目录 / 无 WebGPU 适配器 / 尚未实现），
-  四语言文案齐备。插帧当前恒为 `not-implemented`，不会把未验证输出交给用户。
-- 真实 WGSL 执行门禁：`pnpm quality:webgpu`（17 个 kernel 通过 Dawn/Tint 编译 + rgba16float 存储往返）、
-  `pnpm quality:webgpu:numerics`（kernel 对 CPU 参考）、`pnpm quality:webgpu:oracle`（shipped
-  `Rt4kSrGraphExecutor` 对上游 RT4KSR forward，端到端 `max |delta| = 3.7e-3`）。
+  四语言文案齐备。两个开关的可用性都取决于「WebGPU 自定义会话 + 配置了 `aiModelBaseUrl`」。
+- 真实 WGSL 执行门禁：`pnpm quality:webgpu`（27 个 kernel 通过 Dawn/Tint 编译，含每个 packed kernel
+  的 `rgba32float` 变体，加 packed 2d-array 存储往返）、`pnpm quality:webgpu:numerics`（kernel 对
+  CPU 参考）、`pnpm quality:webgpu:oracle`（shipped `Rt4kSrGraphExecutor` 对上游 RT4KSR forward，
+  端到端 `max |delta| = 3.7e-3`）。
   `packages/postprocess/tools/generate_rt4ksr_reference.py` 生成逐层参考张量。
-- RIFE 4.25 算子与 oracle：新增 `PACKED_TRANSPOSED_CONVOLUTION`、`PACKED_RESIZE`、`PACKED_WARP`、
-  `PACKED_PIXEL_SHUFFLE_2`、`PACKED_MASK_BLEND` 五个 kernel，卷积的 LeakyReLU 斜率改为可配置；
-  `packages/postprocess/tools/generate_rife_reference.py` 从 vendored 归档还原上游 `IFNet` 并逐 stage
-  导出参考张量，`pnpm quality:webgpu:rife` 对其验证 `Head`（含 `ConvTranspose2d`）`8.9e-4`、
-  `grid_sample` 反向 warp `1.2e-3`、`align_corners=False` 双向 resize `5.1e-4`。IFBlock body、
-  五级 flow 累积、graph IR 与最终 blend 仍未实现，门禁会显式列出。
+- **RIFE 4.25 插帧推理**：`packages/postprocess` 现在真正执行 Practical-RIFE 4.25 的 IFNet。
+  `GpuGraphLayer` 的单输入线性链扩展为带类型的节点图 `GpuGraphNode`（`input`/`fill`/`conv`/
+  `transposed-conv`/`pixel-shuffle`/`resize`/`warp`/`gather`/`add`/`blend`），尺寸以「padded 帧
+  尺寸 ÷ divisor」符号化表达；新增 `PACKED_GATHER`（concat/slice/按段缩放，packed 存储纹理只能
+  整 texel 写入，所以 concat 必须 gather 而不是 scatter）与 `PACKED_FILL`；`PACKED_INPUT` 增加
+  source 边界，按上游 `F.pad(..., value=0)` 在右/下补零。`ResConv` 的 `beta` 与 `IFNet` 全部
+  40 个残差卷积在建图时折进权重与偏置（`GpuNodeGraph.derivedTensors`），不再上传。
+  新增 `RifeGraphExecutor`：155 个节点录进单个 command encoder、单次 submit、单次 fence，
+  uniform 单缓冲多 256 字节对齐槽位，激活默认存 `rgba32float`（见下）。
+  `pnpm quality:webgpu:rife` 从算子级扩展到整图：`encode`/`block0..4` 的 `flow`/`mask`/`feat`/
+  `warped0`/`warped1`/`mask.sigmoid` 全部收敛到 `1.8e-4` 以内，最终 `output` 为 `2.0e-3`
+  （`rgba8unorm` 半个 8-bit 步长，即该链下限）。门禁另有两个开关：`--mutate=leaky-slope`
+  把 LeakyReLU 斜率从 0.2 改成 0.05 并**要求**比较失败（当前偏到 `9.1e-1`），
+  `--activation=rgba16float` 测半精度变体。
+- `RifeExecutorOptions.activationFormat`：IFNet 的 flow 是以像素为单位的位移，半精度 ulp 在 `|5|`
+  处已是 4e-3 像素，而五个 block 互相反馈各自的 warp，同一 fixture 上 `rgba16float` 会让 `output`
+  偏到 `1.4e-1`。因此默认 `rgba32float`——出厂默认即门禁验证过的配置；代价是 1080p 激活池约
+  1040 MiB（半精度约 520 MiB），`RifeGraphExecutor.activationTextures/activationBytes` 可读。
+- `AiPipeline.attachStages()` 与 `AiPipeline.consumedThrough`：stage 仍然懒构造，但先开一个再开
+  另一个不会重建管线（governor 历史与 epoch 保留）；`consumedThrough` 告诉消费者解码队列真正
+  可以释放到哪一帧 —— 插帧在两帧之间的每个相位都要重读较早那帧，所以不能按刚呈现的帧释放。
+- `CustomMediaPipeline.setVideoLookahead()`：把 `AiPipeline.lookaheadFrames` 接到解码队列低水位上。
+  `lowWaterMark` 为 0 时队列本可停在单帧，插帧的 `peekNext` 永远拿不到后继帧而死锁；
+  `customVideo.maxDecodedFrames` 不足 `lookahead + 2` 时请求以 `CUSTOM_INVALID_QUEUE_CONFIG` 拒绝。
 
 ### Fixed
 
@@ -146,10 +165,19 @@
 - 12 个 shipped WGSL kernel 中有 8 个此前无法通过真实 Dawn/Tint 编译（混类型向量构造、2d-array
   `textureLoad` 签名），已全部修正。
 - postprocess 上传 CPU `VideoFrame` 的目标纹理补上 `RENDER_ATTACHMENT`，`copyExternalImageToTexture`
-  不再被验证层拒绝；RIFE stage 的 bind group layout 与着色器绑定号对齐。
+  不再被验证层拒绝。
 - `Rt4kSrGraphExecutor` 把整张图录进单个 command encoder 并只提交一次（此前每 pass 一次
   submit + fence，22 层等于每帧 22 次 CPU↔GPU 往返），uniform 改为单缓冲多槽位；
   `uploadTensorStore` 只上传图实际绑定的张量（RT4KSR 51→44，RIFE 198→118）。
+- `PackedTexturePool` 复用槽位时允许把层数更多的空闲纹理借给更窄的请求（视图只覆盖前 `groups`
+  层），IFNet 的激活池因此从 70 个纹理降到 62 个。
+
+### Removed
+
+- 三个占位 kernel `BILINEAR_WARP_WGSL`、`RIFE_FLOW_WGSL`、`RIFE_IFBLOCK_WGSL` 及其唯一消费者
+  ——旧的 `WebGpuInterpolationStage`。它们把输入帧当作光流纹理绑定，并用
+  `modelWeights[0] * 1e-8` 假装用到了权重；真实的 `RifeGraphExecutor` 上线后再留着它们只会
+  让代码库说谎。`WebGpuInterpolationStage` 现在必须拿到已校验的 MXAI 模型才能构造。
 
 - 控制栏锁定（`features.lockControls`，默认开启）：全屏或剧场模式下播放器左侧中部出现 `Lock`/`LockOpen`
   按钮，锁定后控制栏、状态层与浮层一并收起，指针与键盘不再影响播放，只有锁图标可点；锁图标 5 s

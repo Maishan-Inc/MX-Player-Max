@@ -146,7 +146,7 @@ export class Rt4kSrGraphExecutor {
     this.#record(encoder, this.#inputPipeline, [
       { binding: 0, resource: source.createView() },
       { binding: 1, resource: arrayView(output) },
-      { binding: 2, resource: params(new Uint32Array([width, height, 0, 0])) },
+      { binding: 2, resource: params(new Uint32Array([width, height, width, height])) },
     ], Math.ceil(width / 8), Math.ceil(height / 8), 1)
   }
 

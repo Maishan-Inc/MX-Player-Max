@@ -33,8 +33,8 @@
       "name": "@mx-player-max/core",
       "directory": "packages/core",
       "testFiles": 26,
-      "tests": 133,
-      "passed": 133,
+      "tests": 135,
+      "passed": 135,
       "skipped": 0,
       "todo": 0
     },
@@ -105,8 +105,8 @@
       "name": "@mx-player-max/postprocess",
       "directory": "packages/postprocess",
       "testFiles": 6,
-      "tests": 30,
-      "passed": 30,
+      "tests": 37,
+      "passed": 37,
       "skipped": 0,
       "todo": 0
     },
@@ -185,8 +185,8 @@
   ],
   "totals": {
     "testFiles": 102,
-    "tests": 664,
-    "passed": 664,
+    "tests": 673,
+    "passed": 673,
     "skipped": 0,
     "todo": 0
   }
