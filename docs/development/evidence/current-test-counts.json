@@ -5,9 +5,9 @@
     {
       "name": "@mx-player-max/audio",
       "directory": "packages/audio",
-      "testFiles": 8,
-      "tests": 32,
-      "passed": 32,
+      "testFiles": 9,
+      "tests": 35,
+      "passed": 35,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 97,
-    "tests": 584,
-    "passed": 584,
+    "testFiles": 98,
+    "tests": 587,
+    "passed": 587,
     "skipped": 0,
     "todo": 0
   }

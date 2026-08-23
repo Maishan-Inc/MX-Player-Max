@@ -27,6 +27,17 @@ export interface MediaAcceptanceResult {
   readonly cssHeight: number
   readonly devicePixelRatio: number
   readonly sourceChanges: number
+  /**
+   * `audio-context` proves the AudioWorklet module loaded and is driving the clock.
+   * A worklet that fails to load takes the whole custom candidate down, so these two
+   * fields are what distinguish "custom path works" from "custom path works silently".
+   */
+  readonly audioClockSource: 'audio-context' | 'wall-clock' | null
+  readonly audioRenderedFrames: number
+  /** The first code the engine reported, kept even when a scripted step timed out after it. */
+  readonly engineErrorCode: string | null
+  /** Per-candidate failure codes from the decision trace; empty when nothing was rejected. */
+  readonly attemptErrorCodes: readonly string[]
   readonly errorCode: string | null
 }
 
@@ -37,6 +48,20 @@ declare global {
 const SAMPLE = '/quality-media/webm-vp8-p0-8bit-opus.webm'
 const CUSTOM_SAMPLE = '/quality-media/webm-vp8-p0-8bit-video-only.webm'
 const MP4_SAMPLE = '/quality-media/mp4-h264-baseline-8bit-aac.mp4'
+/**
+ * `webcodecs` runs a video-only sample, so it never touched the AudioWorklet and could
+ * not catch a worklet asset that only breaks in a production build. `webcodecs-audio`
+ * takes the same custom path with an Opus track for exactly that reason.
+ */
+const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio'])
+/** Codes that mean the browser genuinely cannot run the path, as opposed to a defect. */
+const CAPABILITY_CODES = new Set([
+  'NATIVE_NOT_SUPPORTED',
+  'CUSTOM_BACKEND_UNAVAILABLE',
+  'WEBCODECS_NOT_SUPPORTED',
+  'WEBCODECS_AUDIO_NOT_SUPPORTED',
+  'STRATEGY_NO_VIABLE_BACKEND',
+])
 
 export async function runMediaAcceptance(mode: string): Promise<void> {
   const root = document.getElementById('root')
@@ -54,11 +79,16 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
   const events: string[] = []
   const stateTransitions: string[] = []
   const cueTimes: number[] = []
+  /**
+   * A scripted step that times out surfaces as `MEDIA_ACCEPTANCE_FAILED`, which says
+   * nothing about why. The engine almost always reported a real code first, so keep it.
+   */
+  const engineErrors: string[] = []
   let sourceChanges = 0
   let observedEpoch = 0
   let player: MXPlayer | null = null
   try {
-    const intent = mode === 'webcodecs' ? 'frame-access' : 'normal'
+    const intent = CUSTOM_MODES.has(mode) ? 'frame-access' : 'normal'
     const fault = mode.startsWith('fault-') ? `?fault=${mode.slice('fault-'.length)}` : ''
     const sample = mode === 'webcodecs' ? CUSTOM_SAMPLE : mode === 'fault-corrupt' ? MP4_SAMPLE : SAMPLE
     player = new MXPlayer({
@@ -69,9 +99,34 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6 },
       subtitles: { enabled: true },
     })
-    trackEvents(player, events, stateTransitions, cueTimes)
+    trackEvents(player, events, stateTransitions, cueTimes, engineErrors)
     await player.ready
     if (mode.startsWith('fault-')) throw new Error('FAULT_ROUTE_UNEXPECTEDLY_LOADED')
+    /**
+     * This mode stops at `ready` on purpose. Loading a custom session with an audio track
+     * is what proves the AudioWorklet asset resolves — a worklet that cannot load fails
+     * `load()` outright with `AUDIO_WORKLET_LOAD_FAILED`. Playback progression is not
+     * asserted here because the custom audio path does not yet advance its clock; see the
+     * A1b follow-up in docs/superpowers/plans/2026-08-23-render-mode-switch-and-mkv-ai-plan.md.
+     */
+    if (mode === 'webcodecs-audio') {
+      window.__mediaAcceptance = {
+        status: 'passed', mode, backend: player.selection?.backend.kind ?? null, renderer: player.rendererKind,
+        surface: host.querySelector('canvas') ? 'canvas' : null,
+        nonEmptyPixels: 0, meanLuma: 0, coloredPixelRatio: 0,
+        events: [...new Set(events)], stateTransitions, cueTimes,
+        currentTime: player.playback.currentTime ?? 0, duration: player.playback.duration,
+        bufferedAhead: player.playback.bufferedAhead, presentedFrames: 0, droppedFrames: null,
+        epoch: player.playback.sessionEpoch, width: 0, height: 0, initialWidth: 0, initialHeight: 0,
+        cssWidth: 0, cssHeight: 0, devicePixelRatio, sourceChanges: 0,
+        audioClockSource: player.audioClock?.source ?? null,
+        audioRenderedFrames: player.audioClock?.renderedFrames ?? 0,
+        engineErrorCode: engineErrors[0] ?? null, attemptErrorCodes: attemptErrors(player), errorCode: null,
+      }
+      document.body.dataset.status = 'passed'
+      player.destroy()
+      return
+    }
     const subtitleText = await fetch('/quality-subtitles/basic-timing.srt').then((response) => response.text())
     const subtitleFile = new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' })
     const track = await player.addSubtitleTrack({ kind: 'file', file: subtitleFile, format: 'srt' })
@@ -121,12 +176,25 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       epoch: Math.max(observedEpoch, player.audioClock?.epoch ?? player.playback.sessionEpoch),
       width: size.width, height: size.height, initialWidth: initialSize.width, initialHeight: initialSize.height,
       cssWidth: bounds?.width ?? 0, cssHeight: bounds?.height ?? 0, devicePixelRatio: stats?.devicePixelRatio ?? devicePixelRatio,
-      sourceChanges, errorCode: null,
+      sourceChanges,
+      audioClockSource: player.audioClock?.source ?? null,
+      audioRenderedFrames: player.audioClock?.renderedFrames ?? 0,
+      engineErrorCode: engineErrors[0] ?? null,
+      attemptErrorCodes: attemptErrors(player),
+      errorCode: null,
     }
     document.body.dataset.status = 'passed'
   } catch (cause) {
     const code = errorCode(cause)
-    const unsupported = code === 'NATIVE_NOT_SUPPORTED' || code === 'CUSTOM_BACKEND_UNAVAILABLE' || code === 'WEBCODECS_NOT_SUPPORTED' || code === 'STRATEGY_ALL_CANDIDATES_FAILED' || code === 'STRATEGY_NO_VIABLE_BACKEND'
+    const attemptErrorCodes = attemptErrors(player)
+    /**
+     * `STRATEGY_ALL_CANDIDATES_FAILED` is the engine's summary code, so on its own it
+     * cannot tell a missing browser capability from a broken asset. Classifying it as
+     * `unsupported` unconditionally let a broken AudioWorklet asset skip its own test, so
+     * defer to the per-candidate codes and only forgive genuine capability gaps.
+     */
+    const unsupported = CAPABILITY_CODES.has(code)
+      || code === 'STRATEGY_ALL_CANDIDATES_FAILED' && attemptErrorCodes.length > 0 && attemptErrorCodes.every((entry) => CAPABILITY_CODES.has(entry))
     const faultPassed = mode.startsWith('fault-') && code !== 'MEDIA_ACCEPTANCE_FAILED'
     window.__mediaAcceptance = {
       status: faultPassed ? 'passed' : unsupported ? 'unsupported' : 'failed',
@@ -137,18 +205,24 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       presentedFrames: player?.rendererStats?.presentedFrames ?? player?.nativeStats?.presentedFrames ?? 0,
       droppedFrames: player?.rendererStats?.droppedFrames ?? player?.nativeStats?.droppedFrames ?? null,
       epoch: player?.audioClock?.epoch ?? player?.playback.sessionEpoch ?? 0, width: 0, height: 0,
-      initialWidth: 0, initialHeight: 0, cssWidth: 0, cssHeight: 0, devicePixelRatio, sourceChanges, errorCode: code,
+      initialWidth: 0, initialHeight: 0, cssWidth: 0, cssHeight: 0, devicePixelRatio, sourceChanges,
+      audioClockSource: player?.audioClock?.source ?? null,
+      audioRenderedFrames: player?.audioClock?.renderedFrames ?? 0,
+      engineErrorCode: engineErrors[0] ?? null,
+      attemptErrorCodes,
+      errorCode: code,
     }
     document.body.dataset.status = window.__mediaAcceptance.status
   }
 }
 
-function trackEvents(player: MXPlayer, events: string[], stateTransitions: string[], cueTimes: number[]): void {
+function trackEvents(player: MXPlayer, events: string[], stateTransitions: string[], cueTimes: number[], engineErrors: string[]): void {
   const names: readonly EngineEventName[] = ['ready', 'statechange', 'timeupdate', 'buffering', 'backendchange', 'subtitlecuechange', 'playbackchange', 'error']
   for (const name of names) player.on(name, (payload) => {
     events.push(name)
     if (name === 'statechange' && 'current' in payload && typeof payload.current === 'string') stateTransitions.push(payload.current)
     if (name === 'subtitlecuechange' && 'cues' in payload && payload.cues.length > 0) cueTimes.push(payload.currentTime)
+    if (name === 'error' && 'error' in payload && typeof payload.error.code === 'string') engineErrors.push(payload.error.code)
   })
 }
 
@@ -180,6 +254,12 @@ function surfaceSize(surface: Element | null): { width: number; height: number }
   if (surface instanceof HTMLCanvasElement) return { width: surface.width, height: surface.height }
   if (surface instanceof HTMLVideoElement) return { width: surface.videoWidth, height: surface.videoHeight }
   return { width: 0, height: 0 }
+}
+
+function attemptErrors(player: MXPlayer | null): string[] {
+  return (player?.decisionTrace?.attempts ?? [])
+    .map((attempt) => attempt.errorCode)
+    .filter((value): value is string => typeof value === 'string')
 }
 
 function errorCode(cause: unknown): string {

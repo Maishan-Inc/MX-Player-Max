@@ -79,6 +79,7 @@ export async function createManifest({ root = workspaceRoot, assets = DEFAULT_RE
     }
     const metadata = await stat(filePath)
     if (!metadata.isFile()) throw new Error(`Manifest resource is not a file: ${key}`)
+    if (asset.type === 'audio-worklet') assertStandaloneWorklet(key, bytes)
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     const sha384Bytes = createHash('sha384').update(bytes).digest()
     if (asset.expectedSha256 !== undefined && asset.expectedSha256 !== sha256) throw new Error(`Manifest SHA-256 mismatch: ${key}`)
@@ -129,6 +130,24 @@ function safeRelativePath(value) {
   const normalized = path.posix.normalize(portable)
   if (normalized !== portable || normalized === '.') throw new Error(`Manifest path is not normalized: ${value}`)
   return normalized
+}
+
+/**
+ * An AudioWorklet module is fetched straight by the browser through `addModule()` and
+ * cannot resolve a sibling module, so a published worklet has to be self-contained.
+ * Bundlers copy the emitted file verbatim without pulling its imports along, so a stray
+ * import only 404s in a production build — invisible in dev. Fail the release instead.
+ */
+function assertStandaloneWorklet(key, bytes) {
+  const source = bytes.toString('utf8')
+  const patterns = [
+    /^[ \t]*(?:import|export)\b[^\n]*?\bfrom[ \t]*['"][^'"]+['"]/m,
+    /^[ \t]*import[ \t]*['"][^'"]+['"]/m,
+    /\bimport[ \t]*\(/,
+  ]
+  if (patterns.some((pattern) => pattern.test(source))) {
+    throw new Error(`AudioWorklet resource must be self-contained without module imports: ${key}`)
+  }
 }
 
 function mimeFor(filePath) {

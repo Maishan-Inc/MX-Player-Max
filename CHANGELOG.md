@@ -24,6 +24,18 @@
 
 ### Fixed
 
+- 发布的 AudioWorklet 模块改为自包含单文件。`worklet-processor.js` 原先 `import './ring-buffer'`
+  （`moduleResolution: "Bundler"` 保留了无扩展名说明符），而打包器只会把这一个文件当作 URL 资源
+  拷出去，浏览器的 `addModule()` 因此 404，任何带音轨的自定义管线会话都以
+  `AUDIO_WORKLET_LOAD_FAILED` 失败——只在生产构建里复现，dev 服务器看不到。共享头槽位下标改为在
+  worklet 内声明，`shared-header-layout.test.ts` 守住与 `ring-buffer.ts` 的一致性以及「不得出现
+  运行时 import」；`generate-manifest.mjs` 对清单里 `type: "audio-worklet"` 的资源做同样断言。
+- 媒体验收不再把 `STRATEGY_ALL_CANDIDATES_FAILED` 无条件归类为 `unsupported`。该汇总码区分不了
+  「浏览器不支持」与「资源坏了」，坏掉的 worklet 因此会让本该拦住它的用例直接 skip。现在按决策
+  轨迹里的逐候选错误码判定，并把 `engineErrorCode` 与 `attemptErrorCodes` 透出到结果中。
+  新增 `webcodecs-audio` 验收模式，用带 Opus 音轨的样本在**构建产物**上覆盖自定义音频路径
+  （原有 `webcodecs` 模式的样本无音轨，所以从未走到 AudioWorklet）。
+
 - RT4KSR 图按上游 `RT4KSR_Rep.forward` 重写：移除推理时不可达的 `hfb`/`gamma` 分支，激活改为
   block 后的 GELU，`fea_conv` 边框按 `expand_conv` 的 per-channel bias 填充并补回 pad 前 identity，
   `head`/`tail` 不再多加激活；pixel unshuffle/shuffle 通道序改为 `torch.nn.PixelShuffle` 语义。

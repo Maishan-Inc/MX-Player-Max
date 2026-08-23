@@ -1,13 +1,21 @@
 import type { AudioWorkletInputMessage, AudioWorkletOutputMessage, WorkletPcmMessage } from './worklet-protocol'
-import {
-  SHARED_AVAILABLE_FRAMES,
-  SHARED_CLOSED,
-  SHARED_EPOCH,
-  SHARED_PAUSED,
-  SHARED_READ_FRAME,
-  SHARED_RENDERED_FRAMES,
-  SHARED_UNDERRUNS,
-} from './ring-buffer'
+
+/**
+ * The shared-header slot indices, duplicated from `ring-buffer.ts` on purpose.
+ *
+ * This file ships as a standalone asset: the browser fetches it through
+ * `audioWorklet.addModule()`, and an AudioWorklet module cannot resolve a sibling
+ * module, so any runtime `import` here would 404 at load time. Bundlers copy the
+ * emitted file verbatim without pulling its imports along, which made the failure
+ * build-only and invisible in dev. `shared-header-layout.test.ts` asserts these
+ * stay equal to the exported constants.
+ */
+const SHARED_READ_FRAME = 0
+const SHARED_AVAILABLE_FRAMES = 2
+const SHARED_RENDERED_FRAMES = 4
+const SHARED_UNDERRUNS = 5
+const SHARED_PAUSED = 6
+const SHARED_CLOSED = 7
 
 interface WorkletPortLike {
   onmessage: ((event: MessageEvent<AudioWorkletInputMessage>) => void) | null
