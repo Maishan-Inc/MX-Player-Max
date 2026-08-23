@@ -123,6 +123,7 @@ export class SharedPcmRingBuffer {
 
   get descriptor(): SharedPcmRingDescriptor { return { header: this.#headerBuffer, samples: this.#sampleBuffer, capacityFrames: this.#capacityFrames, channels: this.#channels } }
   get availableFrames(): number { return Atomics.load(this.#header, SHARED_AVAILABLE_FRAMES) }
+  get freeFrames(): number { return this.#capacityFrames - this.availableFrames }
   get renderedFrames(): number { return Atomics.load(this.#header, SHARED_RENDERED_FRAMES) }
   get underruns(): number { return Atomics.load(this.#header, SHARED_UNDERRUNS) }
 

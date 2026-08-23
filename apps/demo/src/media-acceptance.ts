@@ -102,31 +102,6 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
     trackEvents(player, events, stateTransitions, cueTimes, engineErrors)
     await player.ready
     if (mode.startsWith('fault-')) throw new Error('FAULT_ROUTE_UNEXPECTEDLY_LOADED')
-    /**
-     * This mode stops at `ready` on purpose. Loading a custom session with an audio track
-     * is what proves the AudioWorklet asset resolves — a worklet that cannot load fails
-     * `load()` outright with `AUDIO_WORKLET_LOAD_FAILED`. Playback progression is not
-     * asserted here because the custom audio path does not yet advance its clock; see the
-     * A1b follow-up in docs/superpowers/plans/2026-08-23-render-mode-switch-and-mkv-ai-plan.md.
-     */
-    if (mode === 'webcodecs-audio') {
-      window.__mediaAcceptance = {
-        status: 'passed', mode, backend: player.selection?.backend.kind ?? null, renderer: player.rendererKind,
-        surface: host.querySelector('canvas') ? 'canvas' : null,
-        nonEmptyPixels: 0, meanLuma: 0, coloredPixelRatio: 0,
-        events: [...new Set(events)], stateTransitions, cueTimes,
-        currentTime: player.playback.currentTime ?? 0, duration: player.playback.duration,
-        bufferedAhead: player.playback.bufferedAhead, presentedFrames: 0, droppedFrames: null,
-        epoch: player.playback.sessionEpoch, width: 0, height: 0, initialWidth: 0, initialHeight: 0,
-        cssWidth: 0, cssHeight: 0, devicePixelRatio, sourceChanges: 0,
-        audioClockSource: player.audioClock?.source ?? null,
-        audioRenderedFrames: player.audioClock?.renderedFrames ?? 0,
-        engineErrorCode: engineErrors[0] ?? null, attemptErrorCodes: attemptErrors(player), errorCode: null,
-      }
-      document.body.dataset.status = 'passed'
-      player.destroy()
-      return
-    }
     const subtitleText = await fetch('/quality-subtitles/basic-timing.srt').then((response) => response.text())
     const subtitleFile = new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' })
     const track = await player.addSubtitleTrack({ kind: 'file', file: subtitleFile, format: 'srt' })

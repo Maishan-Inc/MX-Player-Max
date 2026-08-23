@@ -60,7 +60,9 @@ import { SHARED_AVAILABLE_FRAMES, /* … */ } from './ring-buffer';
 | `playback.state` | 停在 `ready`，即使 `player.play()` 已 resolve |
 | 约 4 秒后 | `lastError = { code: 'AUDIO_BUFFER_OVERFLOW', recoverable: false }` |
 
-抛出点是 `packages/core/src/custom/audio-controller.ts:287`：`bufferedDuration + block.duration > maxBufferedDuration`（默认 2 s）就直接抛致命错误，而 `atHighWater()` 只在 `bufferedDuration >= maxBufferedDuration` 才回压——跨过那条线的那一块必然是致命的。之所以从没被发现：`native` 模式不走自定义音频路径，而 `webcodecs` 模式的样本是无音轨的。
+抛出点是 `MessagePcmTransport.enqueue` 的 pending 上限（不是 `audio-controller.ts:287` 的 `maxBufferedDuration`——那条路走不到）：`startBufferDuration`（150 ms）恰好填满 8 块的 MessagePort 队列，`play()` 之后第一个 `consumed` 回执还没回来，第 9 块就撞上硬失败。之所以从没被发现：`native` 模式不走自定义音频路径，而 `webcodecs` 模式的样本是无音轨的。
+
+**状态：已修复（见 A1b）。**
 
 **F2 — demo 默认示例 `flower.webm` 是 VP8 + Vorbis**
 
@@ -92,14 +94,23 @@ Vorbis 不在自定义管线的音频范围内（`packages/decoder-webcodecs/src
 
 **已完成（2026-08-23）**：worklet 改为自包含单文件；`packages/audio/tests/shared-header-layout.test.ts` 守住常量漂移与运行时 import；`scripts/release/generate-manifest.mjs` 对 `type: "audio-worklet"` 资源断言无模块 import（回填坏文件时确认会失败）；`apps/demo/src/media-acceptance.ts` 新增 `webcodecs-audio` 模式，`tests/browser/media/media-paths.spec.ts` 新增用例并已确认「回填坏 worklet 时该用例转红」。顺带修掉一处会掩盖缺陷的分类：`STRATEGY_ALL_CANDIDATES_FAILED` 原先被无条件当成 `unsupported`，会让坏 worklet 直接 skip 掉自己的用例，现在按决策轨迹里的逐候选错误码判定，并把 `engineErrorCode` / `attemptErrorCodes` 透出到结果里。
 
-### A1b 自定义管线的音频时钟不前进（A1 之后的新阻塞项）
+### A1b 自定义管线的音频时钟不前进（已完成）
 
-见 §2.2 的 F1b。两步走：
+见 §2.2 的 F1b。实测结论与最初的猜测不同，记录下来免得再走一遍：
 
-1. 先查清 worklet 为什么一帧都不消费。可疑点：worklet 的 `#epoch` 初值是 `0`，只有 `reset` / `shared-init` / epoch 匹配的 pcm 消息会更新它，而 `MessagePcmTransport.setPlayback()` 用的是 transport 自己的 `#epoch`；若两边不一致，`#handle` 里的 `playback` 分支会被直接丢弃，`#paused` 永远是 `true`。这是假设，需要先在浏览器里确认再动手。
-2. 把「跨过高水位」从致命错误改成回压：`#handleData` 里遇到会越界的块时挂起并置 `#backpressured`，等 `#handleConsumed` 腾出空间再入队；或者让 `atHighWater()` 预留至少 `maxDecodeQueueSize` 个块的余量，使 `audio-controller.ts:287` 的硬断言重新成为真正的不变量。
+- **不是** worklet 的问题。把构建产物里的 worklet 单独加载、依次投 `reset` / `pcm` / `playback`，它正确回了 `consumed`。
+- **也不是** `audio-controller.ts:287` 的 `maxBufferedDuration` 检查。`bufferedFrames` 取自 `MessagePcmTransport.pendingFrames`，上限只有 8 块（约 150 ms），根本到不了 2 秒。
+- 真正的抛出点是 `MessagePcmTransport.enqueue` 的 `pending.size >= maxMessagePortPendingBlocks`。观测到的时序是：8 块入队（`audiostatechange` 连发 8 次 `ready`）→ 缓冲到 `startBufferDuration`（150 ms）后 `play()` → 输出转 `running` → 第 9 块在第一个 `consumed` 回执之前到达 → 致命 `AUDIO_BUFFER_OVERFLOW`。默认值让 150 ms 的起播缓冲恰好等于 8 块队列容量，一点余量都没有。
 
-补上覆盖：`webcodecs-audio` 模式恢复成完整的播放/seek/ended 脚本，并断言 `audioRenderedFrames > 0`（当前版本刻意停在 `ready`，只守住 worklet 能加载）。
+改法（已落地）：
+
+1. `AudioOutputLike` 增加 `canAccept(frames)`；`SharedPcmRingBuffer` 补 `freeFrames`。
+2. `AudioController` 增加 `#holdback` 队列：塞不进传输层的块暂存，`atHighWater()` 只要有暂存就报高水位，`#handleConsumed` / `#handleUnderrun` 时交付。暂存帧计入 `bufferedFrames` 与 `drained`，`reset` / `close` 时清空。只有暂存量超过 `maxDecodeQueueSize` 才抛 `AUDIO_BUFFER_OVERFLOW`——那时才是喂数据的一方没有遵守高水位。
+3. 顺带修掉一个相邻缺陷：MessagePort 传输初始化时补发 `reset`，让处理器的 epoch 对齐会话 epoch（共享内存路径靠 `shared-init` 携带 epoch，MessagePort 路径此前没有任何消息，非 0 epoch 的会话会静默无声）。
+
+验证：构建产物里 VP8 + Opus 走自定义管线，`state: playing`、`currentTime` 前进、`audioClock.renderedFrames` 51751、`running: true`、27 帧已呈现、无错误。`webcodecs-audio` 验收模式恢复成完整的播放 / seek / ended / 换源脚本并断言 `audioRenderedFrames > 0`；`custom-audio-holdback.test.ts` 与 `output.test.ts` 的两条新用例都做过变异验证（去掉暂存逻辑即转红）。
+
+**遗留噪音（未处理）**：构建产物里的 worklet 带 `sourceMappingURL=worklet-processor.js.map`，但打包器只拷了 `.js`，所以控制台每次会有一条 404。运行时无影响，但会误导排查（我这次就被它带偏过）。要修就是让 `packages/audio` 对 worklet 入口不出 sourcemap，代价是动到已发布资源的哈希。
 
 ### A2 UI — 设置面板的「渲染模式」三档
 
@@ -207,14 +218,14 @@ Vorbis 不在自定义管线的音频范围内（`packages/decoder-webcodecs/src
 ## 6. 建议的 PR 切分
 
 1. `fix(audio): ship a self-contained AudioWorklet module` — A1 ✅ 已完成
-2. `fix(core): keep the custom audio clock advancing under backpressure` — A1b（新增，接替 A1 成为阻塞项）
-3. `feat(ui): add a render-mode control to the settings panel` — A2
+2. `fix(core): hold decoded PCM the audio transport cannot take yet` — A1b ✅ 已完成
+3. `feat(ui): add a render-mode control to the settings panel` — A2 ← 下一步
 4. `feat(demo): wire the render-mode switch and the AI model root` — A3
 5. `test(quality): add Matroska fixtures and media coverage` — A4
 6. `fix(core): surface the real codec failure instead of a generic strategy error` — A5
 7. `chore(quality): refresh test counts and evidence` — A6
 
-A1 已合的前提下，A1b 必须先修完，否则 A2/A3 切到自定义档播任何带音轨的文件都会在几秒后死掉。
+自定义管线现在能带音轨正常播放，A2/A3 不再被阻塞。
 
 ## 7. 最终验收清单（demo 里要能看见的）
 

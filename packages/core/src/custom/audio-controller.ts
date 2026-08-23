@@ -7,6 +7,7 @@ import {
   type AudioDataLike,
   type AudioOutputLike,
   type MediaClock,
+  type PcmBlock,
   type ResolvedCustomAudioOptions,
 } from '@mx-player-max/audio'
 import {
@@ -74,6 +75,16 @@ export class CustomAudioController {
   #requestedPlaying = false
   #outputStarted = false
   #backpressured = false
+  /**
+   * Blocks the transport had no room for yet.
+   *
+   * The processor consumes nothing while paused, and `startBufferDuration` alone can fill
+   * the transport queue, so the block that arrives before the first `consumed` ack used to
+   * hit the hard `AUDIO_BUFFER_OVERFLOW` in `enqueue`. Holding it here and reporting high
+   * water instead turns that race into backpressure: the pipeline stops feeding the decoder
+   * and the queue drains as soon as the processor acknowledges a block.
+   */
+  readonly #holdback: PcmBlock[] = []
   #seekTarget: Micros | null = null
   #clockAnchored = false
   #decodedBlocks = 0
@@ -124,7 +135,7 @@ export class CustomAudioController {
   get track(): TrackInfo | null { return this.#audioTrack }
   get options(): ResolvedCustomAudioOptions { return this.#options }
   get decoderEndOfStream(): boolean { return this.#decoderEndOfStream }
-  get drained(): boolean { return !this.enabled || (this.#decoderEndOfStream && (this.#output?.bufferedFrames ?? 0) === 0) }
+  get drained(): boolean { return !this.enabled || (this.#decoderEndOfStream && this.#holdback.length === 0 && (this.#output?.bufferedFrames ?? 0) === 0) }
   get clock(): AudioClockSnapshot {
     if (this.#clock instanceof AudioSampleClock && this.#output) {
       const rendered = this.#output.renderedFrames
@@ -134,7 +145,8 @@ export class CustomAudioController {
   }
   get stats(): CustomAudioStats | null {
     if (!this.enabled || !this.#decoder || !this.#output) return null
-    const bufferedFrames = this.#output.bufferedFrames
+    // Held-back blocks are decoded and owned by this controller, so they count as buffered.
+    const bufferedFrames = this.#output.bufferedFrames + this.#holdback.reduce((sum, block) => sum + block.frames, 0)
     const sampleRate = this.#output.sampleRate
     return {
       decodedBlocks: this.#decodedBlocks, decodedFrames: this.#decodedFrames, renderedFrames: this.#output.renderedFrames,
@@ -165,6 +177,7 @@ export class CustomAudioController {
 
   atHighWater(): boolean {
     if (!this.enabled || !this.#decoder || !this.#output) return false
+    if (this.#holdback.length > 0) return true
     const stats = this.stats!
     if (this.#decoder.decodeQueueSize >= this.#options.maxDecodeQueueSize) return true
     if (stats.bufferedDuration >= this.#options.maxBufferedDuration) return true
@@ -230,6 +243,7 @@ export class CustomAudioController {
     this.#outputStarted = false
     this.#seekTarget = target
     this.#clockAnchored = false
+    this.#holdback.length = 0
     this.#processor?.reset()
     this.#output?.reset(epoch)
     this.#clock.seek(target, epoch)
@@ -257,6 +271,7 @@ export class CustomAudioController {
     this.#output?.close()
     this.#clock.close()
     this.#processor?.reset()
+    this.#holdback.length = 0
   }
 
   #handleData(data: AudioData, epoch: number): void {
@@ -289,7 +304,7 @@ export class CustomAudioController {
         throw createEngineError(ErrorCodes.AUDIO_BUFFER_OVERFLOW, 'Decoded PCM exceeded the configured audio buffer', false)
       }
       if (!this.#clockAnchored && this.#clock instanceof AudioSampleClock) { this.#clock.setAnchor(block.timestamp, block.sampleRate); this.#clockAnchored = true }
-      this.#output.enqueue(block)
+      this.#submit(block)
       this.#decodedBlocks += 1
       this.#decodedFrames += block.frames
       this.#callbacks.onCapacity()
@@ -300,9 +315,43 @@ export class CustomAudioController {
     }
   }
 
+  /**
+   * Hand a block to the transport, or hold it until the processor makes room.
+   *
+   * Order matters: once anything is held back, later blocks queue behind it so the PCM
+   * stream stays contiguous.
+   */
+  #submit(block: PcmBlock): void {
+    if (!this.#output) return
+    if (this.#holdback.length === 0 && this.#output.canAccept(block.frames)) {
+      this.#output.enqueue(block)
+      return
+    }
+    // The pipeline stops feeding the decoder as soon as `atHighWater()` sees a held block, so
+    // only the decoder's already-queued output can land here. More than that is a real
+    // invariant break rather than backpressure.
+    if (this.#holdback.length >= this.#options.maxDecodeQueueSize) {
+      this.#overflows += 1
+      throw createEngineError(ErrorCodes.AUDIO_BUFFER_OVERFLOW, 'Decoded PCM outran the audio transport', false)
+    }
+    this.#holdback.push(block)
+    this.#backpressured = true
+  }
+
+  #drainHoldback(): void {
+    if (!this.#output) return
+    while (this.#holdback.length > 0) {
+      const next = this.#holdback[0]!
+      if (!this.#output.canAccept(next.frames)) return
+      this.#holdback.shift()
+      this.#output.enqueue(next)
+    }
+  }
+
   #handleConsumed(total: number, epoch: number): void {
     if (this.#closed || epoch !== this.#epoch) return
     if (this.#clock instanceof AudioSampleClock) this.#clock.updateRenderedFrames(total)
+    this.#drainHoldback()
     this.#callbacks.onCapacity()
     this.#callbacks.onClock(this.clock)
     this.#callbacks.onState(this.stats!)
@@ -314,6 +363,7 @@ export class CustomAudioController {
     this.#underruns += 1
     if (this.#clock instanceof AudioSampleClock) this.#clock.noteUnderrun(true)
     this.#backpressured = false
+    this.#drainHoldback()
     this.#callbacks.onCapacity()
     this.#callbacks.onUnderrun(this.stats!)
     this.#callbacks.onClock(this.clock)

@@ -176,6 +176,13 @@ export class FakeAudioOutput implements AudioOutputLike {
 
   get bufferedFrames(): number { return this.blocks.reduce((total, block) => total + block.frames, 0) }
 
+  /** Mirrors the real transport: bounded by `maxMessagePortPendingBlocks`, refuses when full. */
+  canAccept(frames: number): boolean {
+    if (this.state === 'closed') return false
+    if (!Number.isSafeInteger(frames) || frames < 0) return false
+    return this.blocks.length < this.options.maxMessagePortPendingBlocks
+  }
+
   enqueue(block: PcmBlock): void { this.blocks.push(block) }
 
   consume(frames = this.bufferedFrames, epoch = this.epoch): void {

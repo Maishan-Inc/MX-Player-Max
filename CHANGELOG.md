@@ -24,6 +24,15 @@
 
 ### Fixed
 
+- 自定义管线带音轨时音频时钟不前进，约 4 秒后以不可恢复的 `AUDIO_BUFFER_OVERFLOW` 结束会话。
+  处理器在暂停期间不消费任何数据，而 `startBufferDuration`（150 ms）恰好能填满 MessagePort 队列
+  （`maxMessagePortPendingBlocks` 默认 8），于是第一个 `consumed` 回执之前到达的那一块必然撞上
+  `enqueue` 里的硬失败。现在 `AudioOutputLike` 增加 `canAccept(frames)`，控制器把塞不进去的块
+  暂存并对上游报高水位，`consumed`/`underrun` 时再交付；只有暂存量超过解码队列预算才算真正越界。
+  暂存的帧计入 `bufferedFrames` 与 `drained`，seek 与 close 时清空。
+- MessagePort 传输初始化时补发 `reset`，把处理器的 epoch 对齐到会话 epoch。共享内存路径靠
+  `shared-init` 携带 epoch，而 MessagePort 路径没有这条消息，处理器会丢弃 epoch 不匹配的
+  `pcm` 与 `playback`——非 0 epoch 的会话（例如换源后的第二个会话）会静默播不出声音。
 - 发布的 AudioWorklet 模块改为自包含单文件。`worklet-processor.js` 原先 `import './ring-buffer'`
   （`moduleResolution: "Bundler"` 保留了无扩展名说明符），而打包器只会把这一个文件当作 URL 资源
   拷出去，浏览器的 `addModule()` 因此 404，任何带音轨的自定义管线会话都以
@@ -34,7 +43,8 @@
   「浏览器不支持」与「资源坏了」，坏掉的 worklet 因此会让本该拦住它的用例直接 skip。现在按决策
   轨迹里的逐候选错误码判定，并把 `engineErrorCode` 与 `attemptErrorCodes` 透出到结果中。
   新增 `webcodecs-audio` 验收模式，用带 Opus 音轨的样本在**构建产物**上覆盖自定义音频路径
-  （原有 `webcodecs` 模式的样本无音轨，所以从未走到 AudioWorklet）。
+  （原有 `webcodecs` 模式的样本无音轨，所以从未走到 AudioWorklet）；该模式跑完整的
+  播放 / seek / ended / 换源脚本，并断言 `audioRenderedFrames > 0`。
 
 - RT4KSR 图按上游 `RT4KSR_Rep.forward` 重写：移除推理时不可达的 `hfb`/`gamma` 分支，激活改为
   block 后的 GELU，`fea_conv` 边框按 `expand_conv` 的 per-channel bias 填充并补回 pad 前 identity，

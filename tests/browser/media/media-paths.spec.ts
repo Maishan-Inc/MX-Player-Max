@@ -40,18 +40,20 @@ test.describe('real media SDK paths', () => {
   })
 
   /**
-   * The AudioWorklet module ships as a standalone asset, so a stray module import in it
-   * only 404s in a production build. `pnpm test:browser` serves `apps/demo/dist`, which
-   * makes this the gate that would have caught it: loading a custom session with an Opus
-   * track fails outright with `AUDIO_WORKLET_LOAD_FAILED` when the worklet cannot load.
+   * The AudioWorklet module ships as a standalone asset, so a stray module import in it only
+   * 404s in a production build. `pnpm test:browser` serves `apps/demo/dist`, which makes this
+   * the gate that would have caught it. It also covers the transport handover: the existing
+   * `webcodecs` mode uses a video-only sample, so nothing exercised the custom audio path.
    */
-  test('loads the AudioWorklet on the WebCodecs path from the built assets', async ({ page }) => {
+  test('plays the WebCodecs path with audio from the built assets', async ({ page }) => {
     const result = await runAcceptance(page, 'webcodecs-audio')
     test.skip(result.status === 'unsupported', `WebCodecs VP8/Opus unsupported in ${test.info().project.name}`)
     expect(result).toMatchObject({ status: 'passed', mode: 'webcodecs-audio', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null })
-    expect(result.audioClockSource).toBe('audio-context')
     expect(result.attemptErrorCodes).toEqual([])
-    expect(result.events).toEqual(expect.arrayContaining(['ready', 'backendchange']))
+    expect(result.audioClockSource).toBe('audio-context')
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
   })
 
   test('keeps Native video and WebCodecs canvas pixel statistics consistent', async ({ page }) => {

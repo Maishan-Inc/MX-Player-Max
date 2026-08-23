@@ -6,8 +6,8 @@
       "name": "@mx-player-max/audio",
       "directory": "packages/audio",
       "testFiles": 9,
-      "tests": 35,
-      "passed": 35,
+      "tests": 37,
+      "passed": 37,
       "skipped": 0,
       "todo": 0
     },
@@ -32,9 +32,9 @@
     {
       "name": "@mx-player-max/core",
       "directory": "packages/core",
-      "testFiles": 25,
-      "tests": 130,
-      "passed": 130,
+      "testFiles": 26,
+      "tests": 132,
+      "passed": 132,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 98,
-    "tests": 587,
-    "passed": 587,
+    "testFiles": 99,
+    "tests": 591,
+    "passed": 591,
     "skipped": 0,
     "todo": 0
   }

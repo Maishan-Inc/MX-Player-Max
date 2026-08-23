@@ -80,4 +80,37 @@ describe('AudioWorkletOutput', () => {
     await expect(h.output.initialize(2, 0)).rejects.toMatchObject({ code: ErrorCodes.AUDIO_WORKLET_UNAVAILABLE })
     expect(h.context.close).toHaveBeenCalledOnce()
   })
+
+  /**
+   * The shared path seeds the processor epoch through `shared-init`. The MessagePort path has
+   * no such message, and the processor drops every `pcm` and `playback` whose epoch differs
+   * from its own, so a session on any epoch but 0 rendered silence until it was reset.
+   */
+  it('seeds the processor epoch when the MessagePort transport is chosen', async () => {
+    const h = harness()
+    await h.output.initialize(2, 4)
+    expect(h.port.messages).toEqual([{ type: 'reset', epoch: 4 }])
+  })
+
+  /**
+   * `enqueue` past the pending limit is a hard `AUDIO_BUFFER_OVERFLOW`, and the processor
+   * consumes nothing while paused, so producers have to be able to ask first.
+   */
+  it('refuses further blocks at the pending limit and accepts again once acknowledged', async () => {
+    const h = harness()
+    await h.output.initialize(1, 0)
+    const limit = resolveCustomAudioOptions().maxMessagePortPendingBlocks
+    for (let index = 0; index < limit; index += 1) {
+      expect(h.output.canAccept(1)).toBe(true)
+      h.output.enqueue({ data: Float32Array.of(0.5), frames: 1, channels: 1, sampleRate: 48_000, timestamp: index, duration: 21, epoch: 0 })
+    }
+    expect(h.output.pendingMessageBlocks).toBe(limit)
+    expect(h.output.canAccept(1)).toBe(false)
+    expect(() => h.output.enqueue({ data: Float32Array.of(0.5), frames: 1, channels: 1, sampleRate: 48_000, timestamp: limit, duration: 21, epoch: 0 }))
+      .toThrowError(expect.objectContaining({ code: ErrorCodes.AUDIO_BUFFER_OVERFLOW }))
+    h.port.respond({ type: 'consumed', sequence: 1, epoch: 0, frames: 1 })
+    expect(h.output.canAccept(1)).toBe(true)
+    h.output.close()
+    expect(h.output.canAccept(1)).toBe(false)
+  })
 })

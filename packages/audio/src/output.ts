@@ -67,6 +67,12 @@ export interface AudioOutputLike {
   readonly state: AudioOutputState
   readonly contextTime: number
   initialize(channels: number, epoch: number): Promise<void>
+  /**
+   * Whether `frames` can be handed over right now. `enqueue` past the transport limit is a
+   * hard `AUDIO_BUFFER_OVERFLOW`, so a producer has to ask before pushing: the processor
+   * consumes nothing while paused, and the start buffer alone can fill the queue.
+   */
+  canAccept(frames: number): boolean
   enqueue(block: PcmBlock): void
   resumeContext(): Promise<void>
   play(epoch: number): void
@@ -171,6 +177,10 @@ export class AudioWorkletOutput implements AudioOutputLike {
           onConsumed: (frames, messageEpoch) => { this.#renderedFrames += frames; this.#callbacks.onConsumed(this.#renderedFrames, messageEpoch) },
           onUnderrun: (messageEpoch) => this.#handleUnderrun(messageEpoch),
         })
+        // The shared path seeds the processor epoch through `shared-init`. This one has no
+        // such message, and the processor drops every `pcm` and `playback` whose epoch does
+        // not match its own, so without this reset it stays on epoch 0 and renders nothing.
+        this.#messages.reset(epoch)
         this.#transport = 'message-port'
       }
       this.#setState('ready')
@@ -179,6 +189,13 @@ export class AudioWorkletOutput implements AudioOutputLike {
       if (typeof cause === 'object' && cause !== null && 'code' in cause) throw cause
       throw audioError(ErrorCodes.AUDIO_WORKLET_FAILED, 'AudioWorklet output graph could not be created', false, cause)
     }
+  }
+
+  canAccept(frames: number): boolean {
+    if (this.#closed || !this.#node) return false
+    if (!Number.isSafeInteger(frames) || frames < 0) return false
+    if (this.#shared) return frames <= this.#shared.freeFrames
+    return this.#messages?.canEnqueue ?? false
   }
 
   enqueue(block: PcmBlock): void {
