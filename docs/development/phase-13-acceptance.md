@@ -24,7 +24,7 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | `pnpm test` | passed；总数见 `evidence/current-test-counts.json`，与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
 | `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 approved Phase 10.2 WASM 为 3 passed/5 skipped，作为自动化回归但不替代实机证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
-| `pnpm quality:media` | passed；7 个媒体 + 2 个字幕 fixture，FFprobe 元数据和 SHA-256 一致 |
+| `pnpm quality:media` | passed；媒体 + 字幕 fixture 的 FFprobe 元数据和 SHA-256 一致；语料条目以 `tests/media/manifest.json` 为准，2026-08-23 起新增两条 Matroska，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；含数值 kernel、packed graph、真实 device-lost、epoch、fallback、pool 长时复用/容量边界和 `copyExternalImageToTexture` usage 回归 |
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`，`pnpm test --check` 与其一致 |
 | `pnpm quality:webgpu` | passed；17/17 shipped WGSL kernel 通过真实 Dawn/Tint，`rgba16float` 2d-array 存储往返位级精确 |
@@ -47,6 +47,10 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 [`docs/development/evidence/current-test-counts.json`](evidence/current-test-counts.json) 为准。
 `pnpm test` 会重新执行所有 workspace 测试并比较该文件；数量变化需显式运行
 `pnpm test:update-counts` 并审查 diff，Phase 文档不再复制当前分包数字。
+
+本表记录的是 Phase 13 复核当时的运行结果。2026-08-23 起的渲染模式切换、Matroska 覆盖与失败归因
+另立记录：[`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md)，其中的浏览器用例数与
+本表不同（媒体 project 由 20 条增至 30 条）。
 
 ## 媒体样本
 

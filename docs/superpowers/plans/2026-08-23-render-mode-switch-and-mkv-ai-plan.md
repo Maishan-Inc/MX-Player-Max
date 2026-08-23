@@ -252,6 +252,20 @@ Vorbis，于是候选被建出来，随后 `audio-config.ts` 以「outside the P
 - `pnpm quality:acceptance-drift`
 - CHANGELOG 与相关验收文档补条目
 
+**已完成（2026-08-23）**：新增验收记录
+[`docs/development/render-mode-mkv-acceptance.md`](../../development/render-mode-mkv-acceptance.md)，
+列出每条命令的实际结果、每项交付对应的回归护栏、手工核对项，以及未完项与环境事实。
+`check-acceptance-drift.mjs` 把这份文档纳入同一条规则（必须引用生成计数、不得手写全仓总数），
+并已用负例确认会中断。`phase-13-acceptance.md` 里被本轮改动作废的语料条数改为引用清单，
+并加了指向新记录的说明。
+
+**顺带修掉 Firefox 的间歇失败。** 全量跑 `media-firefox` 时带音轨的自定义路径会间歇报
+`WEBCODECS_WORKER_FAILED` 或 `CUSTOM_SEEK_FAILED`，也出现过 45 s 内拿不到终态。原因不是解码缺陷，
+而是本机无 GPU、Firefox 走自定义管线比 Chromium 慢约 60%，脚本化验收会撞上引擎默认的 10 s
+worker/configure/flush/seek 预算。处理：验收 harness 通过公开选项把该预算提到 30 s，
+`media-firefox` project 的用例超时提到 120 s，harness 内层等待提到 90 s——**没有改动出厂默认值**。
+改动后连续三轮 3/3 通过，两个媒体 project 全量 30/30 通过。
+
 ## 4. B 组 — 本机可以写完，但**验收必须换有真实 GPU 的机器**
 
 本机 WebGPU 只能拿到 `google/swiftshader`（`GPUAdapterInfo.isFallbackAdapter === true`），引擎因此一律报 `device-capability`，两个 AI 开关在本机永远是灰的。
@@ -292,11 +306,12 @@ Vorbis，于是候选被建出来，随后 `audio-config.ts` 以「outside the P
 4. `feat(demo): wire the render-mode switch and the AI model root` — A3 ✅ 已完成
 5. `test(quality): add Matroska fixtures and media coverage` — A4 ✅ 已完成
 6. `fix(ui): explain why a load failed instead of showing a generic error` — A5 ✅ 已完成
-7. `chore(quality): refresh test counts and evidence` — A6 ← 下一步
+7. `chore(quality): refresh test counts and evidence` — A6 ✅ 已完成
 8. `feat(demux): derive a full VP9 codec string` — A7（A4 的计划外发现，独立工作）
 9. `fix(strategy): stop ranking a backend whose codec scope the engine will reject` — A8（A5 的计划外发现，跨四个包）
 
-A 组只剩 A6 的证据刷新。A7 / A8 是这轮挖出来的两个独立缺陷，不阻塞 MKV + AI 的最终验收。
+**A 组全部完成。** 剩下的 A7 / A8 是这轮挖出来的两个独立缺陷，都不阻塞 MKV + AI 的最终验收；
+真正的终局验收（AI 开关端到端、性能与画质、真实浏览器矩阵）在 B 组，需要一台有真实 GPU 的机器。
 
 ## 7. 最终验收清单（demo 里要能看见的）
 

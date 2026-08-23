@@ -165,7 +165,9 @@ test.describe('real media SDK paths', () => {
 async function runAcceptance(page: Page, mode: string): Promise<MediaAcceptanceResult> {
   await page.goto(`/?mediaAcceptance=${mode}`, { waitUntil: 'domcontentloaded' })
   await page.locator('#media-start').click({ noWaitAfter: true })
-  await page.waitForFunction(() => /^(passed|failed|unsupported)$/.test(document.body.dataset.status ?? ''), undefined, { timeout: 45_000 })
+  // The scripted acceptance plays, seeks and replays the sample. Firefox needs roughly 45 s of
+  // that on the custom path, so waiting exactly 45 s turned a slow run into a failure.
+  await page.waitForFunction(() => /^(passed|failed|unsupported)$/.test(document.body.dataset.status ?? ''), undefined, { timeout: 90_000 })
   return readAcceptance(page)
 }
 

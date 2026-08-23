@@ -48,6 +48,13 @@
 
 ### Fixed
 
+- `media-firefox` 上带音轨的自定义路径间歇失败（`WEBCODECS_WORKER_FAILED` / `CUSTOM_SEEK_FAILED`，
+  偶尔 45 s 内拿不到终态）。不是解码缺陷：本机无 GPU，Firefox 走自定义管线比 Chromium 慢约 60%，
+  脚本化验收会撞上引擎默认的 10 s worker/configure/flush/seek 预算。验收 harness 通过公开选项
+  `customVideo.operationTimeoutMs` / `customAudio.operationTimeoutMs` 把该预算提到 30 s，
+  `media-firefox` project 的用例超时提到 120 s，harness 内层等待提到 90 s；**出厂默认值未改动**。
+  改后连续三轮 3/3、两个媒体 project 全量 30/30 通过。
+
 - 播放失败不再只显示笼统的「播放出错」。引擎对失败只给汇总码（候选全试过是
   `STRATEGY_ALL_CANDIDATES_FAILED`，连候选都建不出来是 `STRATEGY_NO_VIABLE_BACKEND`），真实原因
   只存在于 `decisionTrace` 的逐候选 `attempts[].errorCode` 里，而 UI 此前读不到这份轨迹。现在

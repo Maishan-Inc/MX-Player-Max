@@ -61,6 +61,14 @@ const MKV_VP8_SAMPLE = '/quality-media/mkv-vp8-p0-8bit-opus.mkv'
  * different codec pairs.
  */
 const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8'])
+/**
+ * The engine defaults every worker, configure, flush and seek operation to a 10 s budget, which
+ * suits a real machine. Firefox on a GPU-less CI box runs the custom path roughly 60% slower than
+ * Chromium and intermittently blew that budget mid-script, surfacing as `WEBCODECS_WORKER_FAILED`
+ * or `CUSTOM_SEEK_FAILED` — a timing artifact of the harness, not a decode defect. Raising it here
+ * keeps the acceptance deterministic without touching the shipped default.
+ */
+const OPERATION_TIMEOUT_MS = 30_000
 /** Codes that mean the browser genuinely cannot run the path, as opposed to a defect. */
 const CAPABILITY_CODES = new Set([
   'NATIVE_NOT_SUPPORTED',
@@ -107,7 +115,8 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       source: { kind: 'url', url: new URL(`${sample}${fault}`, location.href).href },
       intent,
       native: { preload: 'auto', crossOrigin: 'anonymous' },
-      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6 },
+      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6, operationTimeoutMs: OPERATION_TIMEOUT_MS },
+      customAudio: { operationTimeoutMs: OPERATION_TIMEOUT_MS },
       subtitles: { enabled: true },
     })
     trackEvents(player, events, stateTransitions, cueTimes, engineErrors)
@@ -136,7 +145,8 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       source: { kind: 'url', url: new URL(`${sample}?source=second`, location.href).href },
       intent,
       native: { preload: 'auto', crossOrigin: 'anonymous' },
-      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6 },
+      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6, operationTimeoutMs: OPERATION_TIMEOUT_MS },
+      customAudio: { operationTimeoutMs: OPERATION_TIMEOUT_MS },
       subtitles: { enabled: true },
     })
     sourceChanges += 1
