@@ -208,7 +208,19 @@ export class CustomAudioController {
       return
     }
     try {
-      await this.#output?.resumeContext()
+      /**
+       * `AudioContext.resume()` rejects when autoplay policy blocks it, but on a machine with no
+       * usable audio output device it neither resolves nor rejects: the context stays `suspended`
+       * forever. Awaiting it bare made `play()` hang with no error at all, and because the audio
+       * clock gates the video pump the whole session stalled silently in `ready` — no code, no
+       * event, nothing to report. Bounding it converts that dead end into the recoverable
+       * `AUDIO_AUTOPLAY_BLOCKED` the blocked-autoplay path already reports.
+       */
+      await this.#withTimeout(
+        this.#output?.resumeContext() ?? Promise.resolve(),
+        ErrorCodes.AUDIO_AUTOPLAY_BLOCKED,
+        'The AudioContext did not start within the operation budget',
+      )
       this.#startIfReady()
     } catch (cause) {
       this.#requestedPlaying = false

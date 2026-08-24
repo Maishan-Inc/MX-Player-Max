@@ -74,6 +74,17 @@
 
 ### Fixed
 
+- 自定义管线不会再因为 `AudioContext` 起不来而无声挂死。`AudioContext.resume()` 在自动播放策略
+  拦截时是 reject，但在**没有可用音频输出设备**的机器上它既不 resolve 也不 reject，上下文永远停在
+  `suspended`。`AudioController.play()` 此前裸 await 它，于是 `play()` 永不落地；而音频时钟又是视频
+  泵的起播闸门（`#startIfReady()` 要求缓冲到 `startBufferDuration`），整个会话就卡在 `ready`：
+  没有错误码、没有事件、诊断面板上什么都看不出来。现在这次 await 走 `#withTimeout`，超出音频的
+  `operationTimeoutMs` 就报可恢复的 `AUDIO_AUTOPLAY_BLOCKED`——正是自动播放被拦时本来就会报的那个
+  原因。本机 headless Firefox 就是这种环境（无音频设备，任何 `media.cubeb.*` /
+  `media.autoplay.*` 组合都不能让上下文 running，`resume()` 三秒内不落地），修复前
+  `webcodecs-audio` 这条已提交用例只表现为 120 s 的 Playwright 超时、结果对象都发布不出来，
+  修复后几秒内就报出真实原因。Chromium 不受影响。
+
 - MP4 视频轨此前拿不到自己的编码配置盒。`VisualSampleEntry` 的载荷是 8 字节 `SampleEntry`
   （`reserved[6]` 加 `data_reference_index`）再接 70 字节视觉字段，子盒因此从载荷第 78 字节开始；
   解析却把这 78 字节从**盒起点**算起，只跳过了 70 字节，落在 `compressorname` 中间，于是

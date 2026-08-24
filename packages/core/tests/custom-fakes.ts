@@ -157,10 +157,15 @@ export class FakeAudioOutput implements AudioOutputLike {
   contextTime = 0
   readonly blocks: PcmBlock[] = []
   resumeError: unknown = null
+  /** A device-less AudioContext leaves `resume()` pending forever rather than rejecting. */
+  resumeNeverSettles = false
   epoch = 0
   channels = 0
   readonly initialize = vi.fn(async (channels: number, epoch: number) => { this.channels = channels; this.epoch = epoch; this.state = 'ready' })
-  readonly resumeContext = vi.fn(async () => { if (this.resumeError) throw this.resumeError })
+  readonly resumeContext = vi.fn(async () => {
+    if (this.resumeNeverSettles) return new Promise<void>(() => {})
+    if (this.resumeError) throw this.resumeError
+  })
   readonly play = vi.fn((epoch: number) => { if (epoch === this.epoch) this.state = 'running' })
   readonly pause = vi.fn((epoch: number) => { if (epoch === this.epoch) this.state = 'paused' })
   readonly reset = vi.fn((epoch: number) => { this.epoch = epoch; this.blocks.splice(0); this.renderedFrames = 0; this.state = 'ready' })

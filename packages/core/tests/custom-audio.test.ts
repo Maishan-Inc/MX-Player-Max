@@ -67,6 +67,32 @@ describe('CustomMediaPipeline audio integration', () => {
     harness.pipeline.close()
   })
 
+  /**
+   * A machine with no usable audio output device leaves `AudioContext.resume()` pending forever
+   * instead of rejecting, so the reason the blocked-autoplay path above reports never arrived.
+   * Because the audio clock gates the video pump, `play()` hung and the whole session sat in
+   * `ready` with no error, no event and nothing to report — observed in headless Firefox, where a
+   * committed acceptance case failed only as an opaque 120 s harness timeout.
+   */
+  it('reports a blocked context instead of hanging when resume never settles', async () => {
+    vi.useFakeTimers()
+    try {
+      const harness = createCustomHarness({ audio: true, customAudio: { operationTimeoutMs: 1_000 } })
+      await harness.pipeline.initialize()
+      const output = harness.audioOutput()
+      if (!output) throw new Error('missing fake audio output')
+      output.resumeNeverSettles = true
+      const pending = harness.pipeline.play()
+      const assertion = expect(pending).rejects.toMatchObject({ code: ErrorCodes.AUDIO_AUTOPLAY_BLOCKED, recoverable: true })
+      await vi.advanceTimersByTimeAsync(1_000)
+      await assertion
+      expect(output.play).not.toHaveBeenCalled()
+      harness.pipeline.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('rolls back a blocked play request and applies rate, volume and mute to the output graph', async () => {
     const harness = createCustomHarness({ audio: true })
     await harness.pipeline.initialize()
