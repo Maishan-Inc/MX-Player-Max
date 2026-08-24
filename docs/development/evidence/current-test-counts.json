@@ -86,9 +86,9 @@
     {
       "name": "@mx-player-max/demux",
       "directory": "packages/demux",
-      "testFiles": 6,
-      "tests": 65,
-      "passed": 65,
+      "testFiles": 7,
+      "tests": 77,
+      "passed": 77,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 102,
-    "tests": 673,
-    "passed": 673,
+    "testFiles": 103,
+    "tests": 685,
+    "passed": 685,
     "skipped": 0,
     "todo": 0
   }

@@ -92,8 +92,14 @@ interface MoovOptions {
   videoSampleEntry?: VisualSampleEntryOptions
 }
 
+/**
+ * The payload is the 8-byte SampleEntry — `reserved[6]` then `data_reference_index` — followed by
+ * 70 bytes of visual fields, so the configuration box lands 78 bytes in. The builder used to
+ * allocate only 70 and put the box 8 bytes early, which matched a reader that made the same
+ * mistake and therefore hid it from every unit test.
+ */
 function visualSampleEntry(options: VisualSampleEntryOptions = {}): Uint8Array {
-  const fields = new Uint8Array(70)
+  const fields = new Uint8Array(78)
   const view = new DataView(fields.buffer)
   view.setUint16(6, 1)
   view.setUint16(24, 320)

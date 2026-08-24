@@ -74,6 +74,27 @@
 
 ### Fixed
 
+- MP4 视频轨此前拿不到自己的编码配置盒。`VisualSampleEntry` 的载荷是 8 字节 `SampleEntry`
+  （`reserved[6]` 加 `data_reference_index`）再接 70 字节视觉字段，子盒因此从载荷第 78 字节开始；
+  解析却把这 78 字节从**盒起点**算起，只跳过了 70 字节，落在 `compressorname` 中间，于是
+  `avcC` / `av1C` / `hvcC` / `vpcC` 一个都找不到，每条 MP4 视频轨都只带裸编码 id、没有
+  `codecPrivate`。裸 id 在哪儿都不被接受（`avc1` 让 `VideoDecoder.isConfigSupported` 返回
+  false、`canPlayType` 只给 `maybe`；`av01` 与 `hvc1` 直接是 false 与空串），所以语料里三条 MP4
+  样本一条都放不出来：`mp4-h264-baseline-8bit-aac` 与 `mp4-av1-main-8bit-aac` 的
+  `expectedPaths: ["native", "webcodecs"]` 是从未被用例验证过的声明。同一位置的宽高读取用的是
+  `entry.dataStart + 24`，本来就把那 8 字节算进去了，所以宽高一直是对的、子盒一直是错的；音频分支
+  的 `entry.start + 36` 同样算进去了，只有视频这一处漏了。这个缺陷躲过了单测，因为
+  `packages/demux/tests/fixtures/mp4.ts` 的 `visualSampleEntry()` 也只铺 70 字节，读写两边一起错。
+  修好之后 `mp4-h264-baseline-8bit-aac` 得到 `avc1.42C01E`、原生与自定义两条路径都实测通过。
+
+- MP4 的 AV1 轨现在从 `av1C` 推出完整的 `av01.P.LLT.DD`。`av01.` 早就在
+  `WEBCODECS_CODEC_SCOPE` 里、`video-config.ts` 的 `AV1_CODEC` 也早就要求完整字符串，
+  也就是说 AV1 一直是设计内的，只是被上面那个偏移挡住、连带缺了这一步推导。`av1C` 第二字节装
+  `seq_profile` 与 `seq_level_idx`、第三字节装 tier 与位深标志，四个字段齐全，不必碰任何 OBU。
+  `twelve_bit` 只在高位深 profile 2 下有意义，其余情况按规范当 0 读，免得一个杂散比特凭空造出
+  12-bit 流。marker/version 不对、profile 保留值、记录被截断时保留裸 `av01`，与 `vpcC` 的处置一致。
+  语料这条样本实测得到 `av01.0.00M.08`（文件声明的 `seq_level_idx` 是 0，不是 4）。
+
 - 策略层不再排出注定失败的候选。能力探测回答的是**浏览器**能不能解码，而引擎自己的 WebCodecs
   后端覆盖面更窄：Chrome 的 `AudioDecoder` 配合容器 CodecPrivate 能解 Vorbis，于是 `flower.webm`
   （VP8 + Vorbis）会先被排进 `webcodecs` 候选、被选中，再在管线初始化时以

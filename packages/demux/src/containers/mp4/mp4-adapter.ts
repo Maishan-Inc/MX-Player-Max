@@ -244,6 +244,12 @@ function codecString(type: string, privateData: Uint8Array | undefined): string 
     const vp9 = vpcCCodecSuffix(privateData)
     if (vp9 !== null) return `${type}.${vp9}`
   }
+  // A bare `av01` is rejected the same way, and `av1C` carries the profile, level, tier and bit
+  // depth outright, so the string is completed without reading a single OBU.
+  if (type === 'av01') {
+    const av1 = av1CCodecSuffix(privateData)
+    if (av1 !== null) return `${type}.${av1}`
+  }
   if (type === 'mp4a' && privateData !== undefined && privateData.byteLength > 0) {
     const objectType = (privateData[0] ?? 0) >> 3
     if (objectType > 0) return `mp4a.40.${objectType}`
@@ -265,6 +271,27 @@ function vpcCCodecSuffix(privateData: Uint8Array | undefined): string | null {
   return [profile, level, bitDepth].map((value) => String(value).padStart(2, '0')).join('.')
 }
 
+/**
+ * `av1C` (AV1CodecConfigurationBox) begins with a marker/version byte, then packs `seq_profile` and
+ * `seq_level_idx` into the second byte and the tier plus bit-depth flags into the third. That is
+ * every field an `av01.P.LLT.DD` string needs, so it is read straight from the record rather than
+ * from the first OBU. A wrong marker or version keeps the bare `av01`, exactly as `vpcC` does.
+ */
+function av1CCodecSuffix(privateData: Uint8Array | undefined): string | null {
+  if (privateData === undefined || privateData.byteLength < 4) return null
+  if ((privateData[0] ?? 0) !== 0x81) return null
+  const profile = ((privateData[1] ?? 0) >> 5) & 0x07
+  const level = (privateData[1] ?? 0) & 0x1f
+  const tier = ((privateData[2] ?? 0) >> 7) & 0x01
+  const highBitDepth = ((privateData[2] ?? 0) >> 6) & 0x01
+  const twelveBit = ((privateData[2] ?? 0) >> 5) & 0x01
+  if (profile > 2) return null
+  // `twelve_bit` only carries meaning for a high-bit-depth profile 2 stream; everywhere else the
+  // spec leaves it zero, so reading it unconditionally would invent a 12-bit stream from a bad byte.
+  const bitDepth = profile === 2 && highBitDepth === 1 ? (twelveBit === 1 ? 12 : 10) : highBitDepth === 1 ? 10 : 8
+  return `${profile}.${String(level).padStart(2, '0')}${tier === 1 ? 'H' : 'M'}.${String(bitDepth).padStart(2, '0')}`
+}
+
 function parseSampleDescription(
   data: Uint8Array,
   kind: TrackKind,
@@ -284,7 +311,15 @@ function parseSampleDescription(
   let channels: number | undefined
   let sampleRate: number | undefined
   if (kind === 'video') {
-    childStart = entry.start + 78
+    /**
+     * A VisualSampleEntry is the 8-byte SampleEntry — `reserved[6]` then `data_reference_index` —
+     * followed by 70 bytes of visual fields, so its child boxes begin 78 bytes into the payload.
+     * Adding 78 to the box start instead skipped only 70 of those and landed inside
+     * `compressorname`, so no `avcC`/`av1C`/`hvcC`/`vpcC` was ever found and every MP4 video track
+     * published a bare codec id with no `codecPrivate`. The width and height reads below already
+     * counted the SampleEntry, which is why they stayed correct while the children did not.
+     */
+    childStart = entry.dataStart + 78
     if (childStart > entry.end) throw new DemuxError(ErrorCodes.CONTAINER_TRUNCATED, 'VisualSampleEntry is truncated')
     width = readUint16(data, entry.dataStart + 24)
     height = readUint16(data, entry.dataStart + 26)
