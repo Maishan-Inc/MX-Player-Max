@@ -7,13 +7,13 @@ test('renders real VP8 WASM frames on a non-isolated single-thread path', async 
   const status = await waitForAcceptanceStatus(page)
   const result = await page.evaluate(() => (window as typeof window & { __wasmAcceptance?: AcceptanceResult }).__wasmAcceptance)
   expect(status, diagnostics.describe(result)).toBe('passed')
-  expect(result).toMatchObject({
-    status: 'passed', isolated: false, selectedBackend: 'wasm', errorCode: null,
-    attempts: [
-      { candidateId: 'webcodecs-custom', status: 'failed' },
-      { candidateId: 'wasm-custom', status: 'selected' },
-    ],
-  })
+  expect(result).toMatchObject({ status: 'passed', isolated: false, selectedBackend: 'wasm', errorCode: null })
+  // Matched by content, not by position: the trace also records strategy exclusions as skipped
+  // attempts indexed past the ranked candidates, so a new exclusion must not shift this.
+  expect(result?.attempts).toEqual(expect.arrayContaining([
+    expect.objectContaining({ candidateId: 'webcodecs-custom', status: 'failed' }),
+    expect.objectContaining({ candidateId: 'wasm-custom', status: 'selected' }),
+  ]))
   expect(result?.nonEmptyPixels ?? 0).toBeGreaterThan(0)
   expect(result?.epoch ?? 0).toBeGreaterThanOrEqual(2)
   expect(result?.queuedFrames ?? 99).toBeLessThanOrEqual(4)

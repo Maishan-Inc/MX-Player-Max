@@ -338,6 +338,12 @@ function surfaceSize(surface: Element | null): { width: number; height: number }
 
 function attemptErrors(player: MXPlayer | null): string[] {
   return (player?.decisionTrace?.attempts ?? [])
+    // `skipped` covers strategy exclusions, which the trace indexes past the ranked
+    // candidates. `STRATEGY_NATIVE_EXCLUDED_BY_INTENT` is the informational one: the native
+    // path would have played the file and only the requested intent withheld it. Counting it
+    // as a failure would both fail every custom-mode assertion and let the capability
+    // classification below forgive a genuine defect.
+    .filter((attempt) => attempt.status === 'failed')
     .map((attempt) => attempt.errorCode)
     .filter((value): value is string => typeof value === 'string')
 }
