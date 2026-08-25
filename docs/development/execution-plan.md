@@ -219,7 +219,7 @@ Phase 13 质量、安全和性能固化
 - `readVideoFrame()` 即时 pull/epoch/外部所有权不变；Renderer 仅对传入 `render(frame)` 的 frame 负责，并在所有路径恰好 close 一次。
 - caller canvas 复用；container 只增加 owned canvas 且不清 children；caller video 在 Custom 生命周期内被 canvas 替换并在 teardown 恢复，不创建隐藏 HTMLVideo。
 - Core/SDK 暴露 renderer kind/state/stats、稳定事件及 filter/transform API；事件不携带 Frame、texture、像素、PCM、URL 或原始平台错误。
-- Phase 6 只实现 load-time Native/Custom path selection。运行时关闭滤镜并自动迁回 Native 尚未实现；Native 上调用 `setVideoFilter()` 稳定返回 `RENDERER_BACKEND_UNAVAILABLE`，应用需重新 load。
+- Phase 6 只实现 load-time Native/Custom path selection。**运行时切换已补上**（见下）：`MediaEngine.switchRenderMode({ pipeline })` 在两条管线之间迁移已载入的媒体，宿主不必重新 `load()`；Native 上调用 `setVideoFilter()` 不再返回 `RENDERER_BACKEND_UNAVAILABLE`，而是自动迁到自定义管线并带上该滤镜。渲染器与解码器仍在会话创建时固定，所以切换在内部依然是重建，区别是引擎自己完成重建并把会话状态带过去：位置以 seek 恢复，session epoch 严格递增（重建对所有以 epoch 为键的消费者就是新会话），外挂字幕轨按顺序重新加入并恢复选中项，仅在切换前正在播放时才恢复播放；失败则回滚到切换前的选项并重新载入，因此被拒绝的切换留下的是一个还在播的会话，而不是一个空播放器。
 - Phase 7 AI postprocess 与 Phase 8 subtitle overlay 保持独立后续边界。
 
 ## 10. Phase 7：AI 后处理（插帧与超分）

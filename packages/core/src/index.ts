@@ -160,6 +160,19 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   let closed = false
   let playbackSnapshot: PlaybackSnapshot = createPlaybackSnapshot(0)
   let currentDecisionTrace: PlaybackDecisionTrace | null = null
+  /**
+   * The options the current session was loaded with, kept so a render-mode switch can rebuild the
+   * session without the host having to hand them back. `load()` is otherwise the only place they
+   * exist, which is why runtime switching previously required the host to call it again.
+   */
+  let currentOptions: MXPlayerOptions | null = null
+  /**
+   * External subtitle tracks added after load, in the order they were added. The subtitle controller
+   * is torn down with the pipeline, so a switch has to re-add them or the viewer silently loses
+   * every sidecar track they picked.
+   */
+  let externalSubtitleTracks: { readonly id: string; readonly source: ExternalSubtitleSourceDescriptor; readonly options?: SubtitleTrackOptions }[] = []
+  let switchingRenderMode = false
   let previewManager: PreviewManager | NativePreviewController | null = null
   let customPreviewProvider: MediaPreviewProvider | undefined
   let customPlayingIntent = false
@@ -240,6 +253,34 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
   const releaseUnusedOwnedVideo = (): void => {
     if (!target?.owned || !target.video) return
     try { target.video.parentNode?.removeChild(target.video) } catch { /* best effort cleanup */ }
+  }
+
+  /**
+   * Put a freshly loaded session back where the previous one was. Position first so a resumed
+   * session never plays a burst from zero, then the subtitle tracks the host had added, then play
+   * only if it was playing. A subtitle track that cannot be restored must not fail the switch: the
+   * video is the thing the viewer is watching, and the warning is already surfaced as an event.
+   */
+  const restoreSession = async (
+    resumeAt: Micros | null,
+    wasPlaying: boolean,
+    tracks: readonly { readonly id: string; readonly source: ExternalSubtitleSourceDescriptor; readonly options?: SubtitleTrackOptions }[],
+    selectedSubtitleId: string | null,
+  ): Promise<void> => {
+    if (resumeAt !== null && resumeAt > 0) await engine.seek(resumeAt)
+    const restored = new Map<string, string>()
+    for (const entry of tracks) {
+      try {
+        const track = await engine.addSubtitleTrack(entry.source, entry.options)
+        restored.set(entry.id, track.id)
+      } catch { /* reported as a subtitle warning; playback continues */ }
+    }
+    if (selectedSubtitleId !== null) {
+      // Track ids are minted per controller, so the new id for the old selection is what to select.
+      const target = restored.get(selectedSubtitleId) ?? selectedSubtitleId
+      try { await engine.selectSubtitleTrack(target) } catch { /* same reasoning as above */ }
+    }
+    if (wasPlaying) await engine.play()
   }
 
   const disposePipeline = (): void => {
@@ -573,6 +614,9 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
       const loadEpoch = ++epoch
       const previousSelection = currentSelection?.backend ?? null
       disposePipeline()
+      currentOptions = options
+      // A switch replays the ledger, so only a host-driven load starts a fresh one.
+      if (!switchingRenderMode) externalSubtitleTracks = []
       currentMedia = null
       currentSelection = null
       currentDecisionTrace = null
@@ -1006,10 +1050,84 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
 
     async setVideoFilter(filter: VideoFilterOptions): Promise<void> {
       ensureOpen()
+      /**
+       * A filter needs the custom pipeline. Rather than telling the host to reload, migrate the
+       * session: `switchRenderMode` preserves the position, the epoch chain and the subtitle
+       * selection, so a filter can be applied to a Native session the way a viewer expects.
+       */
       if (activePipeline?.kind !== 'custom-video' || !activeRenderer) {
-        throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'Runtime Native to Custom renderer switching requires a reload', true)
+        if (!currentOptions) throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'No media is loaded', true)
+        await engine.switchRenderMode({ pipeline: 'custom', customVideo: { ...currentOptions.customVideo, filter } })
+        return
       }
       activeRenderer.setFilter(filter)
+    },
+
+    /**
+     * Move the loaded media onto the other pipeline without the host re-issuing `load()`.
+     *
+     * Phase 6 only chose a pipeline at load time, so turning a filter on -- or coming back off the
+     * custom path -- meant the host had to reload and the viewer lost their position, their sidecar
+     * subtitle tracks and their place in the epoch chain. The renderer and the decoder are fixed
+     * when a session is created, so a switch is still a rebuild underneath; what changes is that the
+     * engine performs it and carries the session state across.
+     *
+     * Continuity is defined as: position is restored by seeking the new pipeline to where the old one
+     * was, the epoch strictly increases (a rebuild is a new session for every epoch-keyed consumer,
+     * so pretending otherwise would let stale frames and stale PCM through), external subtitle tracks
+     * are re-added in order and the previous selection is reselected, and playback resumes only if it
+     * was playing. On failure the previous options are restored and reloaded, so a rejected switch
+     * leaves a playing session rather than a dead one.
+     */
+    async switchRenderMode(request: { pipeline: 'native' | 'custom'; customVideo?: MXPlayerOptions['customVideo'] }): Promise<void> {
+      ensureOpen()
+      const previousOptions = currentOptions
+      if (!previousOptions || !activePipeline) {
+        throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'No media is loaded', true)
+      }
+      if (switchingRenderMode) {
+        throw createEngineError(ErrorCodes.RENDERER_BACKEND_UNAVAILABLE, 'A render-mode switch is already in progress', true)
+      }
+      const already = request.pipeline === 'native' ? activePipeline.kind === 'native' : activePipeline.kind === 'custom-video'
+      if (already && request.customVideo === undefined) return
+
+      const resumeAt = playbackSnapshot.currentTime
+      const wasPlaying = playbackSnapshot.state === 'playing'
+      const selectedSubtitle = subtitleController?.selectedTrackId ?? null
+      const restoreTracks = [...externalSubtitleTracks]
+      /**
+       * `normal` is the only intent that keeps the native candidate rankable, and `filters` is the
+       * lowest intent that requires frame access. An explicit AI intent is preserved, since dropping
+       * to `filters` would silently disable the AI plan the host asked for.
+       */
+      const intent = request.pipeline === 'native'
+        ? 'normal' as const
+        : previousOptions.intent === 'ai-enhance' || previousOptions.intent === 'frame-access'
+          ? previousOptions.intent
+          : 'filters' as const
+      const nextOptions: MXPlayerOptions = {
+        ...previousOptions,
+        intent,
+        ...(request.pipeline === 'native'
+          // A lingering filter would re-derive the `filters` intent and defeat the switch.
+          ? { customVideo: { ...previousOptions.customVideo, filter: { kind: 'none' } } }
+          : { customVideo: { ...previousOptions.customVideo, ...request.customVideo } }),
+      }
+
+      switchingRenderMode = true
+      try {
+        await engine.load(nextOptions)
+        await restoreSession(resumeAt, wasPlaying, restoreTracks, selectedSubtitle)
+      } catch (cause) {
+        // Leave the viewer with the session they had rather than a torn-down one.
+        try {
+          await engine.load(previousOptions)
+          await restoreSession(resumeAt, wasPlaying, restoreTracks, selectedSubtitle)
+        } catch { /* the original failure is the one worth reporting */ }
+        throw cause
+      } finally {
+        switchingRenderMode = false
+      }
     },
 
     setVideoTransform(transform: VideoTransformOptions): void {
@@ -1020,7 +1138,11 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     listSubtitleTracks(): readonly SubtitleTrack[] { return subtitleController?.listTracks() ?? [] },
     addSubtitleTrack(source: ExternalSubtitleSourceDescriptor, options?: SubtitleTrackOptions): Promise<SubtitleTrack> {
       if (!subtitleController) return Promise.reject(createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true))
-      return subtitleController.addTrack(source, options)
+      return subtitleController.addTrack(source, options).then((track) => {
+        // Remembered so a render-mode switch, which rebuilds the subtitle controller, can restore it.
+        externalSubtitleTracks.push({ id: track.id, source, ...(options === undefined ? {} : { options }) })
+        return track
+      })
     },
     selectSubtitleTrack(trackId: string | null): Promise<void> {
       if (!subtitleController) return Promise.reject(createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true))
@@ -1028,6 +1150,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
     },
     removeSubtitleTrack(trackId: string): void {
       if (!subtitleController) throw createEngineError(ErrorCodes.SUBTITLE_OPERATION_FAILED, 'No media is loaded for subtitles', true)
+      externalSubtitleTracks = externalSubtitleTracks.filter((entry) => entry.id !== trackId)
       subtitleController.removeTrack(trackId)
     },
     closeSubtitles(): void { subtitleController?.closeSubtitles() },

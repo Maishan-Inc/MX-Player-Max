@@ -18,6 +18,7 @@ import type {
   CustomRendererKind,
   RendererStats,
   RendererState,
+  CustomVideoOptions,
   VideoFilterOptions,
   VideoTransformOptions,
   ExternalSubtitleSourceDescriptor,
@@ -84,6 +85,10 @@ export class MXPlayer {
     return ready
   }
   setVideoFilter(filter: VideoFilterOptions): Promise<void> { return this.engine.setVideoFilter(filter) }
+  /** Migrate the loaded media to the other pipeline, keeping position, epoch order and subtitles. */
+  switchRenderMode(request: { readonly pipeline: 'native' | 'custom'; readonly customVideo?: CustomVideoOptions }): Promise<void> {
+    return this.engine.switchRenderMode(request)
+  }
   setAiPostProcess(request: AiPostProcessRequest): Promise<void> { return this.engine.setAiPostProcess(request) }
   setVideoTransform(transform: VideoTransformOptions): void { this.engine.setVideoTransform(transform) }
   listSubtitleTracks(): readonly SubtitleTrack[] { return this.engine.listSubtitleTracks() }

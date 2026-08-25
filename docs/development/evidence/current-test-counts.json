@@ -32,9 +32,9 @@
     {
       "name": "@mx-player-max/core",
       "directory": "packages/core",
-      "testFiles": 26,
-      "tests": 136,
-      "passed": 136,
+      "testFiles": 27,
+      "tests": 141,
+      "passed": 141,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 103,
-    "tests": 696,
-    "passed": 696,
+    "testFiles": 104,
+    "tests": 701,
+    "passed": 701,
     "skipped": 0,
     "todo": 0
   }

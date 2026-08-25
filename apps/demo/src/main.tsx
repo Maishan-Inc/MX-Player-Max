@@ -7,7 +7,10 @@ import './styles.css'
 const acceptanceMode = new URL(location.href).searchParams.get('wasmAcceptance')
 const mediaAcceptanceMode = new URL(location.href).searchParams.get('mediaAcceptance')
 const performanceAcceptanceMode = new URL(location.href).searchParams.get('performanceAcceptance')
-if (performanceAcceptanceMode !== null) {
+const renderSwitchMode = new URL(location.href).searchParams.get('renderSwitch')
+if (renderSwitchMode !== null) {
+  void import('./render-switch-acceptance').then(({ runRenderSwitchAcceptance }) => runRenderSwitchAcceptance())
+} else if (performanceAcceptanceMode !== null) {
   void import('./performance-acceptance').then(({ runPerformanceAcceptance }) => runPerformanceAcceptance(performanceAcceptanceMode))
 } else if (mediaAcceptanceMode !== null) {
   void import('./media-acceptance').then(({ runMediaAcceptance }) => runMediaAcceptance(mediaAcceptanceMode))

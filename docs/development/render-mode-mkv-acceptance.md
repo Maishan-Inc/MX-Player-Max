@@ -21,7 +21,7 @@
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json` |
 | `pnpm quality:acceptance-drift` | passed |
 | `pnpm quality:media` | passed；10 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（新增 3 条 Matroska） |
-| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；38/38，含 9 条新增 Matroska/内嵌字幕/VP9 用例 |
+| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；36 passed / 8 skipped / 0 failed（26 用例 × 2 project 中 chromium 全通过，firefox 跳过 8 条自定义+音轨用例）。skip 原因见文末「本机没有音频输出设备」一节 |
 | `pnpm exec playwright test --project=chromium-desktop` | passed；6/6 |
 | `pnpm release:manifest` | passed；新增 audio-worklet 自包含断言，回填坏文件时会中断发布 |
 | `pnpm verify:packages` | passed；19 个公开包 |
@@ -40,6 +40,8 @@
 | A4 补 | 内嵌 `S_TEXT/ASS` 轨的容器级覆盖：夹具 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv` + 验收模式 `mkv-embedded-subs` | `media-paths.spec.ts` 的 embedded-ASS 用例（断言选中的是 `embedded-<trackId>`、cue 落在 0.4–1.2 s）；`embedded.test.ts` 的 reduced-format 用例；`verify-media-manifest.mjs` 校验 `embeddedSubtitleTracks` 的引用与格式 |
 | A5 | 失败归因（视频/音频编码、声道、容器、无路径） | `player-ui-menu.test.ts` 7 条，含陈旧轨迹忽略与状态文案回落 |
 | A7 | 从关键帧头部推导 `vp09.PP.LL.DD`（MP4 侧从 `vpcC`） | `packages/demux/tests/codec-vp9.test.ts` 20 条（头部解析、拒绝路径、level 表、两个容器的推导与回落）；4 条浏览器用例，按浏览器 VP9 探测而非验收 `unsupported` 决定 skip |
+| 任务 4 | 轨迹记录「原生候选因 intent 被排除」，UI 给出「切回原生档」提示 | `strategy.test.ts` 6 条（三种自定义 intent 产出 exclusion、两种原生 intent 不产出、原生本就不通时不产出）；`player-ui-menu.test.ts` 4 条（归因顺序、无候选时不提示、陈旧轨迹忽略、状态栏文案） |
+| 任务 5 | 运行时 Native ↔ Custom 切换（`switchRenderMode`） | `packages/core/tests/render-mode-switch.test.ts` 5 条（双向切换、epoch 递增与位置连续、同档 no-op、未载入时拒绝、失败回滚）；`tests/browser/media/render-switch.spec.ts` 真切一次并断言渲染器 native→canvas2d、位置不回退、字幕轨存活（chromium 与 firefox 都通过） |
 | A8 | 引擎自身的编码范围传进策略层，范围外不产出候选；撤下的候选以 `skipped` attempt 保留原因 | `packages/strategy/tests/strategy.test.ts` 7 条（三类范围外、两种 intent 的候选 id、范围内仍排出、未声明时行为不变、纯视频轨）；`packages/decoder-webcodecs/tests/codec-scope.test.ts` 24 条声明与构造器逐编码比对；`packages/core/tests/decision-trace.test.ts` 的 skipped attempt 索引；`player-ui-menu.test.ts` 2 条归因优先级与报告行 |
 
 ## 手工核对（构建产物 + preview）
@@ -70,6 +72,17 @@
 - **策略层已经知道引擎自身的编码范围（A8 已完成）。** `CapabilityContext.webCodecsCodecs` 由
   `decoder-webcodecs` 的 `WEBCODECS_CODEC_SCOPE` 提供，范围外的编码不再产出候选；被撤下的候选以
   `status: 'skipped'` 的 attempt 留在决策轨迹里，因此 A5 的归因文案不受影响。
+- **本机没有音频输出设备，headless Firefox 因此跑不了「自定义管线 + 有音轨」的用例。**
+  `AudioContext` 恒为 `suspended`，且 `resume()` **既不 resolve 也不 reject**（实测 11 种组合：
+  有/无用户手势、显式 `resume()`、`media.autoplay.default=0`、`media.autoplay.block-webaudio=false`、
+  `media.cubeb.backend=audiotrack`、`media.cubeb.force_null_context`、`media.audio_loopback_dev`、
+  `media.cubeb.output_device=null`、`media.navigator.streams.fake` —— 全部 `suspended`、
+  `currentTime` 为 0、worklet 的 `process()` 一次都没被调用）。Chromium 下同样的探测是 `running`、
+  50 次回调。自定义管线以音频时钟为视频泵的起播闸门，所以这类会话永远到不了 `playing`。
+  这是**环境限制，不是缺陷**；顺带暴露并修掉了一个真实缺陷（`play()` 会无声挂死，现在报
+  `AUDIO_AUTOPLAY_BLOCKED`）。用例按「浏览器能否让 `AudioContext` 进入 running」这一能力探测 skip，
+  **不是**按验收结果的 `status === 'unsupported'` —— 后者会连 `AUDIO_AUTOPLAY_BLOCKED` 与
+  `STRATEGY_*` 一起放过，回归就会 skip 而不是转红。能起音频的浏览器一律无条件跑这些用例。
 - 真实浏览器矩阵 [`tests/browser/evidence/real-browser-matrix.json`](../../tests/browser/evidence/real-browser-matrix.json)
   仍全部 `pending`：本工作区没有物理 latest-two-stable 浏览器，Playwright 自动化不充当该证据。
 

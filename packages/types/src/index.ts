@@ -1215,6 +1215,21 @@ export interface MediaEngine extends EngineEventSource {
   setVolume(volume: number): void
   setMuted(muted: boolean): void
   setVideoFilter(filter: VideoFilterOptions): Promise<void>
+  /**
+   * Move the loaded media onto the other pipeline without the host calling `load()` again.
+   *
+   * The renderer and decoder are fixed when a session is created, so this rebuilds the session
+   * internally while carrying its state across: the playback position is restored, the session epoch
+   * strictly increases, external subtitle tracks are re-added and the previous selection reapplied,
+   * and playback resumes only if it was already playing. A failed switch restores the previous
+   * session rather than leaving nothing loaded.
+   *
+   * Passing the pipeline already in use is a no-op unless `customVideo` overrides accompany it.
+   */
+  switchRenderMode(request: {
+    readonly pipeline: 'native' | 'custom'
+    readonly customVideo?: CustomVideoOptions
+  }): Promise<void>
   /** Switch AI post-processing stages on or off for the active custom session. */
   setAiPostProcess(request: AiPostProcessRequest): Promise<void>
   setVideoTransform(transform: VideoTransformOptions): void
