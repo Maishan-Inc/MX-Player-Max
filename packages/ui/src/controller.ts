@@ -30,7 +30,7 @@ import {
 import { detectPlayerUiLocale, playerUiLabels, resolvePlayerUiLocale } from './locales'
 import { buildStatsRows, NETWORK_SAMPLE_COUNT, type StatsInput, type StatsRow } from './stats'
 import { buildDebugInfo, buildEmbedCode, createCpn, resolveVideoUrl, resolveVideoUrlAtTime, shortMediaId } from './share'
-import { buildTroubleshootReport, playbackFailureCause, troubleshootCauseMessage } from './troubleshoot'
+import { buildTroubleshootReport, nativePathAvailableInstead, playbackFailureCause, troubleshootCauseMessage } from './troubleshoot'
 import { createPlayerIcon, type PlayerIconName } from './icons'
 import { CleanupScope, isElement } from './lifecycle'
 
@@ -705,8 +705,11 @@ export class PlayerUiControllerImpl implements PlayerUiController {
     if (snapshot.lastError) {
       // A bare "Playback error" tells the viewer nothing they can act on, so name the codec or
       // container when the decision trace explains it.
-      const failure = playbackFailureCause(this.#statsInput())
+      const input = this.#statsInput()
+      const failure = playbackFailureCause(input)
       text = failure ? troubleshootCauseMessage(failure.cause, this.#labels) : this.#labels.error
+      // A path exists one setting away, which is more useful than the reason on its own.
+      if (nativePathAvailableInstead(input)) text = `${text} ${this.#labels.troubleshootNativeModeAvailable}`
       tone = 'error'
     }
     else if (snapshot.state === 'loading') text = this.#labels.loading

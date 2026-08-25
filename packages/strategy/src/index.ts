@@ -154,6 +154,23 @@ function createCandidates(
       reasons: sortStrings(reasons),
       requires: ['HTMLVideoElement'],
     })
+  } else if (!nativeIntent && context.media.native.playable === 'supported' && context.snapshot.htmlVideo) {
+    /**
+     * The native path could have played this media and the only thing ruling it out is the intent
+     * the host asked for. Recording that is what lets the UI tell a user their file is playable on
+     * the native render mode, instead of reporting that nothing can play it: a custom-pipeline
+     * session with an out-of-scope codec otherwise produces `STRATEGY_NO_VIABLE_BACKEND` with no
+     * hint that a working path exists one setting away.
+     *
+     * This is deliberately not the codec-scope error code. Nothing is wrong with the media here, so
+     * reusing a "not supported" code would make a viable path look broken.
+     */
+    exclusions.push({
+      candidateId: 'native-html-video',
+      kind: 'html-video',
+      errorCode: ErrorCodes.STRATEGY_NATIVE_EXCLUDED_BY_INTENT,
+      reasons: sortStrings(['native-media-supported', `intent-requires-frame-access:${intent}`]),
+    })
   }
 
   const renderer = selectCustomRenderer(context.snapshot)

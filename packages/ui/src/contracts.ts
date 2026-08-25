@@ -182,6 +182,7 @@ export interface PlayerUiLabels {
   readonly troubleshootUnsupportedChannels: string
   /** No backend could even be built for this media. */
   readonly troubleshootNoBackend: string
+  readonly troubleshootNativeModeAvailable: string
   readonly troubleshootEnvironment: string
   readonly troubleshootCopyReport: string
   /* Render-path section of the settings panel */
@@ -260,6 +261,7 @@ export const DEFAULT_LABELS: PlayerUiLabels = {
   troubleshootUnsupportedContainer: 'This container cannot be read. MP4, WebM and Matroska are supported.',
   troubleshootUnsupportedChannels: 'Only mono and stereo audio play. This track has more channels.',
   troubleshootNoBackend: 'No playback path could handle this media, so nothing was attempted.',
+  troubleshootNativeModeAvailable: 'The native render mode can play this file. Switch render mode to Native and try again.',
   troubleshootEnvironment: 'Environment', troubleshootCopyReport: 'Copy report',
 }
 

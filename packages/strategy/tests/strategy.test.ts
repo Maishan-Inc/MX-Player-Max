@@ -299,13 +299,17 @@ describe('strategy engine', () => {
     const evaluation = createStrategyEngine().evaluate(createMedia(), 'filters', context)
 
     expect(evaluation.rankedCandidates).toEqual([])
-    expect(evaluation.exclusions).toEqual([{ candidateId: 'webcodecs-custom', kind: 'webcodecs', errorCode, reasons: [reason] }])
+    // The native candidate is excluded too, by intent rather than by scope, so select the WebCodecs
+    // one rather than asserting the whole list and coupling this case to that separate reason.
+    expect(evaluation.exclusions?.filter((exclusion) => exclusion.kind === 'webcodecs'))
+      .toEqual([{ candidateId: 'webcodecs-custom', kind: 'webcodecs', errorCode, reasons: [reason] }])
     expect(() => createStrategyEngine().select(createMedia(), 'filters', context)).toThrow(StrategySelectionError)
   })
 
   it('names the ai-enhance candidate in its exclusion so the reason survives per intent', () => {
     const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'vp8' }, { codec: 'vorbis' }), undefined, ENGINE_SCOPE)
-    expect(createStrategyEngine().evaluate(createMedia(), 'ai-enhance', context).exclusions?.[0]?.candidateId).toBe('webcodecs-ai')
+    const exclusions = createStrategyEngine().evaluate(createMedia(), 'ai-enhance', context).exclusions ?? []
+    expect(exclusions.find((exclusion) => exclusion.kind === 'webcodecs')?.candidateId).toBe('webcodecs-ai')
   })
 
   it('still ranks WebCodecs for codecs inside the engine scope and reports no exclusions', () => {
@@ -313,7 +317,7 @@ describe('strategy engine', () => {
     const evaluation = createStrategyEngine().evaluate(createMedia(), 'filters', context)
 
     expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['webcodecs-custom'])
-    expect(evaluation.exclusions).toBeUndefined()
+    expect(evaluation.exclusions?.some((exclusion) => exclusion.kind === 'webcodecs')).not.toBe(true)
   })
 
   /** A host that declares no scope keeps the behaviour that existed before the scope was plumbed. */
@@ -322,12 +326,49 @@ describe('strategy engine', () => {
     const evaluation = createStrategyEngine().evaluate(createMedia(), 'filters', context)
 
     expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['webcodecs-custom'])
-    expect(evaluation.exclusions).toBeUndefined()
+    expect(evaluation.exclusions?.some((exclusion) => exclusion.kind === 'webcodecs')).not.toBe(true)
   })
 
   it('leaves a video-only track in scope when the engine declares no audio codec for it', () => {
     const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'vp8' }, null), undefined, ENGINE_SCOPE)
     expect(createStrategyEngine().evaluate(createMedia(), 'filters', context).rankedCandidates).toHaveLength(1)
+  })
+
+  /**
+   * A custom-pipeline session whose codec the engine will not accept reports only
+   * `STRATEGY_NO_VIABLE_BACKEND`, which reads as "nothing can play this file" even when the native
+   * path plays it perfectly well. Recording why the native candidate was withheld is what lets the
+   * UI point at the render-mode setting instead.
+   */
+  it.each(['frame-access', 'filters', 'ai-enhance'] as const)('records the native candidate the %s intent rules out', (intent) => {
+    const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'avc1.640028' }, { codec: 'mp4a.40.2' }), undefined, ENGINE_SCOPE)
+    const evaluation = createStrategyEngine().evaluate(createMedia(), intent, context)
+
+    expect(evaluation.rankedCandidates.some((candidate) => candidate.kind === 'html-video')).toBe(false)
+    expect(evaluation.exclusions?.find((exclusion) => exclusion.kind === 'html-video')).toEqual({
+      candidateId: 'native-html-video',
+      kind: 'html-video',
+      errorCode: 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT',
+      reasons: ['intent-requires-frame-access:' + intent, 'native-media-supported'],
+    })
+  })
+
+  /** The native intents rank the candidate, so there is nothing to explain away. */
+  it.each(['normal', 'low-power'] as const)('reports no native exclusion for the %s intent', (intent) => {
+    const context = createContext(createSnapshot(), createVerifiedReport({ codec: 'avc1.640028' }, { codec: 'mp4a.40.2' }), undefined, ENGINE_SCOPE)
+    const evaluation = createStrategyEngine().evaluate(createMedia(), intent, context)
+
+    expect(evaluation.rankedCandidates.some((candidate) => candidate.kind === 'html-video')).toBe(true)
+    expect(evaluation.exclusions?.some((exclusion) => exclusion.kind === 'html-video')).not.toBe(true)
+  })
+
+  /** Nothing to suggest when the media itself has no native path: the exclusion would be a lie. */
+  it('reports no native exclusion when the media is not natively playable', () => {
+    const report = createVerifiedReport({ codec: 'vp8' }, { codec: 'opus' })
+    const context = createContext(createSnapshot(), { ...report, native: { ...report.native, playable: 'unsupported' } }, undefined, ENGINE_SCOPE)
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'frame-access', context)
+
+    expect(evaluation.exclusions?.some((exclusion) => exclusion.kind === 'html-video')).not.toBe(true)
   })
 
   it('uses deterministic tie-breaking without mutating candidates', () => {

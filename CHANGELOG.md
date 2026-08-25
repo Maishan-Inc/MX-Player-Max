@@ -4,6 +4,18 @@
 
 ### Added
 
+- 决策轨迹现在记录「原生候选因 intent 被排除」，UI 据此给出可操作的提示。自定义档下遇到引擎编码范围
+  之外的编码时，失败只剩汇总码 `STRATEGY_NO_VIABLE_BACKEND`，读起来像「这文件没救了」——可实际上切回
+  原生档就能播。策略层现在在「原生本可播、只是 intent 不允许」时产出一条 exclusion，用新的
+  `STRATEGY_NATIVE_EXCLUDED_BY_INTENT`，**不复用编码范围的错误码**：媒体本身没问题，借用一个
+  「不支持」的码会把一条可用路径说成坏的。轨迹机制无需改动，它本来就把 exclusion 记成
+  `status: 'skipped'` 的 attempt。
+  UI 侧新增 `nativePathAvailableInstead()` 与 `troubleshootNativeModeAvailable` 文案（四语言齐备），
+  故意**不**并入 `CAUSE_BY_CODE`：那样它会赢得「第一个可识别错误码」的竞争、把真正的原因（引擎拒绝的
+  那个编码）挡掉。因此报告与状态栏都是「原因在前、建议在后」。
+  原生本来就不通时不给这条提示——例如 Chromium 下的 HEVC，`canPlayType` 对裸 `hvc1` 与完整
+  `hvc1.2.4.L120.B0` 都返回空串，此时提示会是假话，单测钉住了这一点。
+
 - 语料里没有播放覆盖的样本补上了端到端用例，`expectedPaths` 按实测修正。此前
   `mp4-av1-main-8bit-aac` 与 `mp4-hevc-main10-10bit-aac` 没有被任何测试引用过，
   `mp4-h264-baseline-8bit-aac` 只出现在 fault 路由与 Range/MIME 契约里，`mkv-vp8-p0-8bit-opus`

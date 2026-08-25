@@ -69,6 +69,24 @@ export function playbackFailureCause(input: StatsInput): { readonly cause: Playb
   return direct ? { cause: direct, code: error.code } : null
 }
 
+/**
+ * Whether a native path could have played this media and only the requested render mode ruled it
+ * out. The strategy records that as a `skipped` attempt carrying
+ * `STRATEGY_NATIVE_EXCLUDED_BY_INTENT`, so a custom-pipeline session that reports "no playable path"
+ * can additionally say that switching to the native render mode would work.
+ *
+ * Deliberately separate from {@link playbackFailureCause}: this is not why the load failed, it is
+ * what the viewer can do about it. Folding the code into `CAUSE_BY_CODE` would let it win the
+ * first-recognised-code race and hide the actual reason, which is the codec the engine rejected.
+ */
+export function nativePathAvailableInstead(input: StatsInput): boolean {
+  if (!input.snapshot.lastError) return false
+  const trace = input.decisionTrace
+  if (!trace || trace.sessionEpoch !== input.snapshot.sessionEpoch) return false
+  return trace.attempts.some((attempt) => attempt.status === 'skipped'
+    && attempt.errorCode === 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT')
+}
+
 export function buildTroubleshootReport(input: StatsInput, labels: PlayerUiLabels, userAgent: string): TroubleshootReport {
   const { snapshot } = input
   const findings: TroubleshootFinding[] = []
@@ -76,6 +94,10 @@ export function buildTroubleshootReport(input: StatsInput, labels: PlayerUiLabel
   if (snapshot.lastError) findings.push({ code: snapshot.lastError.code, message: labels.troubleshootError })
   const failure = playbackFailureCause(input)
   if (failure) findings.push({ code: failure.code, message: troubleshootCauseMessage(failure.cause, labels) })
+  // Actionable, so it follows the reason rather than replacing it.
+  if (nativePathAvailableInstead(input)) {
+    findings.push({ code: 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT', message: labels.troubleshootNativeModeAvailable })
+  }
   if (counters !== null && counters.total > 60 && counters.dropped / counters.total > DROPPED_FRAME_THRESHOLD) {
     findings.push({ code: 'UI_DROPPED_FRAMES', message: labels.troubleshootDroppedFrames })
   }

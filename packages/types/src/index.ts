@@ -1097,6 +1097,12 @@ export const ErrorCodes = {
   STRATEGY_NO_VIABLE_BACKEND: 'STRATEGY_NO_VIABLE_BACKEND',
   STRATEGY_INVALID_PLATFORM_ADJUSTMENT: 'STRATEGY_INVALID_PLATFORM_ADJUSTMENT',
   STRATEGY_ALL_CANDIDATES_FAILED: 'STRATEGY_ALL_CANDIDATES_FAILED',
+  /**
+   * The native path could have played this media, but the requested intent rules it out. Only ever
+   * a decision-trace reason, never a load failure: it explains why a viable path was not attempted,
+   * which is what lets the UI suggest switching back to the native render mode.
+   */
+  STRATEGY_NATIVE_EXCLUDED_BY_INTENT: 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT',
   RANGE_INVALID: 'RANGE_INVALID',
   RANGE_UNSUPPORTED: 'RANGE_UNSUPPORTED',
   RANGE_CONTENT_RANGE_INVALID: 'RANGE_CONTENT_RANGE_INVALID',

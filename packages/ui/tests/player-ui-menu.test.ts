@@ -855,6 +855,62 @@ describe('@mx-player-max/ui playback failure explanation', () => {
     expect(report.environment.find(([key]) => key === 'candidates')?.[1]).toBe('webcodecs-custom:WEBCODECS_AUDIO_NOT_SUPPORTED')
   })
 
+  /**
+   * A custom-pipeline session whose codec the engine rejects reports that nothing can play the file,
+   * even when the native path plays it fine. The strategy records the native candidate it withheld
+   * for intent reasons, so the viewer can be told the setting to change rather than left stuck.
+   */
+  it('offers the native render mode when only the intent ruled it out', () => {
+    const excluded = trace({
+      candidates: [],
+      attempts: [
+        { index: 0, candidateId: 'webcodecs-custom', kind: 'webcodecs', status: 'skipped', errorCode: 'WEBCODECS_NOT_SUPPORTED' },
+        { index: 1, candidateId: 'native-html-video', kind: 'html-video', status: 'skipped', errorCode: 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT' },
+      ],
+      finalErrorCode: 'STRATEGY_NO_VIABLE_BACKEND',
+    })
+    const report = buildTroubleshootReport(failed(excluded), labels, 'agent/1.0')
+
+    // The reason comes first and the suggestion after it: the hint must not replace the cause.
+    expect(report.findings.map((finding) => finding.code))
+      .toEqual(['STRATEGY_ALL_CANDIDATES_FAILED', 'WEBCODECS_NOT_SUPPORTED', 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT'])
+    expect(report.findings[1]?.message).toBe(labels.troubleshootUnsupportedVideoCodec)
+    expect(report.findings[2]?.message).toBe(labels.troubleshootNativeModeAvailable)
+  })
+
+  it('says nothing about the native mode when no native candidate was withheld', () => {
+    const report = buildTroubleshootReport(failed(trace()), labels, 'agent/1.0')
+    expect(report.findings.some((finding) => finding.code === 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT')).toBe(false)
+  })
+
+  /** A trace from a previous session must not advertise a mode switch for this one. */
+  it('ignores a withheld native candidate from an earlier session', () => {
+    const stale = trace({
+      sessionEpoch: 7,
+      candidates: [],
+      attempts: [{ index: 0, candidateId: 'native-html-video', kind: 'html-video', status: 'skipped', errorCode: 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT' }],
+    })
+    const report = buildTroubleshootReport(failed(stale), labels, 'agent/1.0')
+    expect(report.findings.some((finding) => finding.code === 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT')).toBe(false)
+  })
+
+  it('appends the native-mode suggestion to the status text', () => {
+    const player = new FakePlayer()
+    player.playback = { ...SNAPSHOT, state: 'error', lastError: { code: 'STRATEGY_NO_VIABLE_BACKEND', recoverable: false } }
+    player.decisionTrace = trace({
+      candidates: [],
+      attempts: [
+        { index: 0, candidateId: 'webcodecs-custom', kind: 'webcodecs', status: 'skipped', errorCode: 'WEBCODECS_NOT_SUPPORTED' },
+        { index: 1, candidateId: 'native-html-video', kind: 'html-video', status: 'skipped', errorCode: 'STRATEGY_NATIVE_EXCLUDED_BY_INTENT' },
+      ],
+      finalErrorCode: 'STRATEGY_NO_VIABLE_BACKEND',
+    })
+    const { host, ui } = mount(player)
+    expect(host.querySelector('.mxp-status-message')?.textContent)
+      .toBe(`${labels.troubleshootUnsupportedVideoCodec} ${labels.troubleshootNativeModeAvailable}`)
+    ui.destroy()
+  })
+
   /** A path that was tried and failed is a better explanation than one that was never offered. */
   it('prefers a real attempt over a withheld candidate', () => {
     const mixed = trace({

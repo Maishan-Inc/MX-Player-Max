@@ -23,6 +23,7 @@ const ZH_CN: PlayerUiLabels = {
   troubleshootUnsupportedContainer: '这个容器无法解析。目前支持 MP4、WebM 与 Matroska。',
   troubleshootUnsupportedChannels: '只支持单声道与立体声，这条音轨的声道数更多。',
   troubleshootNoBackend: '没有任何播放路径能处理这个媒体，因此一次尝试都没有发生。',
+  troubleshootNativeModeAvailable: '原生渲染模式可以播放这个文件。把渲染模式切回「原生」再试一次。',
   troubleshootEnvironment: '运行环境', troubleshootCopyReport: '复制报告',
 }
 
@@ -45,6 +46,7 @@ const ZH_TW: PlayerUiLabels = {
   troubleshootUnsupportedContainer: '這個容器無法解析。目前支援 MP4、WebM 與 Matroska。',
   troubleshootUnsupportedChannels: '只支援單聲道與立體聲，這條音軌的聲道數更多。',
   troubleshootNoBackend: '沒有任何播放路徑能處理這個媒體，因此一次嘗試都沒有發生。',
+  troubleshootNativeModeAvailable: '原生轉譯模式可以播放這個檔案。把轉譯模式切回「原生」再試一次。',
   troubleshootEnvironment: '執行環境', troubleshootCopyReport: '複製報告',
 }
 
@@ -67,6 +69,7 @@ const JA: PlayerUiLabels = {
   troubleshootUnsupportedContainer: 'このコンテナーは解析できません。対応しているのは MP4、WebM、Matroska です。',
   troubleshootUnsupportedChannels: 'モノラルとステレオのみ再生できます。このトラックはチャンネル数が多すぎます。',
   troubleshootNoBackend: 'このメディアを扱える再生経路がないため、試行は行われませんでした。',
+  troubleshootNativeModeAvailable: 'ネイティブ描画モードならこのファイルを再生できます。描画モードを「ネイティブ」に切り替えて再試行してください。',
   troubleshootEnvironment: '実行環境', troubleshootCopyReport: 'レポートをコピー',
 }
 

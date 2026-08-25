@@ -141,8 +141,8 @@
       "name": "@mx-player-max/strategy",
       "directory": "packages/strategy",
       "testFiles": 1,
-      "tests": 21,
-      "passed": 21,
+      "tests": 27,
+      "passed": 27,
       "skipped": 0,
       "todo": 0
     },
@@ -168,8 +168,8 @@
       "name": "@mx-player-max/ui",
       "directory": "packages/ui",
       "testFiles": 3,
-      "tests": 81,
-      "passed": 81,
+      "tests": 85,
+      "passed": 85,
       "skipped": 0,
       "todo": 0
     },
@@ -185,8 +185,8 @@
   ],
   "totals": {
     "testFiles": 103,
-    "tests": 686,
-    "passed": 686,
+    "tests": 696,
+    "passed": 696,
     "skipped": 0,
     "todo": 0
   }
