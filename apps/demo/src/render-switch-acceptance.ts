@@ -55,8 +55,8 @@ async function execute(host: HTMLElement): Promise<void> {
   try {
     /**
      * A video-only sample on purpose. The custom pipeline gates its video pump on the audio clock,
-     * and a machine with no audio output device can never start one, so a sample with sound would
-     * make this case untestable in exactly the environments that most need the coverage.
+     * so a sample with sound would make this route depend on the box being able to render audio at
+     * all, and the environments least able to do that are the ones that most need this coverage.
      */
     player = new MXPlayer({
       target: host,

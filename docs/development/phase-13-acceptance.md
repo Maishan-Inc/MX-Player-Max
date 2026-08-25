@@ -23,7 +23,7 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | `pnpm typecheck` | passed；20 个 workspace package/app 构建并严格类型检查 |
 | `pnpm test` | passed；总数见 `evidence/current-test-counts.json`，与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
-| `pnpm test:browser` | passed；50 passed，8 skipped，覆盖 9 个 Playwright projects；其中 approved Phase 10.2 WASM 为 3 passed/5 skipped，作为自动化回归但不替代实机证据；Phase 13 Native/WebCodecs/UI/performance 为 47 passed/3 unsupported skipped，WebKit 仍仅 automation-only |
+| `pnpm test:browser` | passed；74 passed / 32 skipped / 0 failed，9 个 Playwright projects（2026-08-25 重测）。构成：UI 16 passed；approved Phase 10.2 WASM 3 passed / 5 skipped，作为自动化回归但不替代实机证据；媒体 51 passed / 27 skipped；performance 4 passed。skip 的来源有三处：WASM 用例按 project 名自限 5 条、`media-webkit-automation` 按浏览器能力探测 19 条、`media-firefox` 在本机音频不可用那一侧跳 8 条有音轨的用例。音频可用那一侧同一套会多 8 条 passed，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
 | `pnpm quality:media` | passed；媒体 + 字幕 fixture 的 FFprobe 元数据和 SHA-256 一致；语料条目以 `tests/media/manifest.json` 为准，2026-08-23 起新增两条 Matroska，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；含数值 kernel、packed graph、真实 device-lost、epoch、fallback、pool 长时复用/容量边界和 `copyExternalImageToTexture` usage 回归 |
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`，`pnpm test --check` 与其一致 |
@@ -31,9 +31,9 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | `pnpm quality:webgpu:numerics` | passed；7 项 kernel 执行对比 CPU 参考（含 torch 通道序、layer norm、1x1 卷积、`PACKED_GATHER` 的 concat/slice、`PACKED_INPUT` 的补零） |
 | `pnpm quality:webgpu:oracle` | passed；shipped `Rt4kSrGraphExecutor` 对上游 RT4KSR forward 端到端，8-bit 输入下 3x16x16 输出 `max |delta| = 3.7e-3`；GELU 换 ReLU 的负向对照会升到 `2.7e-1` |
 | `pnpm quality:webgpu:rife` | passed；算子级 `encode` `8.9e-4`、`warp` `1.2e-3`、`resize` `5.1e-4`，加整图级 shipped `RifeGraphExecutor` 对上游 `IFNet.forward`：`encode`/`block0..4` 全部 stage 与 `mask.sigmoid` 收敛到 `1.8e-4` 以内，`output` `2.0e-3`（`rgba8unorm` 半步长下限）。`--mutate=leaky-slope` 负向对照升到 `9.1e-1`；`--activation=rgba16float` 升到 `1.4e-1`，因此激活默认 `rgba32float` |
-| `pnpm exec playwright test --project=media-chromium --project=media-firefox` | passed；20/20 real-media automation tests |
-| `pnpm exec playwright test --project=media-webkit-automation --trace=off` | 7 passed，3 unsupported skipped；automation-only，不是 Safari 证据 |
-| `pnpm exec playwright test --project=performance-chromium --project=performance-firefox` | passed；4/4，隔离/非隔离各一条 |
+| `pnpm test:browser --project=media-chromium --project=media-firefox` | passed；0 failed。`media-chromium` 26 passed / 0 skipped；`media-firefox` 视本机音频状态在 26 passed / 0 skipped 与 18 passed / 8 skipped 之间摆，两种都实测到过（2026-08-25 重测） |
+| `pnpm test:browser --project=media-webkit-automation` | passed；7 passed / 19 skipped / 0 failed，连续两轮一致（2026-08-25 重测）。automation-only，不是 Safari 证据。Playwright WebKit 没有 WebCodecs、没有 `AudioContext`，且 `canPlayType` 对任何类型都回 `probably`，因此需要解码能力的用例按能力探测跳过，理由见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
+| `pnpm test:browser --project=performance-chromium --project=performance-firefox` | passed；4/4，隔离/非隔离各一条（2026-08-25 重测；这两个 project 的 `dependencies` 覆盖其余 7 个，所以该命令与整套 `pnpm test:browser` 跑的是同一批） |
 | `pnpm quality:performance:collect && pnpm quality:performance` | passed；4 份 Playwright automation baseline 写入并通过 schema |
 | `pnpm quality:performance:collect -- --scenario=long-run-30m` | 已执行 Chromium/Firefox 隔离与非隔离四组完整 30 分钟运行；原始失败报告已在复核后清理，摘要保留如下，未作为通过基线提交 |
 | `pnpm quality:audit` | passed；7 个 AI/WASM 资产的 bytes/hash/license/review policy 一致 |
@@ -48,9 +48,10 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 `pnpm test` 会重新执行所有 workspace 测试并比较该文件；数量变化需显式运行
 `pnpm test:update-counts` 并审查 diff，Phase 文档不再复制当前分包数字。
 
-本表记录的是 Phase 13 复核当时的运行结果。2026-08-23 起的渲染模式切换、Matroska 覆盖与失败归因
-另立记录：[`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md)，其中的浏览器用例数与
-本表不同（媒体 project 由 20 条增至 30 条）。
+本表记录的是 Phase 13 复核当时的运行结果，浏览器用例的行已在 2026-08-25 按实测刷新。2026-08-23
+起的渲染模式切换、Matroska 覆盖与失败归因另立记录：
+[`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md)，媒体 project 每个由 10 条增至
+26 条，浏览器能力探测的做法也记在那里。
 
 ## 媒体样本
 

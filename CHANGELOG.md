@@ -15,9 +15,9 @@
   重新选上（轨道 id 按控制器重新分配，所以映射到新 id）；仅在切换前正在播放时才恢复播放。
   失败时回滚：恢复切换前的选项并重新载入，因此被拒绝的切换留下的是一个还在播的会话，而不是空播放器。
   `setVideoFilter()` 在原生会话上不再抛 `RENDERER_BACKEND_UNAVAILABLE`，而是带着该滤镜迁到自定义管线。
-  浏览器用例故意用**无音轨**样本：自定义管线的视频泵以音频时钟为闸门，本机 headless Firefox 没有
-  音频输出设备，带音轨的样本永远到不了 `playing`，那样这条用例在最需要它的环境里根本跑不起来。
-  chromium 与 firefox 都实测通过。
+  浏览器用例故意用**无音轨**样本：自定义管线的视频泵以音频时钟为闸门，带音轨的样本会让这条用例
+  依赖机器能不能出声，而最需要这份覆盖的恰恰是最出不了声的环境。chromium 与 firefox 都实测通过；
+  Playwright WebKit 既放不了 WebM、也没有 `VideoDecoder`，因此按这两项能力探测跳过。
 
 - 决策轨迹现在记录「原生候选因 intent 被排除」，UI 据此给出可操作的提示。自定义档下遇到引擎编码范围
   之外的编码时，失败只剩汇总码 `STRATEGY_NO_VIABLE_BACKEND`，读起来像「这文件没救了」——可实际上切回
@@ -132,6 +132,35 @@
 
 ### Fixed
 
+- 媒体浏览器用例不再在 Playwright WebKit 上报一批假失败。这个 project 的用例从 10 条长到 26 条，
+  新增的里面有 10 条红，原因不在引擎：Playwright 的 WebKit 构建没有 WebCodecs
+  （`VideoDecoder` / `AudioDecoder` / `VideoFrame` 全是 `undefined`），也没有 `AudioContext`
+  （连 `webkitAudioContext` 都没有），而且 `canPlayType` 对**任何**类型都回 `probably`——
+  `video/x-matroska`、HEVC、裸 `vp09` 一律 `probably`，媒体元素随后再拒绝或干脆卡住。
+  三类实测表现：`rendersAudio` 探针把 `new AudioContext()` 写在 `try` 之外，`ReferenceError` 直接
+  逃出 `page.evaluate`，4 条用例是崩在探针里而不是跳过；Matroska 在 WebKit 下既不 `loadeddata`
+  也不 `error`（10 s 后仍 readyState 0），引擎报 `NATIVE_METADATA_TIMEOUT`，2 条原生用例判成 failed；
+  `canPlayType` 说谎让 VP9 原生与 HEVC 两条用例带着错的前提往下跑；libvpx WASM 回退能走到 `ready`
+  再报 `WASM_FRAME_ABI_INVALID`，真实原因是没有 `VideoFrame` 构造函数。
+  探针集中到 `tests/browser/media/capabilities.ts`，每条需要解码能力的用例先问浏览器、再**无条件**
+  断言。原生路径不问 `canPlayType`，而是把该用例要放的那条夹具真加载一遍，要求 `loadeddata`
+  且 `videoWidth > 0`——宽度是答案的一部分：Chromium 在 HEVC 上能到 readyState 4 却静默丢掉视频轨，
+  那时宽度是 0。自定义路径问 `VideoDecoder` / `AudioDecoder` 在不在以及 `isConfigSupported`，
+  WASM 回退问 `VideoFrame`，有音轨的用例再问 `AudioContext` 能否进入 `running`。
+  **超时一律不当 unsupported**：`MEDIA_ACCEPTANCE_TIMEOUT_*` 与 `NATIVE_METADATA_TIMEOUT` 按错误码
+  分不出「浏览器放不了」和「引擎真卡死」，所以跳过只由探针决定，`media-acceptance.ts` 的能力分类
+  一个字都没放宽。顺带把 13 处 `test.skip(result.status === 'unsupported')`（12 条用例）换成探针 +
+  无条件断言：那种写法会放过回归自己会报的码，A7 的 VP9 推导和 A1 的坏 worklet 都栽在这上面过。
+  HEVC 拒绝那条在 WebKit 里跳过，理由不是「拒绝需要解码能力」——不需要——而是两条：这条用例钉的是
+  **引擎自己的编码范围**在拒绝 HEVC，WebKit 没有 WebCodecs，它的拒绝与那个范围无关；更要紧的是
+  它的媒体元素对放不了的文件不给确定答复，同一条 HEVC 夹具一轮回 `MEDIA_ERR_SRC_NOT_SUPPORTED`、
+  下一轮 45 s 都不落地（引擎报 `NATIVE_METADATA_TIMEOUT`），实测让它在 WebKit 里跑就是一轮过、
+  一轮红，所以按「浏览器有没有 WebCodecs」跳过。
+  实测：`media-webkit-automation` 由 7 passed / 9 skipped / **10 failed** 变为
+  7 passed / 19 skipped / **0 failed**，连续两轮一致。`media-chromium` 每轮 26 passed / 0 skipped；
+  `media-firefox` 0 failed，通过数随本机音频状态在 26 与 18 之间摆（少的那 8 条是有音轨的用例，
+  按 `AudioContext` 探针跳过），两种状态都实测到过。
+
 - 构建产物里的 worklet 不再请求一个不存在的 sourcemap。`packages/audio` 整包开着
   `sourceMap`，于是 `worklet-processor.js` 末尾带 `//# sourceMappingURL=worklet-processor.js.map`；
   但这个文件是被打包器当 URL 资源整体拷进 `dist/assets/` 的，`.map` 不会跟着走，所以浏览器每次加载
@@ -151,10 +180,11 @@
   泵的起播闸门（`#startIfReady()` 要求缓冲到 `startBufferDuration`），整个会话就卡在 `ready`：
   没有错误码、没有事件、诊断面板上什么都看不出来。现在这次 await 走 `#withTimeout`，超出音频的
   `operationTimeoutMs` 就报可恢复的 `AUDIO_AUTOPLAY_BLOCKED`——正是自动播放被拦时本来就会报的那个
-  原因。本机 headless Firefox 就是这种环境（无音频设备，任何 `media.cubeb.*` /
-  `media.autoplay.*` 组合都不能让上下文 running，`resume()` 三秒内不落地），修复前
-  `webcodecs-audio` 这条已提交用例只表现为 120 s 的 Playwright 超时、结果对象都发布不出来，
-  修复后几秒内就报出真实原因。Chromium 不受影响。
+  原因。这个缺陷是在本机 headless Firefox 上暴露的：当时那个上下文进不了 `running`，`resume()`
+  三秒内不落地，修复前 `webcodecs-audio` 这条已提交用例只表现为 120 s 的 Playwright 超时、结果对象
+  都发布不出来，修复后几秒内就报出真实原因。**2026-08-25 补记**：同一台机器上这个条件是**间歇**的
+  ——同一天既测到连续 5 次 `resume()` 在 1 ms 内 resolve、上下文进入 `running`，也测到连续 3 次
+  25 s 都不落地。修复本身与哪一侧无关：自动播放被拦时同样走这条路径。Chromium 不受影响。
 
 - MP4 视频轨此前拿不到自己的编码配置盒。`VisualSampleEntry` 的载荷是 8 字节 `SampleEntry`
   （`reserved[6]` 加 `data_reference_index`）再接 70 字节视觉字段，子盒因此从载荷第 78 字节开始；

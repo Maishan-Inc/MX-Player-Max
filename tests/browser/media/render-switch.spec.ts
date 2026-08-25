@@ -1,4 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
+import { decodesWithWebCodecs, playsNatively } from './capabilities'
+
+/** The one sample this case drives, on both sides of the switch. */
+const SAMPLE = 'webm-vp8-p0-8bit-video-only.webm'
 
 /**
  * Phase 6 chose the pipeline only at load time: turning a filter on, or leaving the custom path,
@@ -6,13 +10,21 @@ import { expect, test, type Page } from '@playwright/test'
  * tracks. This drives one real switch through the built assets and asserts what has to survive it.
  *
  * The sample is video-only on purpose. The custom pipeline gates its video pump on the audio clock,
- * so on a machine with no audio output device -- headless Firefox here -- a sample with sound can
- * never reach `playing`, and the case would be unrunnable in the environment that most needs it.
+ * so a sample with sound makes the case depend on the box being able to render audio at all, and it
+ * is the environments least able to do that which most need this coverage.
  */
 test.describe('runtime render-mode switching', () => {
   test('moves a playing Native session onto the custom pipeline without reloading', async ({ page }) => {
+    /**
+     * Both sides of the switch need their own capability, and the case skips on the browser rather
+     * than on the acceptance result: a browser with neither route reports the same
+     * `STRATEGY_ALL_CANDIDATES_FAILED` that a broken switch would, so forgiving that code would let
+     * a regression skip instead of turning red. Playwright WebKit is the case in point -- it plays
+     * no WebM at all and ships no `VideoDecoder`.
+     */
+    test.skip(!await playsNatively(page, SAMPLE), `Native VP8 unavailable in ${test.info().project.name}`)
+    test.skip(!await decodesWithWebCodecs(page, { video: 'vp8' }), `WebCodecs VP8 unavailable in ${test.info().project.name}`)
     const result = await runSwitch(page)
-    test.skip(result.status === 'unsupported', `Custom pipeline unavailable in ${test.info().project.name}: ${result.errorCode}`)
     expect(result).toMatchObject({ status: 'passed', errorCode: null })
 
     // The switch itself: the renderer changes and so does the surface behind it.
