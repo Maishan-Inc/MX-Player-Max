@@ -105,6 +105,19 @@
 
 ### Fixed
 
+- 构建产物里的 worklet 不再请求一个不存在的 sourcemap。`packages/audio` 整包开着
+  `sourceMap`，于是 `worklet-processor.js` 末尾带 `//# sourceMappingURL=worklet-processor.js.map`；
+  但这个文件是被打包器当 URL 资源整体拷进 `dist/assets/` 的，`.map` 不会跟着走，所以浏览器每次加载
+  都留下一条 404。运行时无影响，但会误导排查——上一轮就被它带偏过。worklet 入口现在用单独的
+  `tsconfig.worklet.json` 编译（只有这一个文件 `sourceMap: false`），其余源文件的 sourcemap 不变。
+  资源从 6337 字节变成 6292 字节，发布清单里的 sha256/sha384/integrity 随之更新——
+  该清单是生成物，不在版本控制里，所以没有需要手改的记录。
+  `generate-manifest.mjs` 对 `type: "audio-worklet"` 的自包含断言只匹配带说明符的
+  `import` / `export ... from` / `import(`，末尾留下的 `export {};` 不会误报，那条护栏未改动。
+  实测（构建产物 + preview，CDP 抓全部执行上下文含 worker/worklet）：worklet 的 `.map` 请求彻底消失，
+  唯一剩下的 404 是无关的 `favicon.ico`；自定义管线 `audioClock.source` 仍是 `audio-context`、
+  渲染 11179 帧、验收 `passed`。
+
 - 自定义管线不会再因为 `AudioContext` 起不来而无声挂死。`AudioContext.resume()` 在自动播放策略
   拦截时是 reject，但在**没有可用音频输出设备**的机器上它既不 resolve 也不 reject，上下文永远停在
   `suspended`。`AudioController.play()` 此前裸 await 它，于是 `play()` 永不落地；而音频时钟又是视频
