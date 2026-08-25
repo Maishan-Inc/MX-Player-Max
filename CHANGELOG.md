@@ -4,6 +4,37 @@
 
 ### Added
 
+- 语料里没有播放覆盖的样本补上了端到端用例，`expectedPaths` 按实测修正。此前
+  `mp4-av1-main-8bit-aac` 与 `mp4-hevc-main10-10bit-aac` 没有被任何测试引用过，
+  `mp4-h264-baseline-8bit-aac` 只出现在 fault 路由与 Range/MIME 契约里，`mkv-vp8-p0-8bit-opus`
+  的 `native`、`mkv-h264-baseline-8bit-aac-embedded-ass` 的 `native`、
+  `webm-vp8-p0-8bit-video-only` 的 `wasm` 都是无用例背书的声明——其中三条还是错的。新增六条用例：
+  MP4 H.264 与 AV1 各自的原生 + 自定义两条路径、Matroska VP8 的原生路径、内嵌字幕样本的原生路径、
+  语料这条 VP8 样本真正走一遍 libvpx WASM 回退（模式内摘掉 `VideoDecoder` 构造函数，
+  与既有 WASM 验收路由同法，因为 WASM 只在 WebCodecs 候选造不出来时才排得上），
+  以及 HEVC「每条路径都干净拒绝」。
+  **用例的 skip 条件一律是浏览器能力探测**（`VideoDecoder.isConfigSupported` / `canPlayType` /
+  `AudioContext` 能否 running），不是验收结果的 `status === 'unsupported'`：后者会连
+  `STRATEGY_NO_VIABLE_BACKEND`、`AUDIO_AUTOPLAY_BLOCKED` 一起放过，而回归恰好就长这样。
+
+- 语料清单与验收模式表现在互相校验。`verify-media-manifest.mjs` 读
+  `apps/demo/src/media-acceptance-modes.json`，双向比对：语料声明的每条 `expectedPaths` 都必须有
+  模式认领，模式认领的样本与路径也必须是语料声明过的。加上这条规则时它立刻抓出一条真实缺口——
+  `mkv-h264-baseline-8bit-aac-embedded-ass` 声明了 `native` 却没有任何模式跑它，于是补了
+  `mkv-embedded-subs-native`。验收模式表因此从代码里的三个 `Set` 变成一份数据。
+
+### Changed
+
+- `mp4-hevc-main10-10bit-aac` 的 `expectedPaths` 从 `["native"]` 改成 `[]`，并新增
+  `noRouteReason` 记录实测依据。原来那条声明从未被用例验证，而且在两个浏览器上都是错的，
+  错法还不一样：Chromium 里裸 `<video>` 报 `readyState 4`、音频照走，但 `videoWidth` 是 0、
+  一个像素都没有，视频轨被静默丢掉；Firefox 对完整的 `hvc1.2.4.L120.B0` 回答 `probably`，
+  实际解码时报 `MEDIA_ERR_DECODE`。因此**没有**给 `expectedPaths` 加按浏览器的结构：那样只会把
+  Firefox 的「声称」记成一条「路径」，同样是假的。清单改为用一个空数组加一段实测说明表达
+  「哪条路都不通」，用例则钉住每条路径都以能力错误码干净拒绝、不产生任何像素。
+  `verify-media-manifest.mjs` 要求空 `expectedPaths` 必须带 `noRouteReason`，
+  免得它和「没写完」无法区分。
+
 - Matroska 进入媒体语料矩阵：新增 `mkv-h264-baseline-8bit-aac.mkv` 与 `mkv-vp8-p0-8bit-opus.mkv`
   两条夹具，以及 `mkv-native` / `mkv` / `mkv-vp8` 三个验收模式和四条浏览器用例（chromium 与
   firefox 都通过）。容器此前有 `MatroskaContainerAdapter` 但没有任何夹具，端到端从未被跑过。

@@ -91,7 +91,9 @@
       "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
       "subtitleIds": ["srt-basic-timing"], "durationSeconds": 3, "bytes": 161379,
       "sha256": "35b82636aa6109ae930cb0c86ecfbda2fb66d65f586c2f89eb9ff1075f1c2d4d",
-      "minimumReproduction": "HEVC Main 10 native capability and safe unsupported result elsewhere", "expectedPaths": ["native"], "wasmStatus": "not-implemented"
+      "minimumReproduction": "Every path reports a capability error instead of playing silently or hanging", "expectedPaths": [],
+      "noRouteReason": "Measured 2026-08-25 in Chromium 151 and Firefox 153: the engine keeps HEVC outside its WebCodecs codec scope and derives no RFC 6381 HEVC string, so the demuxer publishes a bare `hvc1` that canPlayType rejects in both browsers. The earlier `[\"native\"]` claim was never backed by a case and is false in both, in two different ways: a raw <video> in Chromium reports readyState 4 and advances the AAC track while silently dropping the video (videoWidth 0), and Firefox answers `probably` for a full `hvc1.2.4.L120.B0` but then fails to decode with MEDIA_ERR_DECODE. Publishing the bare id is what keeps the element from ever claiming a stream it cannot render.",
+      "wasmStatus": "not-implemented"
     }
   ],
   "largeFixturePolicy": {

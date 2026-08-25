@@ -46,6 +46,7 @@ test.describe('real media SDK paths', () => {
    * `webcodecs` mode uses a video-only sample, so nothing exercised the custom audio path.
    */
   test('plays the WebCodecs path with audio from the built assets', async ({ page }) => {
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
     const result = await runAcceptance(page, 'webcodecs-audio')
     test.skip(result.status === 'unsupported', `WebCodecs VP8/Opus unsupported in ${test.info().project.name}`)
     expect(result).toMatchObject({ status: 'passed', mode: 'webcodecs-audio', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null })
@@ -69,6 +70,7 @@ test.describe('real media SDK paths', () => {
   })
 
   test('plays H.264/AAC in Matroska through the custom pipeline', async ({ page }) => {
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
     const result = await runAcceptance(page, 'mkv')
     test.skip(result.status === 'unsupported', `WebCodecs Matroska H.264/AAC unsupported in ${test.info().project.name}`)
     expect(result).toMatchObject({ status: 'passed', mode: 'mkv', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null })
@@ -80,6 +82,7 @@ test.describe('real media SDK paths', () => {
   })
 
   test('plays VP8/Opus in Matroska through the custom pipeline', async ({ page }) => {
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
     const result = await runAcceptance(page, 'mkv-vp8')
     test.skip(result.status === 'unsupported', `WebCodecs Matroska VP8/Opus unsupported in ${test.info().project.name}`)
     expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp8', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null })
@@ -95,6 +98,7 @@ test.describe('real media SDK paths', () => {
    * packets, and ASS cue rendering off the custom pipeline's clock.
    */
   test('renders the embedded ASS track of a Matroska sample', async ({ page }) => {
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
     const result = await runAcceptance(page, 'mkv-embedded-subs')
     test.skip(result.status === 'unsupported', `WebCodecs Matroska H.264/AAC unsupported in ${test.info().project.name}`)
     expect(result).toMatchObject({ status: 'passed', mode: 'mkv-embedded-subs', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null })
@@ -105,6 +109,127 @@ test.describe('real media SDK paths', () => {
     expect(result.cueTimes.length).toBeGreaterThan(0)
     expect(result.cueTimes.some((time) => time >= 400_000 && time <= 1_200_000)).toBe(true)
     expect(result.presentedFrames).toBeGreaterThan(0)
+  })
+
+  /**
+   * The embedded-ASS sample declared a native route that no case played — the manifest cross-check
+   * in `verify-media-manifest.mjs` is what surfaced it. On the media element the container's own
+   * subtitle track is the browser's to expose, so this asserts the engine still publishes the track
+   * it demuxed and plays the video, rather than asserting cues the element renders internally.
+   */
+  test('plays the embedded-subtitle Matroska sample on the Native path', async ({ page }) => {
+    const result = await runAcceptance(page, 'mkv-embedded-subs-native')
+    test.skip(result.status === 'unsupported', `Native Matroska unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-embedded-subs-native', backend: 'html-video', surface: 'video', errorCode: null })
+    expect(result.subtitleTrackIds).toHaveLength(1)
+    expect(result.subtitleTrackIds[0]).toMatch(/^embedded-\d+$/)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+  })
+
+  /**
+   * The corpus claimed both a native and a WebCodecs route for all three MP4 samples, and none of
+   * the three had ever been played by a case: the H.264 one appeared only in fault routes and in
+   * the Range/MIME contract, and the AV1 and HEVC ones were referenced nowhere at all. Every one of
+   * them was in fact unplayable, because the demuxer read sample entry children eight bytes early
+   * and so published a bare codec id with no configuration record. These cases are the evidence
+   * behind the routes the corpus claims, and they are what would catch that offset again.
+   *
+   * They skip on a browser codec probe rather than on an `unsupported` result, for the reason the
+   * VP9 cases document: a regression in the offset or the derivation reports exactly the
+   * `NATIVE_NOT_SUPPORTED` and `STRATEGY_NO_VIABLE_BACKEND` that `unsupported` forgives.
+   */
+  test('plays H.264/AAC in MP4 on both paths with the codec string read from avcC', async ({ page }) => {
+    test.skip(!await decodesVideo(page, 'avc1.42C01E'), `H.264 unavailable in ${test.info().project.name}`)
+    const native = await runAcceptance(page, 'mp4-native')
+    expect(native).toMatchObject({ status: 'passed', mode: 'mp4-native', backend: 'html-video', surface: 'video', errorCode: null, videoCodec: 'avc1.42C01E' })
+    expect(native.nonEmptyPixels).toBeGreaterThan(100)
+    expect(native.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
+    const custom = await runAcceptance(page, 'mp4')
+    expect(custom).toMatchObject({ status: 'passed', mode: 'mp4', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null, videoCodec: 'avc1.42C01E' })
+    expect(custom.attemptErrorCodes).toEqual([])
+    expect(custom.audioClockSource).toBe('audio-context')
+    expect(custom.audioRenderedFrames).toBeGreaterThan(0)
+    expect(custom.presentedFrames).toBeGreaterThan(0)
+    expect(custom.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  /**
+   * AV1 was always inside the engine's own WebCodecs codec scope, so the only thing standing
+   * between it and playback was the codec string. A bare `av01` is rejected by both
+   * `VideoDecoder.isConfigSupported` and `canPlayType`, exactly like a bare `vp09`, so this pins the
+   * `av01.P.LLT.DD` derived from the `av1C` record. The level in this sample's record is 0, which is
+   * why the string is `av01.0.00M.08` rather than the more commonly seen `av01.0.04M.08`.
+   */
+  test('plays AV1/AAC in MP4 on both paths with the codec string read from av1C', async ({ page }) => {
+    test.skip(!await decodesVideo(page, 'av01.0.00M.08'), `AV1 unavailable in ${test.info().project.name}`)
+    const native = await runAcceptance(page, 'av1-native')
+    expect(native).toMatchObject({ status: 'passed', mode: 'av1-native', backend: 'html-video', surface: 'video', errorCode: null, videoCodec: 'av01.0.00M.08' })
+    expect(native.nonEmptyPixels).toBeGreaterThan(100)
+    expect(native.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
+    const custom = await runAcceptance(page, 'av1')
+    expect(custom).toMatchObject({ status: 'passed', mode: 'av1', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null, videoCodec: 'av01.0.00M.08' })
+    expect(custom.attemptErrorCodes).toEqual([])
+    expect(custom.audioRenderedFrames).toBeGreaterThan(0)
+    expect(custom.presentedFrames).toBeGreaterThan(0)
+    expect(custom.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  /**
+   * The Matroska VP8 sample claimed a native route that no case had ever played — only its custom
+   * route was covered. Both Chromium and Firefox do play VP8/Opus in Matroska on the media element.
+   */
+  test('plays VP8/Opus in Matroska on the Native path', async ({ page }) => {
+    const result = await runAcceptance(page, 'mkv-vp8-native')
+    test.skip(result.status === 'unsupported', `Native Matroska VP8/Opus unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp8-native', backend: 'html-video', surface: 'video', errorCode: null, videoCodec: 'vp8' })
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+  })
+
+  /**
+   * The corpus claims a `wasm` route for the video-only VP8 sample, but the WASM decoder is an
+   * atomic fallback that only ranks when the WebCodecs candidate cannot be constructed, and every
+   * browser here has WebCodecs. The mode therefore takes WebCodecs away for this one run, the same
+   * way the standalone WASM acceptance route does, which is the only way that claim becomes real.
+   * Until now the corpus entry was backed only by the decoder package's own 642x358 fixture, so the
+   * sample the manifest names had never been through the WASM path at all.
+   */
+  test('plays the video-only VP8 sample through the libvpx WASM fallback', async ({ page }) => {
+    const result = await runAcceptance(page, 'wasm-vp8')
+    test.skip(result.status === 'unsupported', `WASM VP8 unsupported in ${test.info().project.name}`)
+    expect(result).toMatchObject({ status: 'passed', mode: 'wasm-vp8', backend: 'wasm', renderer: 'canvas2d', surface: 'canvas', errorCode: null })
+    // The WebCodecs candidate has to have been tried and rejected, or this proves nothing.
+    expect(result.attemptErrorCodes).toContain('WEBCODECS_API_UNAVAILABLE')
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'ended']))
+  })
+
+  /**
+   * HEVC is the one sample with no route at all, and the corpus now says so with an empty
+   * `expectedPaths`. The engine keeps HEVC outside its WebCodecs scope on purpose and derives no
+   * RFC 6381 string for it, so the demuxer publishes a bare `hvc1` that `canPlayType` rejects.
+   *
+   * That bare id is load-bearing rather than incidental. Both browsers mishandle this file when
+   * given a full string: Chromium reports readyState 4 and advances the audio track while silently
+   * dropping the video, and Firefox answers `probably` for `hvc1.2.4.L120.B0` and then fails with
+   * MEDIA_ERR_DECODE. A per-browser `expectedPaths` would have encoded Firefox's claim as a route,
+   * so the manifest records the measurement in `noRouteReason` instead and this case pins that
+   * every path refuses the file cleanly, in whichever browser runs it.
+   */
+  test('refuses HEVC on every path instead of playing it silently', async ({ page }) => {
+    for (const mode of ['hevc-native', 'hevc'] as const) {
+      const result = await runAcceptance(page, mode)
+      expect(result).toMatchObject({ status: 'unsupported', mode, videoCodec: 'hvc1' })
+      expect(result.nonEmptyPixels).toBe(0)
+      expect(result.presentedFrames).toBe(0)
+      expect(result.errorCode).toBe(mode === 'hevc-native' ? 'NATIVE_NOT_SUPPORTED' : 'STRATEGY_NO_VIABLE_BACKEND')
+    }
   })
 
   /**
@@ -146,6 +271,7 @@ test.describe('real media SDK paths', () => {
    */
   test('plays VP9 profile 0 through the custom pipeline with a derived codec string', async ({ page }) => {
     test.skip(!await supportsWebCodecsVp9(page), `WebCodecs VP9 unavailable in ${test.info().project.name}`)
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
     const result = await runAcceptance(page, 'vp9')
     expect(result).toMatchObject({ status: 'passed', mode: 'vp9', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null, videoCodec: 'vp09.00.11.08' })
     expect(result.attemptErrorCodes).toEqual([])
@@ -156,6 +282,7 @@ test.describe('real media SDK paths', () => {
 
   test('plays 10-bit VP9 profile 2 through the custom pipeline', async ({ page }) => {
     test.skip(!await supportsWebCodecsVp9(page, 'vp09.02.11.10'), `WebCodecs 10-bit VP9 unavailable in ${test.info().project.name}`)
+    test.skip(!await rendersAudio(page), `No audio output device in ${test.info().project.name}`)
     const result = await runAcceptance(page, 'vp9-p2')
     expect(result).toMatchObject({ status: 'passed', mode: 'vp9-p2', backend: 'webcodecs', renderer: 'canvas2d', errorCode: null, engineErrorCode: null, videoCodec: 'vp09.02.11.10' })
     expect(result.attemptErrorCodes).toEqual([])
@@ -244,12 +371,50 @@ async function readAcceptance(page: Page): Promise<MediaAcceptanceResult> {
   return result
 }
 
+/**
+ * Whether the browser can decode a codec and play it in an MP4, independent of what the demuxer
+ * publishes. Both halves matter: the custom path needs `VideoDecoder`, the native path needs the
+ * media element, and a case that asserts both routes has to skip only when neither is available.
+ */
+async function decodesVideo(page: Page, codec: string): Promise<boolean> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  return page.evaluate(async (value) => {
+    const element = document.createElement('video').canPlayType(`video/mp4; codecs="${value}, mp4a.40.2"`) !== ''
+    let decoder = false
+    try { decoder = (await VideoDecoder.isConfigSupported({ codec: value, codedWidth: 320, codedHeight: 180 })).supported === true } catch { decoder = false }
+    return element && decoder
+  }, codec)
+}
+
 /** Whether the browser itself can decode VP9, independent of what the demuxer publishes. */
 async function supportsWebCodecsVp9(page: Page, codec = 'vp09.00.11.08'): Promise<boolean> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   return page.evaluate(async (value) => {
     try { return (await VideoDecoder.isConfigSupported({ codec: value, codedWidth: 320, codedHeight: 180 })).supported === true } catch { return false }
   }, codec)
+}
+
+/**
+ * Whether the browser can actually render audio. A machine with no audio output device leaves an
+ * `AudioContext` permanently `suspended`, and `resume()` there neither resolves nor rejects, so the
+ * bounded race below is the only way to ask. The custom pipeline gates its video pump on the audio
+ * clock, so on such a box no custom session with an audio track can ever reach `playing`.
+ *
+ * This deliberately probes the browser rather than the acceptance result. Skipping on
+ * `status === 'unsupported'` would also forgive `AUDIO_AUTOPLAY_BLOCKED` and the
+ * `STRATEGY_*` codes, which is exactly how a real regression would present — the same trap the VP9
+ * cases above document. A browser whose context does start still runs these cases unconditionally,
+ * so a pipeline that stops delivering audio frames turns them red instead of skipping them.
+ */
+async function rendersAudio(page: Page): Promise<boolean> {
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  return page.evaluate(async () => {
+    const context = new AudioContext()
+    try {
+      await Promise.race([context.resume().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 2_000))])
+      return context.state === 'running'
+    } catch { return false } finally { void context.close().catch(() => undefined) }
+  })
 }
 
 async function playsVp9Natively(page: Page): Promise<boolean> {

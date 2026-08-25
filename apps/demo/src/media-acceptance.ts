@@ -1,5 +1,6 @@
 import { MXPlayer } from '@mx-player-max/sdk'
 import type { EngineEventName, Micros } from '@mx-player-max/types'
+import modeTable from './media-acceptance-modes.json'
 
 export interface MediaAcceptanceResult {
   readonly status: 'passed' | 'failed' | 'unsupported'
@@ -51,48 +52,36 @@ declare global {
   interface Window { __mediaAcceptance?: MediaAcceptanceResult }
 }
 
-const SAMPLE = '/quality-media/webm-vp8-p0-8bit-opus.webm'
-const CUSTOM_SAMPLE = '/quality-media/webm-vp8-p0-8bit-video-only.webm'
-const MP4_SAMPLE = '/quality-media/mp4-h264-baseline-8bit-aac.mp4'
-const MKV_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac.mkv'
-const MKV_VP8_SAMPLE = '/quality-media/mkv-vp8-p0-8bit-opus.mkv'
-const MKV_EMBEDDED_ASS_SAMPLE = '/quality-media/mkv-h264-baseline-8bit-aac-embedded-ass.mkv'
-const VP9_SAMPLE = '/quality-media/webm-vp9-p0-8bit-opus.webm'
-const VP9_P2_SAMPLE = '/quality-media/webm-vp9-p2-10bit-opus.webm'
+/**
+ * The mode table is data rather than code because it is the only record of which corpus sample
+ * each acceptance mode plays and which `expectedPaths` entry that run is the evidence for.
+ * `scripts/quality/verify-media-manifest.mjs` reads the same file and cross-checks it against
+ * `tests/media/manifest.json` in both directions, so a corpus path claim cannot exist without a
+ * mode, and a mode cannot claim a path the corpus does not declare.
+ *
+ * `claims: null` marks a mode that is not route evidence: the `fault-*` routes assert transport
+ * and container errors, and the two HEVC modes pin the absence of any route.
+ */
+interface AcceptanceModeDeclaration {
+  readonly sample: string
+  readonly pipeline: string
+  readonly claims: string | null
+  readonly subtitles?: string
+}
+
+interface AcceptanceMode {
+  readonly url: string
+  readonly pipeline: 'native' | 'custom' | 'wasm'
+  readonly embeddedSubtitles: boolean
+}
+
+const MODE_TABLE: Readonly<Record<string, AcceptanceModeDeclaration>> = modeTable
 /** A Map rather than an object literal so a crafted mode cannot reach `Object.prototype`. */
-const MODE_SAMPLES = new Map([
-  ['webcodecs', CUSTOM_SAMPLE],
-  ['fault-corrupt', MP4_SAMPLE],
-  ['mkv', MKV_SAMPLE],
-  ['mkv-native', MKV_SAMPLE],
-  ['mkv-vp8', MKV_VP8_SAMPLE],
-  ['mkv-embedded-subs', MKV_EMBEDDED_ASS_SAMPLE],
-  ['vp9', VP9_SAMPLE],
-  ['vp9-native', VP9_SAMPLE],
-  ['vp9-p2', VP9_P2_SAMPLE],
-  ['vp9-p2-native', VP9_P2_SAMPLE],
-])
-/**
- * `webcodecs` runs a video-only sample, so it never touched the AudioWorklet and could
- * not catch a worklet asset that only breaks in a production build. `webcodecs-audio`
- * takes the same custom path with an Opus track for exactly that reason.
- *
- * The `mkv-*` modes are the Matroska coverage: the container had a demuxer but no fixture,
- * so nothing exercised it. `mkv-native` proves Chrome plays H.264/AAC in Matroska on the
- * media element, and the two custom modes prove the demuxer feeds WebCodecs with two
- * different codec pairs.
- *
- * The `vp9*` modes cover the derived `vp09.PP.LL.DD` codec string. A bare `vp09` is rejected by
- * both `VideoDecoder.isConfigSupported` and `canPlayType`, so before the string was derived from
- * the keyframe header these samples had no route at all — not even the native one the corpus
- * claimed.
- */
-const CUSTOM_MODES = new Set(['webcodecs', 'webcodecs-audio', 'mkv', 'mkv-vp8', 'mkv-embedded-subs', 'vp9', 'vp9-p2'])
-/**
- * Every other mode attaches an external subtitle file, so the demux-and-parse path for a muxed
- * track had no coverage at all. This mode selects the track the container itself published.
- */
-const EMBEDDED_SUBTITLE_MODES = new Set(['mkv-embedded-subs'])
+const MODES: ReadonlyMap<string, AcceptanceMode> = new Map(Object.entries(MODE_TABLE).map(([id, entry]) => [id, {
+  url: `/quality-media/${entry.sample}`,
+  pipeline: entry.pipeline === 'custom' ? 'custom' : entry.pipeline === 'wasm' ? 'wasm' : 'native',
+  embeddedSubtitles: entry.subtitles === 'embedded',
+}]))
 /**
  * The engine defaults every worker, configure, flush and seek operation to a 10 s budget, which
  * suits a real machine. Firefox on a GPU-less CI box runs the custom path roughly 60% slower than
@@ -138,67 +127,114 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
    * A scripted step that times out surfaces as `MEDIA_ACCEPTANCE_FAILED`, which says
    * nothing about why. The engine almost always reported a real code first, so keep it.
    */
-  const engineErrors: string[] = []
+  const engineErrors: EngineErrorRecord[] = []
   let sourceChanges = 0
   let observedEpoch = 0
   let subtitleTrackIds: readonly string[] = []
   let selectedSubtitleTrackId: string | null = null
   let player: MXPlayer | null = null
+  /**
+   * Waiting out the full budget after the engine has already given up turns a precise code into
+   * `MEDIA_ACCEPTANCE_TIMEOUT_<step>` and costs 25 s per step. A non-recoverable error means no
+   * predicate can still become true, so surface the engine's own code immediately.
+   */
+  const waitUntil = async (step: string, predicate: () => boolean, timeoutMs: number): Promise<void> => {
+    const deadline = performance.now() + timeoutMs
+    while (!predicate()) {
+      const fatal = engineErrors.find((entry) => !entry.recoverable)
+      if (fatal !== undefined) throw new AcceptanceFailure(fatal.code)
+      if (performance.now() >= deadline) throw new AcceptanceFailure(`MEDIA_ACCEPTANCE_TIMEOUT_${step}`)
+      await delay(20)
+    }
+  }
+  /**
+   * An engine call that never settles used to hang the whole run: the polling waits above are
+   * bounded, but `ready`, `play`, `seek` and `load` were awaited outright, so a stuck operation
+   * published no result at all and surfaced only as an opaque Playwright timeout with no clue which
+   * call was stuck. Racing each one against a budget keeps a hang labelled and diagnosable.
+   *
+   * The budget deliberately sits above the engine's own 30 s operation budget: the engine reports a
+   * precise code of its own when an operation overruns, and a shorter harness budget would preempt
+   * it and replace that code with a timeout. This is only a backstop for a call that never settles.
+   */
+  const withBudget = async <T>(step: string, operation: Promise<T>, timeoutMs = OPERATION_TIMEOUT_MS + 5_000): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new AcceptanceFailure(`MEDIA_ACCEPTANCE_TIMEOUT_${step}`)), timeoutMs)
+        }),
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
   try {
-    const intent = CUSTOM_MODES.has(mode) ? 'frame-access' : 'normal'
+    const declaration = MODES.get(mode)
+    if (declaration === undefined) throw new AcceptanceFailure('MEDIA_ACCEPTANCE_MODE_UNKNOWN')
+    const intent = declaration.pipeline === 'native' ? 'normal' : 'frame-access'
     const fault = mode.startsWith('fault-') ? `?fault=${mode.slice('fault-'.length)}` : ''
-    const sample = MODE_SAMPLES.get(mode) ?? SAMPLE
+    const sample = declaration.url
+    /**
+     * The WASM backend only wins when WebCodecs is unavailable, and this box has WebCodecs. The
+     * corpus claims a `wasm` route for the video-only VP8 sample, so the only way to make that
+     * claim real is to take WebCodecs away for this one run, exactly as the standalone WASM
+     * acceptance route does.
+     */
+    if (declaration.pipeline === 'wasm') forceWebCodecsInitializationFailure()
+    const wasmOptions = declaration.pipeline === 'wasm' ? { wasmBaseUrl: new URL('/wasm/', location.href).href } : {}
+    const sessionOptions = {
+      intent,
+      native: { preload: 'auto', crossOrigin: 'anonymous' },
+      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6, operationTimeoutMs: OPERATION_TIMEOUT_MS },
+      customAudio: { operationTimeoutMs: OPERATION_TIMEOUT_MS },
+      subtitles: { enabled: true },
+      ...wasmOptions,
+    } as const
     player = new MXPlayer({
       target: host,
       source: { kind: 'url', url: new URL(`${sample}${fault}`, location.href).href },
-      intent,
-      native: { preload: 'auto', crossOrigin: 'anonymous' },
-      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6, operationTimeoutMs: OPERATION_TIMEOUT_MS },
-      customAudio: { operationTimeoutMs: OPERATION_TIMEOUT_MS },
-      subtitles: { enabled: true },
+      ...sessionOptions,
     })
     trackEvents(player, events, stateTransitions, cueTimes, engineErrors)
-    await player.ready
+    await withBudget('ready', player.ready)
     if (mode.startsWith('fault-')) throw new Error('FAULT_ROUTE_UNEXPECTEDLY_LOADED')
     subtitleTrackIds = player.listSubtitleTracks().map((track) => track.id)
-    if (EMBEDDED_SUBTITLE_MODES.has(mode)) {
+    if (declaration.embeddedSubtitles) {
       const embedded = subtitleTrackIds.find((id) => id.startsWith('embedded-'))
       if (embedded === undefined) throw new Error('EMBEDDED_SUBTITLE_TRACK_MISSING')
-      await player.selectSubtitleTrack(embedded)
+      await withBudget('select-embedded-subtitles', player.selectSubtitleTrack(embedded))
     } else {
       const subtitleText = await fetch('/quality-subtitles/basic-timing.srt').then((response) => response.text())
       const subtitleFile = new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' })
-      const track = await player.addSubtitleTrack({ kind: 'file', file: subtitleFile, format: 'srt' })
-      await player.selectSubtitleTrack(track.id)
+      const track = await withBudget('add-subtitles', player.addSubtitleTrack({ kind: 'file', file: subtitleFile, format: 'srt' }))
+      await withBudget('select-subtitles', player.selectSubtitleTrack(track.id))
     }
     selectedSubtitleTrackId = player.selectedSubtitleTrack
-    await player.play()
-    await waitFor('first-playback-position', () => player?.playback.currentTime !== null && (player?.playback.currentTime ?? 0) >= 500_000, PLAYBACK_WAIT_MS)
+    await withBudget('play', player.play())
+    await waitUntil('first-playback-position', () => player?.playback.currentTime !== null && (player?.playback.currentTime ?? 0) >= 500_000, PLAYBACK_WAIT_MS)
     const cueTime = player.playback.currentTime ?? 0
-    await waitFor('first-cue', () => cueTimes.length > 0, CUE_WAIT_MS)
-    await player.pause()
+    await waitUntil('first-cue', () => cueTimes.length > 0, CUE_WAIT_MS)
+    player.pause()
     const paused = player.playback.currentTime
     await delay(150)
     if (Math.abs((player.playback.currentTime ?? 0) - (paused ?? 0)) > 100_000) throw new Error('PAUSE_DID_NOT_HOLD')
-    await player.seek(1_500_000)
-    await player.seek(700_000)
+    await withBudget('seek-forward', player.seek(1_500_000))
+    await withBudget('seek-back', player.seek(700_000))
     observedEpoch = Math.max(observedEpoch, player.audioClock?.epoch ?? player.playback.sessionEpoch)
-    await player.play()
-    await waitFor('ended', () => player?.playback.state === 'ended', PLAYBACK_WAIT_MS)
+    await withBudget('replay', player.play())
+    await waitUntil('ended', () => player?.playback.state === 'ended', PLAYBACK_WAIT_MS)
     const initialSize = surfaceSize(host.querySelector('canvas,video'))
-    await player.load({
+    await withBudget('reload', player.load({
       target: host,
       source: { kind: 'url', url: new URL(`${sample}?source=second`, location.href).href },
-      intent,
-      native: { preload: 'auto', crossOrigin: 'anonymous' },
-      customVideo: { renderer: 'canvas2d', maxDecodedFrames: 6, maxDecodeQueueSize: 6, operationTimeoutMs: OPERATION_TIMEOUT_MS },
-      customAudio: { operationTimeoutMs: OPERATION_TIMEOUT_MS },
-      subtitles: { enabled: true },
-    })
+      ...sessionOptions,
+    }))
     sourceChanges += 1
     if (mode === 'webcodecs') player.setVideoTransform({ outputWidth: 240, outputHeight: 135, devicePixelRatio: 2 })
-    await player.play()
-    await waitFor('replay-position', () => (player?.playback.currentTime ?? 0) >= 250_000, PLAYBACK_WAIT_MS)
+    await withBudget('play-second-source', player.play())
+    await waitUntil('replay-position', () => (player?.playback.currentTime ?? 0) >= 250_000, PLAYBACK_WAIT_MS)
     player.pause()
     const surface = host.querySelector('canvas,video')
     if (surface instanceof HTMLVideoElement) { surface.style.width = '480px'; surface.style.height = '270px' }
@@ -222,7 +258,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       subtitleTrackIds, selectedSubtitleTrackId, videoCodec: videoCodec(player),
       audioClockSource: player.audioClock?.source ?? null,
       audioRenderedFrames: player.audioClock?.renderedFrames ?? 0,
-      engineErrorCode: engineErrors[0] ?? null,
+      engineErrorCode: engineErrors[0]?.code ?? null,
       attemptErrorCodes: attemptErrors(player),
       errorCode: null,
     }
@@ -252,7 +288,7 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
       subtitleTrackIds, selectedSubtitleTrackId, videoCodec: videoCodec(player),
       audioClockSource: player?.audioClock?.source ?? null,
       audioRenderedFrames: player?.audioClock?.renderedFrames ?? 0,
-      engineErrorCode: engineErrors[0] ?? null,
+      engineErrorCode: engineErrors[0]?.code ?? null,
       attemptErrorCodes,
       errorCode: code,
     }
@@ -260,13 +296,13 @@ async function execute(mode: string, host: HTMLElement): Promise<void> {
   }
 }
 
-function trackEvents(player: MXPlayer, events: string[], stateTransitions: string[], cueTimes: number[], engineErrors: string[]): void {
+function trackEvents(player: MXPlayer, events: string[], stateTransitions: string[], cueTimes: number[], engineErrors: EngineErrorRecord[]): void {
   const names: readonly EngineEventName[] = ['ready', 'statechange', 'timeupdate', 'buffering', 'backendchange', 'subtitlecuechange', 'playbackchange', 'error']
   for (const name of names) player.on(name, (payload) => {
     events.push(name)
     if (name === 'statechange' && 'current' in payload && typeof payload.current === 'string') stateTransitions.push(payload.current)
     if (name === 'subtitlecuechange' && 'cues' in payload && payload.cues.length > 0) cueTimes.push(payload.currentTime)
-    if (name === 'error' && 'error' in payload && typeof payload.error.code === 'string') engineErrors.push(payload.error.code)
+    if (name === 'error' && 'error' in payload && typeof payload.error.code === 'string') engineErrors.push({ code: payload.error.code, recoverable: payload.error.recoverable })
   })
 }
 
@@ -316,21 +352,39 @@ function errorCode(cause: unknown): string {
   return 'MEDIA_ACCEPTANCE_FAILED'
 }
 
-class AcceptanceTimeout extends Error {
+interface EngineErrorRecord {
+  readonly code: string
+  readonly recoverable: boolean
+}
+
+/** Carries a code so `errorCode` reports the reason rather than a generic acceptance failure. */
+class AcceptanceFailure extends Error {
   readonly code: string
 
-  constructor(step: string) {
-    super(`MEDIA_ACCEPTANCE_TIMEOUT_${step}`)
-    this.code = `MEDIA_ACCEPTANCE_TIMEOUT_${step}`
+  constructor(code: string) {
+    super(code)
+    this.code = code
   }
 }
 
-async function waitFor(step: string, predicate: () => boolean, timeoutMs: number): Promise<void> {
-  const deadline = performance.now() + timeoutMs
-  while (!predicate()) {
-    if (performance.now() >= deadline) throw new AcceptanceTimeout(step)
-    await delay(20)
+/**
+ * The WASM decoder is an atomic fallback: it is only ranked when the WebCodecs candidate cannot be
+ * constructed. Probing stays on the real implementation so the candidate is still created and then
+ * fails, which is the fallback the corpus `wasm` claim is about.
+ */
+function forceWebCodecsInitializationFailure(): void {
+  const realVideoDecoder = globalThis.VideoDecoder
+  if (typeof realVideoDecoder === 'undefined') return
+  class FailingVideoDecoder {
+    static isConfigSupported(config: VideoDecoderConfig): Promise<VideoDecoderSupport> {
+      return realVideoDecoder.isConfigSupported(config)
+    }
+
+    constructor(_init: VideoDecoderInit) {
+      throw new DOMException('WebCodecs candidate rejected for the WASM acceptance mode', 'NotSupportedError')
+    }
   }
+  Object.defineProperty(globalThis, 'VideoDecoder', { configurable: true, value: FailingVideoDecoder })
 }
 
 function delay(milliseconds: number): Promise<void> {

@@ -5,11 +5,14 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const manifest = JSON.parse(await readFile(resolve(root, 'tests/media/manifest.json'), 'utf8'))
+const modes = JSON.parse(await readFile(resolve(root, 'apps/demo/src/media-acceptance-modes.json'), 'utf8'))
 const failures = []
 const ids = new Set()
 const subtitleFormats = new Map(manifest.subtitles.map((entry) => [entry.id, entry.format]))
 const hashPattern = /^[a-f0-9]{64}$/
 const wasmEvidenceStatuses = new Set(['approved-pending-real-browser', 'not-covered-by-vp8-video-only-scope', 'not-implemented'])
+/** `claims` names the `expectedPaths` entry a mode is evidence for; these two are not route claims. */
+const nonRouteClaims = new Set(['no-route', null])
 
 if (manifest.schemaVersion !== 1) failures.push('schemaVersion must equal 1')
 if (!manifest.license || !manifest.source || !manifest.generator?.version) failures.push('corpus provenance is incomplete')
@@ -32,7 +35,15 @@ for (const sample of manifest.samples) {
   if (!['mp4', 'webm', 'matroska'].includes(sample.container)) failures.push(`${sample.id}: unsupported container label`)
   if (![8, 10].includes(sample.video?.bitDepth)) failures.push(`${sample.id}: invalid bit depth`)
   if (!sample.video?.codec || !sample.video?.profile || (sample.audio !== null && !sample.audio?.codec)) failures.push(`${sample.id}: codec metadata incomplete`)
-  if (!Array.isArray(sample.expectedPaths) || sample.expectedPaths.length === 0) failures.push(`${sample.id}: expectedPaths missing`)
+  if (!Array.isArray(sample.expectedPaths)) failures.push(`${sample.id}: expectedPaths missing`)
+  /**
+   * An empty `expectedPaths` is a real finding rather than an omission — HEVC has no route in any
+   * browser measured — but it has to say why, or it is indistinguishable from a sample nobody
+   * finished describing.
+   */
+  else if (sample.expectedPaths.length === 0 && typeof sample.noRouteReason !== 'string') {
+    failures.push(`${sample.id}: expectedPaths is empty without a noRouteReason`)
+  }
   if (!sample.minimumReproduction) failures.push(`${sample.id}: minimum reproduction missing`)
   for (const subtitleId of sample.subtitleIds) if (!subtitleFormats.has(subtitleId)) failures.push(`${sample.id}: unknown subtitle ${subtitleId}`)
   // A muxed subtitle track has no file of its own, so its declaration is the only record of which
@@ -45,6 +56,37 @@ for (const sample of manifest.samples) {
   }
   if (sample.wasmStatus !== undefined && !wasmEvidenceStatuses.has(sample.wasmStatus)) failures.push(`${sample.id}: invalid WASM evidence status`)
 }
+/**
+ * Cross-check the acceptance mode table against the corpus in both directions. A corpus route claim
+ * with no mode is a claim nothing verifies, which is how `mp4-h264`, `mp4-av1` and the WASM entry
+ * came to declare paths that had never been played; a mode naming a sample or a path the corpus does
+ * not declare is a test measuring something the corpus does not describe.
+ */
+const sampleFiles = new Map(manifest.samples.map((sample) => [sample.path.replace(/^fixtures\//, ''), sample]))
+const claimedPaths = new Map(manifest.samples.map((sample) => [sample.id, new Set()]))
+for (const [id, mode] of Object.entries(modes)) {
+  const sample = sampleFiles.get(mode.sample)
+  if (sample === undefined) { failures.push(`acceptance mode ${id}: sample ${mode.sample} is not in the corpus`); continue }
+  if (!['native', 'custom', 'wasm'].includes(mode.pipeline)) failures.push(`acceptance mode ${id}: unknown pipeline ${mode.pipeline}`)
+  if (nonRouteClaims.has(mode.claims)) {
+    if (mode.claims === 'no-route' && sample.expectedPaths.length > 0) {
+      failures.push(`acceptance mode ${id}: claims no route but ${sample.id} declares ${sample.expectedPaths.join(', ')}`)
+    }
+    continue
+  }
+  if (!sample.expectedPaths.includes(mode.claims)) {
+    failures.push(`acceptance mode ${id}: claims ${mode.claims} which ${sample.id} does not declare`)
+    continue
+  }
+  claimedPaths.get(sample.id).add(mode.claims)
+}
+for (const sample of manifest.samples) {
+  const covered = claimedPaths.get(sample.id)
+  for (const path of sample.expectedPaths) {
+    if (!covered.has(path)) failures.push(`${sample.id}: declares the ${path} path but no acceptance mode claims it`)
+  }
+}
+
 const dimensions = {
   containers: new Set(manifest.samples.map((sample) => sample.container)),
   videoCodecs: new Set(manifest.samples.map((sample) => sample.video.codec)),
