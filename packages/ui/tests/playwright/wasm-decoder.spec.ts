@@ -1,7 +1,32 @@
 import { expect, test, type Page } from '@playwright/test'
+// The probes live with the media acceptance cases because that is where they are centralised; these
+// two cases need the same question asked of the browser, so they ask it there rather than again here.
+import { hasWebCodecs } from '../../../../tests/browser/media/capabilities'
 
-test('renders real VP8 WASM frames on a non-isolated single-thread path', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'chromium-desktop' && testInfo.project.name !== 'firefox-simulated')
+/**
+ * Both cases drive the real libvpx WASM decoder, and both need the browser to have WebCodecs -- not
+ * to decode with it, but because of what the fallback is made of. `VideoFrame` is how libvpx's
+ * planes leave linear memory, and `VideoDecoder` has to exist for the acceptance harness to hand the
+ * strategy engine a WebCodecs candidate that fails, which is the premise of the atomic fallback.
+ *
+ * They used to skip on `testInfo.project.name` instead: the first ran only in `chromium-desktop` and
+ * `firefox-simulated`, the second only in `chromium-desktop`. That is a guess about browsers wearing
+ * the shape of a decision, and the guess was wrong in both directions. Measured with the guard
+ * removed, the first also passes in `chromium-mobile` and the second also passes in
+ * `chromium-mobile` and `firefox-simulated`, so three project-case pairs were being withheld for no
+ * reason; and both fail in `webkit-simulated`, which the name list happened to exclude but says
+ * nothing about. Playwright's WebKit has no `VideoFrame`, and the isolated case shows what that
+ * costs: it selects the WASM backend, fetches the threaded variant and then the SIMD one, and ends
+ * in `WASM_ACCEPTANCE_CANVAS_BLANK` with nothing ever drawn.
+ *
+ * `crossOriginIsolated` is deliberately not probed. The isolated case needs it, but it is set by the
+ * demo server's COOP/COEP headers rather than by the browser, so a probe would convert a regression
+ * in those headers into a skip. WebKit reaches the threaded variant and then the SIMD one here, so
+ * every browser in this matrix satisfies the threading prerequisites; a browser that does not would
+ * fail this case loudly, which is the outcome worth having until someone can measure one.
+ */
+test('renders real VP8 WASM frames on a non-isolated single-thread path', async ({ page }) => {
+  test.skip(!await hasWebCodecs(page), `WebCodecs unavailable in ${test.info().project.name}`)
   const diagnostics = collectDiagnostics(page)
   await page.goto('/?wasmAcceptance=single', { waitUntil: 'domcontentloaded' })
   const status = await waitForAcceptanceStatus(page)
@@ -22,8 +47,8 @@ test('renders real VP8 WASM frames on a non-isolated single-thread path', async 
   expect(diagnostics.wasmRequests.some((url) => url.includes('threaded'))).toBe(false)
 })
 
-test('falls back from threaded initialization to SIMD without interrupting playback', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'chromium-desktop')
+test('falls back from threaded initialization to SIMD without interrupting playback', async ({ page }) => {
+  test.skip(!await hasWebCodecs(page), `WebCodecs unavailable in ${test.info().project.name}`)
   const diagnostics = collectDiagnostics(page)
   await page.goto('/?wasmAcceptance=isolated', { waitUntil: 'domcontentloaded' })
   const status = await waitForAcceptanceStatus(page)

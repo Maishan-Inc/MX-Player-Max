@@ -1,6 +1,8 @@
 # 渲染模式切换 + Matroska + 失败归因 验收记录
 
-日期：2026-08-23；2026-08-25 复测全部门禁，并补上 `media-webkit-automation` 的浏览器能力探测
+日期：2026-08-23；2026-08-25 复测全部门禁，并补上 `media-webkit-automation` 的浏览器能力探测；2026-08-27
+把最后两条按 project 名自限的 WASM 用例改为按浏览器能力探测，并让原生探针分辨「夹具没被服务」与
+「浏览器解不动」
 
 对应计划：[`docs/superpowers/plans/2026-08-23-render-mode-switch-and-mkv-ai-plan.md`](../superpowers/plans/2026-08-23-render-mode-switch-and-mkv-ai-plan.md)
 
@@ -15,7 +17,8 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 
 ## 自动化结果
 
-下表为 2026-08-25 的实测结果，每一行都是这一轮亲手跑出来的。
+下表为 2026-08-25 的实测结果，每一行都是这一轮亲手跑出来的。浏览器相关的四行在 2026-08-27
+随能力探测改动重跑，标注了当天的日期。
 
 | 命令 | 结果 |
 |---|---|
@@ -24,11 +27,11 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`；2026-08-25 这轮无需再生成，`pnpm test` 与该文件一致 |
 | `pnpm quality:acceptance-drift` | passed |
 | `pnpm quality:media` | passed；10 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（含 3 条 Matroska） |
-| `pnpm test:browser` | passed；74 passed / 32 skipped / 0 failed，9 个 project。这一轮 `media-firefox` 在无音频那一侧；音频那一侧会多 8 条 passed、少 8 条 skipped（本轮改动前跑整套是 83 passed / 23 skipped / 0 failed，那次 firefox 在有音频侧、且 HEVC 拒绝那条当时还在 WebKit 里跑） |
+| `pnpm test:browser` | passed；77 passed / 29 skipped / 0 failed，9 个 project（2026-08-27 重测）。这一轮 `media-firefox` 在无音频那一侧；音频那一侧会多 8 条 passed、少 8 条 skipped。相比 2026-08-25 的 74 passed / 32 skipped 多的 3 条，是两条 libvpx WASM 用例不再按 project 名自限之后在 `chromium-mobile` 与 `firefox-simulated` 跑出来的 |
 | `pnpm test:browser --project=media-chromium --project=media-firefox` | passed；0 failed。`media-chromium` 每轮都是 26 passed / 0 skipped；`media-firefox` 视本机音频状态而定，实测两种都出现过——26 passed / 0 skipped 与 18 passed / 8 skipped（跳掉的是 8 条有音轨的用例），见下「音频输出能力是间歇的」一节 |
 | `pnpm test:browser --project=media-webkit-automation` | passed；7 passed / 19 skipped / 0 failed，连续两轮一致。19 条 skip 全部由浏览器能力探测决定，见下「Playwright WebKit」一节 |
-| `pnpm test:browser --project=chromium-desktop --project=chromium-mobile` | passed；10 passed / 2 skipped（2 条 skip 是 WASM 用例按 project 名自限） |
-| `pnpm test:browser --project=firefox-simulated --project=webkit-simulated` | passed；9 passed / 3 skipped（同上） |
+| `pnpm test:browser --project=chromium-desktop --project=chromium-mobile` | passed；12 passed / 0 skipped（2026-08-27 重测；原先的 2 条 skip 是 WASM 用例按 project 名自限，改按浏览器 WebCodecs 探测后 `chromium-mobile` 也跑，两条都过） |
+| `pnpm test:browser --project=firefox-simulated --project=webkit-simulated` | passed；10 passed / 2 skipped（2026-08-27 重测；2 条 skip 都落在 `webkit-simulated`，由 WebCodecs 探测决定——Playwright WebKit 没有 `VideoFrame`，libvpx 的 plane 出不了线性内存。`firefox-simulated` 现在两条 WASM 用例都跑。同一条命令另有一次把 `webkit-simulated` 的 `ui.spec.ts` overlay 用例跑成 1 failed，重跑即过，整套 `pnpm test:browser` 那一轮也是 0 failed，属本机 WebKit 抖动，不是本次改动引入的） |
 | `pnpm test:browser --project=performance-chromium --project=performance-firefox` | passed；4 passed，隔离/非隔离各一条。这两个 project 的 `dependencies` 覆盖其余 7 个，因此该命令与整套 `pnpm test:browser` 跑的是同一批 |
 | `pnpm release:manifest` | passed；audio-worklet 自包含断言在位 |
 | `pnpm verify:packages` | passed；19 个公开包 |
@@ -56,6 +59,7 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 | 任务 5 | 运行时 Native ↔ Custom 切换（`switchRenderMode`） | `packages/core/tests/render-mode-switch.test.ts` 5 条（双向切换、epoch 递增与位置连续、同档 no-op、未载入时拒绝、失败回滚）；`tests/browser/media/render-switch.spec.ts` 真切一次并断言渲染器 native→canvas2d、位置不回退、字幕轨存活（chromium 与 firefox 都通过） |
 | A8 | 引擎自身的编码范围传进策略层，范围外不产出候选；撤下的候选以 `skipped` attempt 保留原因 | `packages/strategy/tests/strategy.test.ts` 7 条（三类范围外、两种 intent 的候选 id、范围内仍排出、未声明时行为不变、纯视频轨）；`packages/decoder-webcodecs/tests/codec-scope.test.ts` 24 条声明与构造器逐编码比对；`packages/core/tests/decision-trace.test.ts` 的 skipped attempt 索引；`player-ui-menu.test.ts` 2 条归因优先级与报告行 |
 | 2026-08-25 | 媒体浏览器用例改为「先探浏览器能力，再无条件断言」，探针集中在 `tests/browser/media/capabilities.ts` | 三个 media project 的 26 条用例；探针问的是浏览器（媒体元素能否解出这条夹具、`VideoDecoder` / `AudioDecoder` / `VideoFrame` / `AudioContext` 在不在、`AudioContext` 能否 running），不是验收结果的 `status === 'unsupported'`，因此 A7 与 A1 那两类「回归表现为 skip 而不是转红」的陷阱在整个目录里都堵上了 |
+| 2026-08-27 | 两条 libvpx WASM 用例（`packages/ui/tests/playwright/wasm-decoder.spec.ts`）从按 project 名自限改为复用同一份 `hasWebCodecs` 探针；`playsNatively` 在解码之前先确认 `/quality-media/` 真的把这条夹具发了出来 | 语料一旦停止被服务，8 条调用 `playsNatively` 的用例加 `render-switch` 那条、一共 9 条会转红而不是跳过——实测把夹具名换成不存在的一条，`media-chromium` 与 `media-webkit-automation` 都以 `Corpus fixture is not served: GET /quality-media/... answered 404 with 0 bytes` 失败；改动前媒体元素对 404 报的是 `MEDIA_ERR_SRC_NOT_SUPPORTED`（Chromium 与 Firefox 都实测过），与「浏览器拒收这个编码」同一个码，探针只会答 false 然后跳过。WASM 那两条的 skip 现在只在没有 `VideoFrame` 的浏览器出现，`chromium-mobile` 与 `firefox-simulated` 由此各多跑起来 |
 
 ## 手工核对（构建产物 + preview）
 

@@ -5,7 +5,7 @@ import type { Page } from '@playwright/test'
  *
  * Every case in this directory drives the real engine against a real fixture, so a browser that
  * cannot decode the fixture at all has to skip rather than fail. The trap is picking the wrong
- * question to ask. Two shapes have already burned this suite:
+ * question to ask. Two shapes have already burned this suite, and a third was waiting to:
  *
  * - Skipping on the acceptance harness's own `status === 'unsupported'` forgives whatever the
  *   engine happened to report, and a regression reports exactly those codes. The VP9 derivation
@@ -16,6 +16,10 @@ import type { Page } from '@playwright/test'
  *   then refuses or stalls on most of those files. A native-route probe therefore has to decode:
  *   load the very fixture the case plays into a bare media element and require decoded video out
  *   of the other side.
+ * - A probe that decodes has to be sure the browser received something to decode. A fixture the
+ *   corpus no longer serves fails to load for a reason that has nothing to do with the browser, and
+ *   answering `false` to that would hand the same green-by-skipping outcome back through the front
+ *   door. A probe may only answer `false` for a browser gap; anything else has to throw.
  */
 
 /**
@@ -38,17 +42,32 @@ export interface WebCodecsRequirement {
 /**
  * Whether the media element can actually produce decoded video for a corpus fixture.
  *
+ * The bytes are fetched before they are decoded, because a browser that never received them cannot
+ * have an opinion about them. `/quality-media/` is an explicit allowlist in the demo's Vite config,
+ * so a renamed fixture or a moved route answers 404 -- and both Chromium and Firefox surface that
+ * 404 through the media element as an `error` event carrying `MEDIA_ERR_SRC_NOT_SUPPORTED`, the
+ * very code a browser that genuinely refuses the codec reports. Reading it as a browser gap would
+ * turn every native case green by skipping it the moment the corpus stopped being served, which is
+ * the shape this file exists to prevent, so a serving break throws instead.
+ *
  * `videoWidth` is part of the answer, not decoration: Chromium reaches `readyState 4` on the HEVC
  * sample while silently dropping the video track, and reports a zero width when it does.
  */
 export async function playsNatively(page: Page, sample: string): Promise<boolean> {
+  const url = `/quality-media/${sample}`
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  return page.evaluate(async ([url, timeoutMs]) => {
+  const outcome = await page.evaluate(async ([target, timeoutMs]) => {
+    // The range keeps the transfer to a byte where the browser forwards the header, but the answer
+    // only has to say that bytes exist -- the Range contract itself has a case of its own.
+    const response = await fetch(target, { headers: { Range: 'bytes=0-0' } })
+    const bytes = (await response.arrayBuffer()).byteLength
+    const served = response.ok && bytes > 0
+    if (!served) return { status: response.status, bytes, served, decoded: false }
     const element = document.createElement('video')
     element.muted = true
     element.preload = 'auto'
     element.crossOrigin = 'anonymous'
-    element.src = url
+    element.src = target
     try {
       const loaded = await new Promise<boolean>((resolve) => {
         const timer = setTimeout(() => resolve(false), timeoutMs)
@@ -57,12 +76,16 @@ export async function playsNatively(page: Page, sample: string): Promise<boolean
         element.addEventListener('error', () => settle(false), { once: true })
         element.load()
       })
-      return loaded && element.videoWidth > 0 && element.videoHeight > 0
+      return { status: response.status, bytes, served, decoded: loaded && element.videoWidth > 0 && element.videoHeight > 0 }
     } finally {
       element.removeAttribute('src')
       element.load()
     }
-  }, [`/quality-media/${sample}`, NATIVE_PROBE_TIMEOUT_MS] as const)
+  }, [url, NATIVE_PROBE_TIMEOUT_MS] as const)
+  if (!outcome.served) {
+    throw new Error(`Corpus fixture is not served: GET ${url} answered ${outcome.status} with ${outcome.bytes} bytes`)
+  }
+  return outcome.decoded
 }
 
 /**
@@ -88,12 +111,13 @@ export async function decodesWithWebCodecs(page: Page, requirement: WebCodecsReq
 /**
  * Whether the browser implements WebCodecs at all, as opposed to accepting a particular codec.
  *
- * Two kinds of case need this rather than a codec probe. The WASM fallback case needs it because
+ * Three kinds of case need this rather than a codec probe. The WASM fallback cases need it because
  * libvpx decodes into linear memory and then wraps the planes in a `VideoFrame`, and because that
  * fallback only ranks once a WebCodecs candidate has been built and rejected -- which is the thing
- * the case asserts. The HEVC refusal case needs it because a browser with no WebCodecs refuses HEVC
- * for a reason that has nothing to do with the engine's own codec scope, so the case would be
- * asserting a coincidence.
+ * those cases assert; that covers the `wasm-vp8` mode here and both cases in
+ * `packages/ui/tests/playwright/wasm-decoder.spec.ts`. The HEVC refusal case needs it because a
+ * browser with no WebCodecs refuses HEVC for a reason that has nothing to do with the engine's own
+ * codec scope, so the case would be asserting a coincidence.
  */
 export async function hasWebCodecs(page: Page): Promise<boolean> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })

@@ -23,7 +23,7 @@ WASM 实机矩阵不再被 Phase 10 审批阻塞，状态改为可执行的 `pen
 | `pnpm typecheck` | passed；20 个 workspace package/app 构建并严格类型检查 |
 | `pnpm test` | passed；总数见 `evidence/current-test-counts.json`，与生成计数一致 |
 | `pnpm build` | passed；20 个 workspace package/app 完整构建 |
-| `pnpm test:browser` | passed；74 passed / 32 skipped / 0 failed，9 个 Playwright projects（2026-08-25 重测）。构成：UI 16 passed；approved Phase 10.2 WASM 3 passed / 5 skipped，作为自动化回归但不替代实机证据；媒体 51 passed / 27 skipped；performance 4 passed。skip 的来源有三处：WASM 用例按 project 名自限 5 条、`media-webkit-automation` 按浏览器能力探测 19 条、`media-firefox` 在本机音频不可用那一侧跳 8 条有音轨的用例。音频可用那一侧同一套会多 8 条 passed，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
+| `pnpm test:browser` | passed；77 passed / 29 skipped / 0 failed，9 个 Playwright projects（2026-08-27 重测）。构成：UI 16 passed；approved Phase 10.2 WASM 6 passed / 2 skipped，作为自动化回归但不替代实机证据；媒体 51 passed / 27 skipped；performance 4 passed。skip 的来源仍是三处，但三处现在都由浏览器能力探测决定：`media-webkit-automation` 19 条、`media-firefox` 在本机音频不可用那一侧的 8 条有音轨用例、WASM 两条在 `webkit-simulated` 因没有 `VideoFrame` 跳掉。原先的「WASM 用例按 project 名自限 5 条」已经不存在，那两条改按浏览器能力探测后在 `chromium-mobile` 与 `firefox-simulated` 都跑得过，整套因此多 3 条 passed。音频可用那一侧同一套会再多 8 条 passed，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
 | `pnpm quality:media` | passed；媒体 + 字幕 fixture 的 FFprobe 元数据和 SHA-256 一致；语料条目以 `tests/media/manifest.json` 为准，2026-08-23 起新增两条 Matroska，见 [`render-mode-mkv-acceptance.md`](render-mode-mkv-acceptance.md) |
 | `pnpm --filter @mx-player-max/postprocess test` | passed；含数值 kernel、packed graph、真实 device-lost、epoch、fallback、pool 长时复用/容量边界和 `copyExternalImageToTexture` usage 回归 |
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`，`pnpm test --check` 与其一致 |
