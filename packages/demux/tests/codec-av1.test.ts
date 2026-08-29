@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { FileRangeLoader, probeContainer } from '../src/index'
 import { createAv1C, type Av1COptions } from './fixtures/av1'
+import { createEbmlFixture } from './fixtures/ebml'
 import { createMp4Fixture } from './fixtures/mp4'
 
 async function av1Codec(config: Uint8Array): Promise<string | undefined> {
   const fixture = createMp4Fixture({ videoSampleEntry: { type: 'av01', configType: 'av1C', config } })
   const selection = await probeContainer(new FileRangeLoader(new File([fixture], 'fixture.mp4')))
+  return selection.metadata.tracks[0]?.codec
+}
+
+async function matroskaAv1Codec(config: Uint8Array): Promise<string | undefined> {
+  const fixture = createEbmlFixture({ docType: 'matroska', videoCodecId: 'V_AV1', videoCodecPrivate: config })
+  const selection = await probeContainer(new FileRangeLoader(new File([fixture], 'fixture.mkv')))
   return selection.metadata.tracks[0]?.codec
 }
 
@@ -25,6 +32,23 @@ describe('MP4 AV1 codec strings', () => {
     ['12-bit profile 2', { profile: 2, highBitDepth: true, twelveBit: true }, 'av01.2.00M.12'],
   ] as const)('derives %s', async (_label, options: Av1COptions, expected) => {
     await expect(av1Codec(createAv1C(options))).resolves.toBe(expected)
+  })
+
+  /**
+   * Matroska muxes the same `av1C` record into the track's CodecPrivate, so an AV1 track there had
+   * the identical trap: a bare `av01` no browser accepts, with the fix sitting unread in the
+   * container. FFmpeg 9.0 writes exactly this layout for V_AV1 tracks.
+   */
+  it('derives the string from a Matroska CodecPrivate', async () => {
+    const config = Uint8Array.of(0x81, 0x00, 0x0c, 0x00, 0x0a, 0x0b, 0x00, 0x00, 0x00, 0x04, 0x3c, 0xfe, 0xcc, 0xda, 0xf9, 0x80, 0x40)
+    await expect(matroskaAv1Codec(config)).resolves.toBe('av01.0.00M.08')
+  })
+
+  /** The Matroska spec leaves CodecPrivate optional, and a missing record must not fabricate a string. */
+  it('keeps a bare av01 for a Matroska track without CodecPrivate', async () => {
+    const fixture = createEbmlFixture({ docType: 'matroska', videoCodecId: 'V_AV1' })
+    const selection = await probeContainer(new FileRangeLoader(new File([fixture], 'fixture.mkv')))
+    expect(selection.metadata.tracks[0]).toMatchObject({ codecId: 'V_AV1', codec: 'av01' })
   })
 
   /**

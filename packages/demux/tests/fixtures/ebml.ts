@@ -74,6 +74,7 @@ function trackEntry(options: {
   number: number
   type: 1 | 2
   codecId: string
+  codecPrivate?: Uint8Array
 }): Uint8Array {
   const common = [
     uintElement(0xd7, options.number),
@@ -85,6 +86,7 @@ function trackEntry(options: {
   if (options.type === 1) {
     return element(0xae, concat(
       ...common,
+      ...(options.codecPrivate === undefined ? [] : [element(0x63a2, options.codecPrivate)]),
       uintElement(0x23e383, 33_333_333),
       element(0xe0, concat(uintElement(0xb0, 320), uintElement(0xba, 180))),
     ))
@@ -129,6 +131,8 @@ export interface EbmlFixtureOptions {
   blockGroup?: boolean
   videoCodecId?: string
   audioCodecId?: string
+  /** Muxed into the video TrackEntry as CodecPrivate, the way Matroska stores an AV1 `av1C` record. */
+  videoCodecPrivate?: Uint8Array
   /** Replaces the placeholder video frame, so a codec that carries its profile in-band can be read. */
   videoPayload?: Uint8Array
   /** Clears the key-frame flag on the video SimpleBlock. */
@@ -147,7 +151,12 @@ export function createEbmlFixture(options: EbmlFixtureOptions = {}): Uint8Array 
     element(0x4489, float64(2_000)),
   ))
   const tracks = element(0x1654ae6b, concat(
-    trackEntry({ number: 1, type: 1, codecId: options.videoCodecId ?? (docType === 'webm' ? 'V_VP9' : 'V_MPEG4/ISO/AVC') }),
+    trackEntry({
+      number: 1,
+      type: 1,
+      codecId: options.videoCodecId ?? (docType === 'webm' ? 'V_VP9' : 'V_MPEG4/ISO/AVC'),
+      ...(options.videoCodecPrivate === undefined ? {} : { codecPrivate: options.videoCodecPrivate }),
+    }),
     trackEntry({ number: 2, type: 2, codecId: options.audioCodecId ?? (docType === 'webm' ? 'A_OPUS' : 'A_AAC') }),
   ))
   const lacing = options.lacing ?? (options.fixedLacing === true ? 'fixed' : 'none')

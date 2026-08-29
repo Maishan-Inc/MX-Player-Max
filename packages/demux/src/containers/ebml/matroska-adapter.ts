@@ -3,6 +3,7 @@ import { DemuxError } from '../../range/errors'
 import type { RangeLoader } from '../../range/types'
 import { checkedAdd } from '../../range/validation'
 import { BoundedRangeReader } from '../bounded-reader'
+import { av1CodecString } from '../av1'
 import { resolveDemuxLimits, type DemuxLimits, type DemuxLimitsInput } from '../limits'
 import type { ContainerAdapter, ContainerProbeResult, Demuxer } from '../types'
 import { parseVp9KeyframeHeader, vp9CodecString } from '../vp9'
@@ -145,6 +146,13 @@ function mapCodec(codecId: string, codecPrivate: ArrayBuffer | undefined): strin
       if (objectType > 0) return `mp4a.40.${objectType}`
     }
     return 'mp4a.40.2'
+  }
+  // Matroska writes an AV1 track's `av1C` record into CodecPrivate, so the container can complete
+  // the codec string the same way MP4's `av1C` sample-entry child does. The Matroska spec leaves
+  // CodecPrivate optional, so a track without one keeps the bare `av01` both browsers reject.
+  if (codecId === 'V_AV1' && codecPrivate !== undefined) {
+    const av1 = av1CodecString(new Uint8Array(codecPrivate))
+    if (av1 !== null) return `av01.${av1}`
   }
   return codecs[codecId]
 }
