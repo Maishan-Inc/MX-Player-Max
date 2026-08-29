@@ -50,6 +50,29 @@
   `mkv-h264-baseline-8bit-aac-embedded-ass` 声明了 `native` 却没有任何模式跑它，于是补了
   `mkv-embedded-subs-native`。验收模式表因此从代码里的三个 `Set` 变成一份数据。
 
+- 语料补上第四条 Matroska 夹具 `mkv-vp9-p0-8bit-opus.mkv`（VP9 profile 0 + Opus）与两个验收模式
+  `mkv-vp9-native` / `mkv-vp9`。三条既有 Matroska 样本全是 H.264 或 VP8，于是「Matroska + 需要从
+  关键帧推导 codec 字符串」这个组合一条用例都没有覆盖：EBML 不给 VP9 轨任何 CodecPrivate，profile、
+  level 与 bit depth 只能从第一个关键帧的 uncompressed header 里读出来。当初把这条夹具从 VP9 改成
+  VP8 的理由——裸 `vp09` 在任何容器里都没有自定义路径——已经被 `vp09.PP.LL.DD` 推导本身消掉。
+  `expectedPaths` 是量出来的，不是从 WebM VP9 那条抄的：Chromium 对
+  `video/x-matroska; codecs="vp9,opus"` 依然返回空串，但对推导出的 `vp09.00.11.08` 返回 `probably`，
+  媒体元素也真解出画面（Chromium 32 帧、Firefox 35 帧），所以 `["native","webcodecs"]` 两条都成立。
+  两条用例的 skip 只由浏览器探测决定，随后无条件断言 `videoCodec === 'vp09.00.11.08'`——把 EBML 的
+  推导抽掉后它们在两个浏览器上都**转红**而不是 skip（自定义档 `STRATEGY_NO_VIABLE_BACKEND`、
+  原生档 `NATIVE_NOT_SUPPORTED`）。夹具以 `-bitexact` 生成，否则 matroska 复用器每次写一个随机
+  SegmentUID，两次生成的哈希不同，`quality:media` 会直接拒收。
+
+- 语料补上 AV1 与 10-bit VP9 的 Matroska 组合：新增夹具 `mkv-av1-p0-8bit-opus.mkv`
+  （AV1 Main 8-bit + Opus）与 `mkv-vp9-p2-10bit-opus.mkv`（VP9 profile 2 10-bit + Opus），各配
+  原生 + 自定义两条验收模式与四条用例。此前 13 条样本里没有任何 AV1 的 Matroska 覆盖，
+  10-bit VP9 也只有 WebM 一半。两条的 `expectedPaths` 都是量出来的：
+  Chromium 151 与 Firefox 153 对 `video/x-matroska` 配裸 `av01` / 裸 `vp09` 一律返回空串，
+  配推导出的 `av01.0.00M.08` / `vp09.02.11.10` 都返回 `probably`，媒体元素也真解出画面，
+  所以 `["native","webcodecs"]` 两条都成立；四条用例在两个浏览器全部通过
+  （`media-webkit-automation` 按能力探测跳过——Playwright WebKit 没有 WebCodecs）。
+  10-bit 那条在 Firefox 自定义管线整条脚本 45 s，仍是语料里最慢的一档。
+
 ### Changed
 
 - `mp4-hevc-main10-10bit-aac` 的 `expectedPaths` 从 `["native"]` 改成 `[]`，并新增
@@ -131,6 +154,49 @@
   `customVideo.maxDecodedFrames` 不足 `lookahead + 2` 时请求以 `CUSTOM_INVALID_QUEUE_CONFIG` 拒绝。
 
 ### Fixed
+
+- Matroska 的 AV1 轨道现在从 CodecPrivate 推导完整的 `av01.P.LLT.DD` codec 字符串。
+  FFmpeg 9.0 给 `V_AV1` 轨写的 CodecPrivate 就是一条 `av1C` 配置记录（本仓库夹具实测 17 字节，
+  以 `0x81` marker/version 开头），而 EBML 适配器把它整个忽略、只发布裸 `av01`——裸 `av01` 被
+  Chromium 与 Firefox 的 `VideoDecoder.isConfigSupported` 和 `canPlayType` 一致拒绝（实测两者对
+  `av01.0.00M.08` 都回 supported/`probably`、对裸 `av01` 都回 false/空串），于是一条其实能播的
+  Matroska AV1 文件在任何档位都报 `STRATEGY_NO_VIABLE_BACKEND` / `NATIVE_NOT_SUPPORTED`。
+  修法与 A7 的 VP9 同构、但更简单：`av1C` 不用碰帧，profile、level、tier、bit depth 四个字段
+  就躺在记录的前三个字节里。读取器抽到 `packages/demux/src/containers/av1.ts` 供两个容器共用，
+  MP4 侧行为逐字不变（同一份记录从 `av1C` box 里读）；Matroska 侧缺 CodecPrivate 或记录非法时
+  保留裸 `av01`，与 VP9 关键帧推导失败时保留裸 `vp09` 的回落策略一致。四条新用例
+  （AV1-in-Matroska 两条路径 × 两浏览器）全部通过；变异验证：撤掉 EBML 侧的推导后四条全部转红，
+  轨道退回裸 `av01`。顺带实测出一个容易踩的坑：`VideoDecoder` 在 Chromium 151 / Firefox 153 的
+  **页面全局**里并不存在，只在 Worker 作用域暴露（`typeof VideoDecoder` 在主线程是
+  `undefined`），探测要进 Worker 做——这也解释了引擎为什么把 WebCodecs 解码放进 Worker。
+
+- 浏览器造不出 `VideoFrame` 时，WASM 候选不再排出来、也不再穿着「MXWF 描述符非法」的码失败。
+  libvpx 解进线性内存后要把三个平面包成一个 `VideoFrame` 交出去，Playwright 的 WebKit 没有这个
+  构造函数。此前策略层只看「声明过解码器」就排出候选，于是这条路径被选中、走到 `ready`、真的解码进
+  了 WASM 内存，最后在交付那一步报 `WASM_FRAME_ABI_INVALID`——排查的人会去查 WASM 模块和帧 ABI，
+  而描述符每个字段都是合法的，真实原因是浏览器没有 WebCodecs。实测轨迹：
+  `{ status: 'failed', errorCode: 'WASM_FRAME_ABI_INVALID', backend: 'wasm', renderer: 'canvas2d',
+  attemptErrorCodes: [], stateTransitions: ['ready', 'error'] }`。
+  两处修好：`CapabilityContext` 新增 `wasmFrameOutput`，形状照 `wasmDecoders` 与 `webCodecsCodecs`
+  两条先例——由 `@mx-player-max/decoder-wasm-vpx` 的 `describeWasmFrameOutput()` 提供，声明格式的唯一
+  解释器 `decoderFrameOutputUsable()` 放在 `types`，引擎在构造 context 时传入（`core` 只多一个实参）。
+  能力位缺失时不再产出 WASM 候选，宿主不声明时行为与从前完全一致。`abi.ts` 那处换成新的
+  `WASM_FRAME_OUTPUT_UNAVAILABLE`：`WASM_FRAME_ABI_INVALID` 留给「模块与宿主对帧布局的理解不一致」，
+  借用它会把浏览器能力缺口说成 ABI 问题。构造函数名只写在一处（`WASM_FRAME_OUTPUT_CONSTRUCTOR`），
+  声明与帧工厂因此不可能对「哪个构造函数必须存在」产生分歧，单测钉住这一点。
+  候选是**withheld 而不是静默消失**：策略层记一条 exclusion 带上后端本会报的码，否则失败只剩汇总码
+  `STRATEGY_NO_VIABLE_BACKEND`，复制出来的报告里这条候选会整个不见。轨迹机制无需改动，它本来就把
+  exclusion 记成 `status: 'skipped'` 的 attempt，而验收采集器只收 `status === 'failed'` 的码
+  （见 3ca101f），所以断言 `attemptErrorCodes` 的用例一条都没动。
+  有 `VideoFrame` 的浏览器行为不变，这是刻意的：`wasm-vp8` 验收模式靠打瘸 `VideoDecoder` 构造函数、
+  保留 `isConfigSupported` 来让 WebCodecs 候选建出来再失败，`VideoFrame` 在那里是存在的，
+  新能力位不该把它一起挡掉。实测 `media-chromium` 与 `media-firefox` 各 26 passed / 0 skipped，
+  `wasm-vp8` 仍是 `backend: 'wasm'`、`status: 'passed'`；`media-webkit-automation` 仍
+  7 passed / 19 skipped / 0 failed。WebKit 下直接跑 `wasm-vp8` 模式实测：`WASM_FRAME_ABI_INVALID`
+  + `backend: 'wasm'` + `stateTransitions: ['ready','error']` 变为 `STRATEGY_NO_VIABLE_BACKEND`
+  + `backend: null` + `['error']`，WASM 模块一次都没去取；`attemptErrorCodes` 两边都是 `[]`。
+  变异验证：去掉策略层那处判定，「缺能力位时不产出候选」转红；把 `abi.ts` 的码换回
+  `WASM_FRAME_ABI_INVALID`，「浏览器能力缺口不报描述符非法」转红。
 
 - 媒体浏览器用例不再在 Playwright WebKit 上报一批假失败。这个 project 的用例从 10 条长到 26 条，
   新增的里面有 10 条红，原因不在引擎：Playwright 的 WebKit 构建没有 WebCodecs

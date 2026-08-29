@@ -68,6 +68,14 @@
       "minimumReproduction": "Matroska with a second codec pair: probe, playback, seek, ended", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-covered-by-vp8-video-only-scope"
     },
     {
+      "id": "mkv-vp9-p0-8bit-opus", "path": "fixtures/mkv-vp9-p0-8bit-opus.mkv", "container": "matroska",
+      "video": { "codec": "vp9", "profile": "Profile 0", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": ["srt-basic-timing"], "durationSeconds": 3.008, "bytes": 117102,
+      "sha256": "2f7f872958787a848b742b5b718e85c6a72f11f72cb8eaf02334fef065561916",
+      "minimumReproduction": "The one sample that pairs Matroska with a codec string the demuxer has to derive from the first keyframe: probe, playback, seek and ended on both paths, with the video track reported as vp09.00.11.08. Measured 2026-08-28 that the container does not narrow the route once that string is complete — Chromium 151 answers the empty string for `video/x-matroska; codecs=\"vp9,opus\"` but `probably` for the derived string, and a media element given the file decodes 32 frames there and 35 in Firefox 153", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+    },
+    {
       "id": "mkv-h264-baseline-8bit-aac-embedded-ass", "path": "fixtures/mkv-h264-baseline-8bit-aac-embedded-ass.mkv", "container": "matroska",
       "video": { "codec": "h264", "profile": "Constrained Baseline", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
       "audio": { "codec": "aac", "profile": "LC", "sampleRate": 48000, "channels": 1 },
@@ -84,6 +92,22 @@
       "subtitleIds": [], "durationSeconds": 3, "bytes": 152640,
       "sha256": "0a23314493e35f5a8585d332d6177ad33977eff18a40a6aa7bf19842e340ee56",
       "minimumReproduction": "AV1 Main capability and decode result", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+    },
+    {
+      "id": "mkv-av1-p0-8bit-opus", "path": "fixtures/mkv-av1-p0-8bit-opus.mkv", "container": "matroska",
+      "video": { "codec": "av1", "profile": "Main", "bitDepth": 8, "pixelFormat": "yuv420p", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": [], "durationSeconds": 3.008, "bytes": 145032,
+      "sha256": "fc26a3fbc6d578cea6ef64c0c4a9bc81f97082e002ff1b06e61cef3f3eab1526",
+      "minimumReproduction": "The only AV1-in-Matroska sample: FFmpeg 9.0 muxes the av1C record into the track CodecPrivate, and the EBML adapter reads it into av01.0.00M.08. Measured 2026-08-29 that the container narrows neither route once that string exists — Chromium 151 and Firefox 153 answer probably for video/x-matroska with the derived string and the empty string for a bare av01, and a media element given the file decodes it in both (Chromium loadeddata with decoded frames; Firefox reaches loadeddata, total frames only advance during playback)", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
+    },
+    {
+      "id": "mkv-vp9-p2-10bit-opus", "path": "fixtures/mkv-vp9-p2-10bit-opus.mkv", "container": "matroska",
+      "video": { "codec": "vp9", "profile": "Profile 2", "bitDepth": 10, "pixelFormat": "yuv420p10le", "width": 320, "height": 180, "frameRate": "30/1" },
+      "audio": { "codec": "opus", "profile": null, "sampleRate": 48000, "channels": 1 },
+      "subtitleIds": [], "durationSeconds": 3.008, "bytes": 128245,
+      "sha256": "16d1fada228a38985a670c61a7d9b69324bd5d977d4d19e8f28738b65d5c90eb",
+      "minimumReproduction": "10-bit VP9 profile 2 in the container whose VP9 tracks carry no CodecPrivate, so the track only routes through the keyframe-derived vp09.02.LL.10. Measured 2026-08-29 in Chromium 151 and Firefox 153: canPlayType answers probably for the derived string and the empty string for a bare vp09 in both, and a media element given the file decodes it in both", "expectedPaths": ["native", "webcodecs"], "wasmStatus": "not-implemented"
     },
     {
       "id": "mp4-hevc-main10-10bit-aac", "path": "fixtures/mp4-hevc-main10-10bit-aac.mp4", "container": "mp4",

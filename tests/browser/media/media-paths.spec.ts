@@ -216,9 +216,11 @@ test.describe('real media SDK paths', () => {
    *
    * The probe asks whether the browser has WebCodecs at all rather than for a codec: libvpx decodes
    * into linear memory and then wraps the planes in a `VideoFrame`, so a browser with none of it
-   * cannot finish the WASM path either. Playwright WebKit gets as far as `ready` and then reports
-   * `WASM_FRAME_ABI_INVALID` from the missing constructor, which is a browser gap wearing the code
-   * of a malformed descriptor.
+   * cannot finish the WASM path either. Playwright WebKit is such a browser, and the strategy layer
+   * now withholds the candidate there rather than letting a session reach `ready` and fail on the
+   * handover -- so the mode ends as `STRATEGY_NO_VIABLE_BACKEND`, with the reason kept in the trace
+   * as a `wasm-custom` exclusion carrying `WASM_FRAME_OUTPUT_UNAVAILABLE`. Either way there is no
+   * WASM playback to assert, which is what this skip is about.
    */
   test('plays the video-only VP8 sample through the libvpx WASM fallback', async ({ page }) => {
     test.skip(!await hasWebCodecs(page), `WebCodecs unavailable in ${test.info().project.name}`)
@@ -331,6 +333,98 @@ test.describe('real media SDK paths', () => {
       expect(result.nonEmptyPixels).toBeGreaterThan(100)
       expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
     }
+  })
+
+  /**
+   * The corpus carried three Matroska samples and not one of them needed a derived codec string, so
+   * "Matroska plus a keyframe-derived string" was the one combination in the matrix nothing covered.
+   * EBML gives a VP9 track no CodecPrivate at all, which makes this the only sample where the
+   * container adapter and the VP9 derivation have to work together.
+   *
+   * The container turned out not to narrow either route, which is a measurement rather than an
+   * inheritance from the WebM VP9 entry: Chromium 151 answers the empty string for
+   * `video/x-matroska; codecs="vp9,opus"` and `probably` for the derived `vp09.00.11.08`, and a media
+   * element handed the file decodes 32 frames there and 35 in Firefox 153.
+   *
+   * `videoCodec` is asserted alongside playback because it is the only part of the result that names
+   * the derivation. Removing it from the EBML adapter was measured here: the track comes back as a
+   * bare `vp09`, the custom mode ends `STRATEGY_NO_VIABLE_BACKEND` and the native one
+   * `NATIVE_NOT_SUPPORTED`, in both browsers -- so both cases turn red, which is the point of
+   * skipping on a browser probe rather than on the harness's own `unsupported`.
+   */
+  test('plays VP9/Opus in Matroska through the custom pipeline with a derived codec string', async ({ page }) => {
+    test.skip(!await decodesWithWebCodecs(page, { video: 'vp09.00.11.08', audio: 'opus' }), `WebCodecs VP9/Opus unavailable in ${test.info().project.name}`)
+    test.skip(!await rendersAudio(page), `Audio rendering unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'mkv-vp9')
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp9', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null, videoCodec: 'vp09.00.11.08' })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.audioClockSource).toBe('audio-context')
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  test('plays VP9/Opus in Matroska on the Native path', async ({ page }) => {
+    test.skip(!await playsNatively(page, 'mkv-vp9-p0-8bit-opus.mkv'), `Native Matroska VP9/Opus unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'mkv-vp9-native')
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp9-native', backend: 'html-video', surface: 'video', errorCode: null, videoCodec: 'vp09.00.11.08' })
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+  })
+
+  /**
+   * AV1 had never met Matroska in the corpus, and the EBML adapter used to publish a bare `av01`
+   * for a `V_AV1` track even though FFmpeg muxes the `av1C` record into the track's CodecPrivate —
+   * the record held every field of the string and nothing read it. A bare `av01` is rejected by
+   * both `canPlayType` and `VideoDecoder.isConfigSupported` in Chromium and Firefox (measured
+   * 2026-08-29: both answer probably for `av01.0.00M.08` and the empty string for `av01`), so this
+   * case pins the CodecPrivate derivation the same way the MKV VP9 cases pin the keyframe one.
+   */
+  test('plays AV1/Opus in Matroska through the custom pipeline with the codec string read from CodecPrivate', async ({ page }) => {
+    test.skip(!await decodesWithWebCodecs(page, { video: 'av01.0.00M.08', audio: 'opus' }), `WebCodecs AV1/Opus unavailable in ${test.info().project.name}`)
+    test.skip(!await rendersAudio(page), `Audio rendering unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'mkv-av1')
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-av1', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null, videoCodec: 'av01.0.00M.08' })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.audioClockSource).toBe('audio-context')
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  test('plays AV1/Opus in Matroska on the Native path', async ({ page }) => {
+    test.skip(!await playsNatively(page, 'mkv-av1-p0-8bit-opus.mkv'), `Native Matroska AV1/Opus unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'mkv-av1-native')
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-av1-native', backend: 'html-video', surface: 'video', errorCode: null, videoCodec: 'av01.0.00M.08' })
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
+  })
+
+  /**
+   * 10-bit VP9 had WebM coverage only: the Matroska half of that dimension was empty until this
+   * fixture. The track carries no CodecPrivate, so both routes depend on the keyframe-derived
+   * `vp09.02.LL.10` — the 10-bit counterpart of the profile-0 case above.
+   */
+  test('plays 10-bit VP9 profile 2 in Matroska through the custom pipeline', async ({ page }) => {
+    test.skip(!await decodesWithWebCodecs(page, { video: 'vp09.02.11.10', audio: 'opus' }), `WebCodecs 10-bit VP9/Opus unavailable in ${test.info().project.name}`)
+    test.skip(!await rendersAudio(page), `Audio rendering unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'mkv-vp9-p2')
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp9-p2', backend: 'webcodecs', renderer: 'canvas2d', surface: 'canvas', errorCode: null, engineErrorCode: null, videoCodec: 'vp09.02.11.10' })
+    expect(result.attemptErrorCodes).toEqual([])
+    expect(result.audioRenderedFrames).toBeGreaterThan(0)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+  })
+
+  test('plays 10-bit VP9 profile 2 in Matroska on the Native path', async ({ page }) => {
+    test.skip(!await playsNatively(page, 'mkv-vp9-p2-10bit-opus.mkv'), `Native Matroska 10-bit VP9/Opus unavailable in ${test.info().project.name}`)
+    const result = await runAcceptance(page, 'mkv-vp9-p2-native')
+    expect(result).toMatchObject({ status: 'passed', mode: 'mkv-vp9-p2-native', backend: 'html-video', surface: 'video', errorCode: null, videoCodec: 'vp09.02.11.10' })
+    expect(result.nonEmptyPixels).toBeGreaterThan(100)
+    expect(result.presentedFrames).toBeGreaterThan(0)
+    expect(result.stateTransitions).toEqual(expect.arrayContaining(['playing', 'paused', 'ended']))
   })
 
   test('keeps Native video and WebCodecs canvas pixel statistics consistent', async ({ page }) => {

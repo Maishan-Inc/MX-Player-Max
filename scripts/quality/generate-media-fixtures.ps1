@@ -20,6 +20,15 @@ Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 330),'-ma
 # changes on every run, which the corpus verification would reject.
 Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 990),'-map_metadata','-1','-bitexact','-c:v','libx264','-preset','medium','-profile:v','baseline','-level','3.0','-pix_fmt','yuv420p','-x264-params','threads=1:lookahead_threads=1:sliced_threads=0','-c:a','aac','-b:a','96k','-shortest','-y',(Join-Path $output 'mkv-h264-baseline-8bit-aac.mkv'))
 Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 220),'-map_metadata','-1','-bitexact','-c:v','libvpx','-deadline','good','-cpu-used','4','-threads','1','-pix_fmt','yuv420p','-b:v','350k','-c:a','libopus','-b:a','64k','-shortest','-y',(Join-Path $output 'mkv-vp8-p0-8bit-opus.mkv'))
+# The only sample that pairs Matroska with a codec string the demuxer has to derive from a keyframe:
+# EBML gives a VP9 track no CodecPrivate, so this is the container half of that derivation.
+Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 1320),'-map_metadata','-1','-bitexact','-c:v','libvpx-vp9','-deadline','good','-cpu-used','4','-row-mt','0','-threads','1','-pix_fmt','yuv420p','-b:v','300k','-c:a','libopus','-b:a','64k','-shortest','-y',(Join-Path $output 'mkv-vp9-p0-8bit-opus.mkv'))
+# AV1 in Matroska has no CodecPrivate either — the EBML adapter sees a bare `av01`, so this is the
+# container half of whatever codec string the AV1 track ends up publishing.
+Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 1210),'-map_metadata','-1','-bitexact','-c:v','libaom-av1','-cpu-used','8','-threads','1','-row-mt','0','-pix_fmt','yuv420p','-b:v','260k','-c:a','libopus','-b:a','64k','-shortest','-y',(Join-Path $output 'mkv-av1-p0-8bit-opus.mkv'))
+# The 10-bit VP9 half of the Matroska matrix: profile 2 needs the keyframe-derived bit depth to
+# reach `vp09.02.LL.10`, in the container whose VP9 tracks carry no CodecPrivate.
+Invoke-Fixture @('-f','lavfi','-i',$video,'-f','lavfi','-i',($audio -f 1450),'-map_metadata','-1','-bitexact','-c:v','libvpx-vp9','-deadline','good','-cpu-used','4','-row-mt','0','-threads','1','-profile:v','2','-pix_fmt','yuv420p10le','-b:v','350k','-c:a','libopus','-b:a','64k','-shortest','-y',(Join-Path $output 'mkv-vp9-p2-10bit-opus.mkv'))
 # The embedded ASS track is a stream copy of basic-style.ass, so the muxed CodecPrivate keeps that
 # script's own `Format: Layer, Start, End, Style, Text` line. No -shortest here: the subtitle stream
 # ends at 2.60 s and -shortest would truncate the video and audio to match.

@@ -51,8 +51,8 @@
       "name": "@mx-player-max/decoder-wasm-vpx",
       "directory": "packages/decoder-wasm-vpx",
       "testFiles": 4,
-      "tests": 13,
-      "passed": 13,
+      "tests": 16,
+      "passed": 16,
       "skipped": 0,
       "todo": 0
     },
@@ -87,8 +87,8 @@
       "name": "@mx-player-max/demux",
       "directory": "packages/demux",
       "testFiles": 7,
-      "tests": 77,
-      "passed": 77,
+      "tests": 79,
+      "passed": 79,
       "skipped": 0,
       "todo": 0
     },
@@ -141,8 +141,8 @@
       "name": "@mx-player-max/strategy",
       "directory": "packages/strategy",
       "testFiles": 1,
-      "tests": 27,
-      "passed": 27,
+      "tests": 30,
+      "passed": 30,
       "skipped": 0,
       "todo": 0
     },
@@ -159,8 +159,8 @@
       "name": "@mx-player-max/types",
       "directory": "packages/types",
       "testFiles": 8,
-      "tests": 23,
-      "passed": 23,
+      "tests": 25,
+      "passed": 25,
       "skipped": 0,
       "todo": 0
     },
@@ -185,8 +185,8 @@
   ],
   "totals": {
     "testFiles": 104,
-    "tests": 701,
-    "passed": 701,
+    "tests": 711,
+    "passed": 711,
     "skipped": 0,
     "todo": 0
   }

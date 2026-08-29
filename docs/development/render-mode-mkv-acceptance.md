@@ -2,7 +2,9 @@
 
 日期：2026-08-23；2026-08-25 复测全部门禁，并补上 `media-webkit-automation` 的浏览器能力探测；2026-08-27
 把最后两条按 project 名自限的 WASM 用例改为按浏览器能力探测，并让原生探针分辨「夹具没被服务」与
-「浏览器解不动」
+「浏览器解不动」；2026-08-28 补上计划 §7 第 2 项缺的那次手工核对——native 档下两个 AI 开关灰显，
+同日补回该项另一半的 MKV（VP9+Opus）夹具与两条用例；2026-08-29 补上语料缺的 AV1-in-Matroska 与
+10-bit VP9-in-Matroska 两条夹具、四条用例，并修掉 EBML 适配器忽略 AV1 CodecPrivate 的缺陷
 
 对应计划：[`docs/superpowers/plans/2026-08-23-render-mode-switch-and-mkv-ai-plan.md`](../superpowers/plans/2026-08-23-render-mode-switch-and-mkv-ai-plan.md)
 
@@ -26,10 +28,10 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 | `pnpm test` | passed；总数见 `evidence/current-test-counts.json`，与生成计数一致 |
 | `pnpm test:update-counts` | 已重新生成 `evidence/current-test-counts.json`；2026-08-25 这轮无需再生成，`pnpm test` 与该文件一致 |
 | `pnpm quality:acceptance-drift` | passed |
-| `pnpm quality:media` | passed；10 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（含 3 条 Matroska） |
-| `pnpm test:browser` | passed；77 passed / 29 skipped / 0 failed，9 个 project（2026-08-27 重测）。这一轮 `media-firefox` 在无音频那一侧；音频那一侧会多 8 条 passed、少 8 条 skipped。相比 2026-08-25 的 74 passed / 32 skipped 多的 3 条，是两条 libvpx WASM 用例不再按 project 名自限之后在 `chromium-mobile` 与 `firefox-simulated` 跑出来的 |
-| `pnpm test:browser --project=media-chromium --project=media-firefox` | passed；0 failed。`media-chromium` 每轮都是 26 passed / 0 skipped；`media-firefox` 视本机音频状态而定，实测两种都出现过——26 passed / 0 skipped 与 18 passed / 8 skipped（跳掉的是 8 条有音轨的用例），见下「音频输出能力是间歇的」一节 |
-| `pnpm test:browser --project=media-webkit-automation` | passed；7 passed / 19 skipped / 0 failed，连续两轮一致。19 条 skip 全部由浏览器能力探测决定，见下「Playwright WebKit」一节 |
+| `pnpm quality:media` | passed；13 个媒体 + 2 个字幕 fixture，SHA-256 与字节数一致（含 6 条 Matroska；2026-08-29 加入 `mkv-av1-p0-8bit-opus.mkv` 与 `mkv-vp9-p2-10bit-opus.mkv` 后重跑） |
+| `pnpm test:browser` | passed；89 passed / 23 skipped / 0 failed，9 个 project，38.5 min（2026-08-28 重测）。这一轮 `media-firefox` 在**有**音频那一侧；无音频那一侧会少 8 条 passed、多 8 条 skipped。相比 2026-08-27 的 77 passed / 29 skipped，多出的 12 条是新增两条 MKV VP9 用例在 `media-chromium` 与 `media-firefox` 各跑起来的 4 条，加上 `media-firefox` 这轮音频可用的 8 条；`media-webkit-automation` 把这两条按能力探测跳过，所以 skipped 是 −8+2 |
+| `pnpm test:browser --project=media-chromium --project=media-firefox` | passed；0 failed。2026-08-29 加入四条新用例（AV1-in-Matroska 与 10-bit VP9-in-Matroska 各两条路径）后重跑，`media-chromium` 32 passed / 0 skipped、`media-firefox` 32 passed / 0 skipped（这一轮音频可用，全部四条新用例都跑了起来）；`media-firefox` 仍视本机音频状态而定，无音频那一侧会跳掉所有带 `rendersAudio` 探针的用例——四条新用例里的两条自定义用例也在其中，见下「音频输出能力是间歇的」一节。10-bit VP9 in Matroska 的自定义用例在 Firefox 整条脚本 45 s，仍是语料里最慢的一档 |
+| `pnpm test:browser --project=media-webkit-automation` | passed；7 passed / 25 skipped / 0 failed（2026-08-29 重跑）。25 条 skip 全部由浏览器能力探测决定，四条新用例也在其中——两条自定义没有 WebCodecs，两条原生的 `playsNatively` 在这里收场，见下「Playwright WebKit」一节 |
 | `pnpm test:browser --project=chromium-desktop --project=chromium-mobile` | passed；12 passed / 0 skipped（2026-08-27 重测；原先的 2 条 skip 是 WASM 用例按 project 名自限，改按浏览器 WebCodecs 探测后 `chromium-mobile` 也跑，两条都过） |
 | `pnpm test:browser --project=firefox-simulated --project=webkit-simulated` | passed；10 passed / 2 skipped（2026-08-27 重测；2 条 skip 都落在 `webkit-simulated`，由 WebCodecs 探测决定——Playwright WebKit 没有 `VideoFrame`，libvpx 的 plane 出不了线性内存。`firefox-simulated` 现在两条 WASM 用例都跑。同一条命令另有一次把 `webkit-simulated` 的 `ui.spec.ts` overlay 用例跑成 1 failed，重跑即过，整套 `pnpm test:browser` 那一轮也是 0 failed，属本机 WebKit 抖动，不是本次改动引入的） |
 | `pnpm test:browser --project=performance-chromium --project=performance-firefox` | passed；4 passed，隔离/非隔离各一条。这两个 project 的 `dependencies` 覆盖其余 7 个，因此该命令与整套 `pnpm test:browser` 跑的是同一批 |
@@ -55,6 +57,9 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 | A4 补 | 内嵌 `S_TEXT/ASS` 轨的容器级覆盖：夹具 `mkv-h264-baseline-8bit-aac-embedded-ass.mkv` + 验收模式 `mkv-embedded-subs` | `media-paths.spec.ts` 的 embedded-ASS 用例（断言选中的是 `embedded-<trackId>`、cue 落在 0.4–1.2 s）；`embedded.test.ts` 的 reduced-format 用例；`verify-media-manifest.mjs` 校验 `embeddedSubtitleTracks` 的引用与格式 |
 | A5 | 失败归因（视频/音频编码、声道、容器、无路径） | `player-ui-menu.test.ts` 7 条，含陈旧轨迹忽略与状态文案回落 |
 | A7 | 从关键帧头部推导 `vp09.PP.LL.DD`（MP4 侧从 `vpcC`） | `packages/demux/tests/codec-vp9.test.ts` 20 条（头部解析、拒绝路径、level 表、两个容器的推导与回落）；4 条浏览器用例，按浏览器 VP9 探测而非验收 `unsupported` 决定 skip |
+| A7 补（2026-08-28） | 第 4 条 Matroska 夹具 `mkv-vp9-p0-8bit-opus.mkv`（VP9+Opus，`-bitexact`）与验收模式 `mkv-vp9-native` / `mkv-vp9`。A4 当初把这条从 VP9 改成 VP8，理由是裸 `vp09` 在任何容器里都没有自定义路径；A7 的推导消掉了那个理由，而「Matroska × 需要从关键帧推导 codec 字符串」在此之前一条用例都没覆盖，这一条同时兑现计划 §7 第 2 项里 MKV（VP9+Opus）那一半 | `media-paths.spec.ts` 两条用例，skip 只由 `playsNatively('mkv-vp9-p0-8bit-opus.mkv')` 与 `decodesWithWebCodecs({ video: 'vp09.00.11.08', audio: 'opus' })` 决定，随后无条件断言 `videoCodec: 'vp09.00.11.08'`。`expectedPaths` 是量出来的而不是照抄 WebM 那条：两条路径在 Chromium 与 Firefox 都通，所以是 `["native","webcodecs"]`。变异验证：把 EBML 的 VP9 推导抽掉后四条（两浏览器 × 两路径）全部**转红**而不是 skip——轨道退回裸 `vp09`，自定义档报 `STRATEGY_NO_VIABLE_BACKEND`、原生档报 `NATIVE_NOT_SUPPORTED` |
+| 语料扩展（2026-08-29） | 两条 Matroska 夹具（均 `-bitexact`）：`mkv-av1-p0-8bit-opus.mkv`（AV1 Main 8-bit + Opus，语料里第一条 AV1 的 Matroska 样本）与 `mkv-vp9-p2-10bit-opus.mkv`（VP9 profile 2 10-bit + Opus，补齐 10-bit VP9 的 Matroska 一半），各配 `*-native` / 自定义两个验收模式 | `media-paths.spec.ts` 四条用例，skip 只由 `decodesWithWebCodecs({ video: 'av01.0.00M.08' | 'vp09.02.11.10', audio: 'opus' })` 与 `rendersAudio` / `playsNatively` 探针决定，随后无条件断言 `videoCodec`。`expectedPaths` 是量出来的（见下「AV1 与 10-bit VP9 的 Matroska 实测」），两条都是 `["native","webcodecs"]`；chromium 与 firefox 各 32 passed，webkit-automation 按探测跳过 |
+| AV1 CodecPrivate 推导（2026-08-29） | EBML 适配器此前忽略 `V_AV1` 轨的 CodecPrivate、只发布裸 `av01`，而 FFmpeg 9.0 写进去的正是一条 `av1C` 记录（夹具实测 17 字节，`0x81` 开头）——profile/level/tier/bit depth 全在记录里却没人读，于是一条能播的 Matroska AV1 文件在任何档位都报无路径。读取器抽到 `containers/av1.ts` 供 MP4 与 EBML 共用，MP4 侧行为逐字不变；Matroska 侧缺记录或记录非法时保留裸 `av01`，回落策略与 VP9 关键帧推导一致 | `packages/demux/tests/codec-av1.test.ts` 两条新用例（Matroska CodecPrivate 推导出 `av01.0.00M.08`；无 CodecPrivate 保留裸 `av01`）；上面四条浏览器用例里的 AV1 两条同时是它的端到端护栏——撤掉推导后转红而不是 skip。顺带量出的一个事实：`VideoDecoder` 在 Chromium 151 / Firefox 153 的页面全局是 `undefined`，只在 Worker 作用域暴露，所以 WebCodecs 探测必须进 Worker 做 |
 | 任务 4 | 轨迹记录「原生候选因 intent 被排除」，UI 给出「切回原生档」提示 | `strategy.test.ts` 6 条（三种自定义 intent 产出 exclusion、两种原生 intent 不产出、原生本就不通时不产出）；`player-ui-menu.test.ts` 4 条（归因顺序、无候选时不提示、陈旧轨迹忽略、状态栏文案） |
 | 任务 5 | 运行时 Native ↔ Custom 切换（`switchRenderMode`） | `packages/core/tests/render-mode-switch.test.ts` 5 条（双向切换、epoch 递增与位置连续、同档 no-op、未载入时拒绝、失败回滚）；`tests/browser/media/render-switch.spec.ts` 真切一次并断言渲染器 native→canvas2d、位置不回退、字幕轨存活（chromium 与 firefox 都通过） |
 | A8 | 引擎自身的编码范围传进策略层，范围外不产出候选；撤下的候选以 `skipped` attempt 保留原因 | `packages/strategy/tests/strategy.test.ts` 7 条（三类范围外、两种 intent 的候选 id、范围内仍排出、未声明时行为不变、纯视频轨）；`packages/decoder-webcodecs/tests/codec-scope.test.ts` 24 条声明与构造器逐编码比对；`packages/core/tests/decision-trace.test.ts` 的 skipped attempt 索引；`player-ui-menu.test.ts` 2 条归因优先级与报告行 |
@@ -67,6 +72,8 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 |---|---|
 | 设置面板切 WebGPU 档 | 启动器同步为 `frame-access`，反向亦同步；诊断面板渲染器 `webgpu` |
 | 切 WebGL2 档 | 渲染器 `webgl2`，AI 两个开关灰显并给出渲染路径原因 |
+| MKV（H.264+AAC）在 native 档下的两个 AI 开关（2026-08-28） | 构建产物 + `vite preview`，headless Chromium（`channel: 'chromium'` + `--enable-unsafe-webgpu`，`locale: zh-CN`，1280×800）载入 `/quality-media/mkv-h264-baseline-8bit-aac.mkv`。native 档：后端 `html-video`、渲染器 `native`、主时钟原生媒体时钟、读出行 `H.264/AVC · 320×180 · 30 fps · AAC · 1ch · 48 kHz · MATROSKA`；设置面板的 AI 区块里超分辨率与插帧两行都是灰的——`input[type=checkbox]` 的 `disabled: true`、`checked: false`、`cursor: not-allowed`，每行下面各跟一条原因文案，两条都是渲染路径那一条「把渲染模式切换到 WebGPU 自定义管线后才能开启。」（AI 区块在这个视口下位于面板折叠线以下，要滚到底才看得见）。在同一个面板里把渲染模式切到 WebGPU 档后：后端 `webcodecs`、渲染器 `webgpu`、主时钟 `audio-context`、启动器同步为 `frame-access`，两个开关**仍然**灰显，但两条文案都换成「此设备没有可用的 WebGPU 适配器。」——即 `device-capability`，因为本机适配器是 `google/swiftshader`、`isFallbackAdapter: true`。三轮结果逐字一致；唯一没跑完的那次是在产物正被重新构建时启动的，超时发生在载入阶段，与开关判定无关。全程无 page error。这一项不需要 GPU：`packages/core/src/index.ts:840` 的判定只看「渲染器不是 WebGPU 或拿不到 `decodedFrameSource`」，与适配器无关；同一对文案的单元覆盖在 `packages/ui/tests/player-ui-menu.test.ts` 与 `packages/core/tests/playback-snapshot.test.ts`，这里补的是端到端的一次实看 |
+| 「三档都能正常播放**且有声音**」里的听觉部分 | **本机核不到，没有用耳朵验过。** MMDevices `Render` 下三个端点这一轮仍然都是 `DeviceState = 4`（NOTPRESENT），没有可听的输出端点。替代证据全在自动化里，钉的是「音频真的被渲染出去了」而不是「听见了」：`mkv` 模式断言 `audioClockSource === 'audio-context'` 且 `audioRenderedFrames > 0`，`mkv-vp8` 模式断言 `audioRenderedFrames > 0`（两条都在 `tests/browser/media/media-paths.spec.ts`）。真正的听觉验收留给有音频输出端点的机器 |
 | `/models/weights/rt4ksr/rt4ksr_x2.mxai` | 200，612953 字节；`/models/../package.json` 取不到仓库文件 |
 | `flower.webm`（VP8 + Vorbis）切自定义档 | 状态文案指出音频编码不支持，报告含 `WEBCODECS_AUDIO_NOT_SUPPORTED`、`audioCodec: vorbis 2ch`；A8 之后候选不再产出，错误码由 `STRATEGY_ALL_CANDIDATES_FAILED` 变为 `STRATEGY_NO_VIABLE_BACKEND`，逐候选原因不变 |
 | HEVC MP4 切自定义档 | 状态文案指出没有可用路径，报告含 `videoCodec: hvc1`、`candidates: none` |
@@ -75,7 +82,10 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 
 - **AI 两个开关在本机无法端到端验收。** WebGPU 只能拿到 `google/swiftshader`
   （`GPUAdapterInfo.isFallbackAdapter === true`），引擎据此一律报 `device-capability`。
-  归入计划的 B 组，需换有真实 GPU 的机器。
+  归入计划的 B 组，需换有真实 GPU 的机器。不可验的是**把它们打开**；灰显与原因文案这一侧已经在上面的
+  手工核对里实看过。同一个判定顺序（`renderer-path` → `device-capability` → `model-unavailable`）还有
+  一个推论：Pages 那条「宿主未配置 AI 模型根目录」的文案在本机也永远出不来，因此计划 §7 第 5 项同样
+  归 B 组，理由写在计划里。
 - **Firefox 需要更长的操作预算。** 本机无 GPU，Firefox 走自定义管线比 Chromium 慢约 60%，
   脚本化验收会间歇性撞上引擎默认的 10 s worker/configure/flush/seek 预算，表现为
   `WEBCODECS_WORKER_FAILED` 或 `CUSTOM_SEEK_FAILED`。验收 harness 把该预算提到 30 s、每个脚本化
@@ -136,9 +146,10 @@ intent 排除记录，以及 2026-08-25 的 WebKit 能力探测。B 组（AI 开
 | WebGPU 适配器 | `google/swiftshader`，`isFallbackAdapter: true`；强制 Vulkan 时无适配器 |
 | 显卡 | NVIDIA GeForce GT 705（Fermi，驱动 23.21.13.9135）+ Microsoft Remote Display Adapter，RDP 会话 |
 | 音频输出端点 | MMDevices `Render` 下三个端点始终 `DeviceState = 4`（NOTPRESENT），`Audiosrv` 与 `AudioEndpointBuilder` 运行中。Chromium 的 `AudioContext` 恒定 1 ms 进入 `running`；Firefox **间歇**——同一天既测到 5/5 秒内 `running`，也测到 3/3 在 25 s 内不落地 |
-| WebCodecs | Chromium 与 Firefox：`VideoDecoder` 支持 vp8 / avc1.42C01E / vp09.PP.LL.DD / av01.0.00M.08，裸 `vp09` 不支持；`AudioDecoder` 支持 opus / mp4a.40.2。Playwright WebKit：整套 WebCodecs 都不存在 |
-| Chrome 原生 Matroska | `avc1+mp4a` → `probably`；`vp8+opus` → `probably`；`vp9+opus` → 空串 |
-| 原生 VP9 codec 字符串 | `video/webm; codecs="vp09, opus"` → 空串；`codecs="vp09.00.11.08, opus"` → `probably`（Chromium 与 Firefox 都是） |
+| WebCodecs | Chromium 与 Firefox：`VideoDecoder` 支持 vp8 / avc1.42C01E / vp09.PP.LL.DD / av01.0.00M.08，裸 `vp09` / 裸 `av01` 不支持；`AudioDecoder` 支持 opus / mp4a.40.2。Playwright WebKit：整套 WebCodecs 都不存在。**注意作用域**：`VideoDecoder` 在两个浏览器的页面全局是 `undefined`，只在 Worker 里暴露（2026-08-29 实测），探测要进 Worker 做 |
+| Chrome 原生 Matroska | `avc1+mp4a` → `probably`；`vp8+opus` → `probably`；`vp9+opus` → 空串；`vp09.00.11.08+opus` → `probably`（2026-08-28 补测，Firefox 对 `vp9+opus` 与推导串都回 `probably`）；`av01+opus` → 空串、`av01.0.00M.08+opus` → `probably`、`vp09.02.11.10+opus` → `probably`（2026-08-29 补测，Chromium 与 Firefox 一致） |
+| 原生 VP9 codec 字符串 | `video/webm; codecs="vp09, opus"` → 空串；`codecs="vp09.00.11.08, opus"` → `probably`（Chromium 与 Firefox 都是）。换成 `video/x-matroska` 同样成立：抽掉 EBML 推导后引擎在两个浏览器都报 `NATIVE_NOT_SUPPORTED`，推导串则 `probably` 且真解出画面（Chromium 32 帧 / Firefox 35 帧，2026-08-28 实测） |
+| AV1 与 10-bit VP9 的 Matroska 实测（2026-08-29） | 探针（headless Playwright + demo preview 服务）量出：两浏览器对 `video/x-matroska` 配裸 `av01` / 裸 `vp09` 一律回空串，配 `av01.0.00M.08` / `vp09.02.11.10` 都回 `probably`；Worker 内 `VideoDecoder.isConfigSupported` 对两条完整串（AV1 带不带 `av1C` description 都一样）回 `supported: true`、对裸 `av01` 回 `false`；媒体元素真解出两条夹具的画面（Chromium 到 `loadeddata` 时已有解码帧；Firefox 到 `loadeddata`，帧数在播放中才前进）。因此两条样本的 `expectedPaths` 都是量出来的 `["native","webcodecs"]`，四条用例在两浏览器全部通过 |
 | Playwright WebKit | Version/26.5、AppleWebKit 605.1.15；`canPlayType` 对任何类型都回 `probably`；只有 H.264 MP4 能真解出画面（且不稳定），Matroska 永远拿不到 metadata |
 | 浏览器版本 | Playwright chromium 151.0.7922.34、firefox 153.0、webkit 26.5 |
 | 工具链 | ffmpeg 9.0、pwsh 7、Playwright chromium（`channel: 'chromium'` + `--enable-unsafe-webgpu`） |
