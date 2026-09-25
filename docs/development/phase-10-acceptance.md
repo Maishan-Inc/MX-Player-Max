@@ -7,6 +7,16 @@
 Phase 10.2 单 Codec 垂直切片已实现，并于 2026-08-20 完成项目所有者授权及许可证/专利审核。
 Phase 10 总体仍未完成：10.3 其余视频 Codec、10.4 WASM 音频和 10.5 FFmpeg 尚未接入。
 
+2026-09-07 增加了 **restricted VP9 技术切片**，但它不改变上述发布结论：
+
+- 使用 libvpx `v1.15.2` / `d168454...` 和 Emscripten 4.0.15 构建了 single、SIMD、threaded 三个真实 VP9 WASM 模块；hash、字节数和 imports 记录于 `packages/decoder-wasm-vpx/wasm/PROVENANCE.md`。
+- 真实 641x359 video-only WebM fixture 经仓库 Demux、WASM Manager 的哈希校验与加载、libvpx、MXWF ABI 解码；profile 0 8-bit 输出 I420，profile 2 10-bit 输出 I420P10。技术测试显式使用 `requireApprovedReview: false`，另有测试确认默认门禁在请求资产前拒绝 restricted VP9。
+- VP9 测试现在直接使用 Demux 输出的轨道，不注入 profile 或位深；插件从 `vp09.PP.LL.DD` 读取两者，拒绝与轨道元数据冲突的声明。`audit:vp9` 会逐一验证三个二进制的大小、SHA-256、导出与导入形态。
+- MXWF ABI 已可校验 I420/I422/I444 与高位深 plane；VP9 profile 0/2 的实际声明只接受 4:2:0，符合 VP9 profile 定义。I422/I444 分别需要 profile 1/3，尚未作为 VP9 可用能力发布。
+- VP9 binary review 状态为 `restricted`。Core 不注册 VP9 declaration，策略不会选择或下载它；npm、Browser manifest、Pages 与 Docker 产物均不包含 VP9 资产。
+- 2026-09-25 本机 Windows 11 已用安装的 Chrome 153.0.8010.48 和 Edge 153.0.4234.48 在隔离/非隔离环境验证真实 Worker：`I420P10` 帧经跨线程转移后 `copyTo()` 得到 691358 字节，visible 641×359，三次 seek/reset 到 epoch 1/2/3，最后仅交付当前 epoch，无旧帧或错误。隔离环境先尝试 threaded，因缺 host glue 回退 SIMD；非隔离环境直接用 SIMD。Playwright Firefox 153 有 `VideoFrame` 但不能构造 `I420P10`，Playwright WebKit 26.5 无 `VideoFrame`。逐行证据见 [`evidence/vp9-browser-2026-09-25.json`](evidence/vp9-browser-2026-09-25.json)，命令为 `pnpm test:vp9:browser`；这些 headless 结果不替代物理 macOS Safari 或 latest-two-stable 全矩阵。
+- 尚未完成：HDR metadata fixture、show-existing-frame/superframe 专项 fixture、Firefox 10-bit 帧格式降级方案、latest-two-stable/physical Safari 矩阵、threaded host glue、许可证/专利发布审查。
+
 本次交付范围固定为审核通过的 libvpx VP8：
 
 - 上游 libvpx `v1.15.2`，commit `d168454ecd099805c675d4a98c66f4891373302a`。

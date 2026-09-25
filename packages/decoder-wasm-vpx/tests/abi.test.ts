@@ -1,6 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ErrorCodes } from '@mx-player-max/types'
-import { createVideoFrameFromMxwf, readMxwfFrameDescriptor, type MxwfFrameFactory } from '../src/index'
+import {
+  WASM_FRAME_OUTPUT_CONSTRUCTOR,
+  createVideoFrameFromMxwf,
+  describeWasmFrameOutput,
+  hasWasmFrameOutput,
+  readMxwfFrameDescriptor,
+  type MxwfFrameFactory,
+} from '../src/index'
+import { createLibvpxVp9Plugin } from '../src/index'
 
 describe('MXWF frame ABI v1', () => {
   it('preserves non-16-aligned I420 stride, color, visible and display metadata', () => {
@@ -38,6 +46,70 @@ describe('MXWF frame ABI v1', () => {
     const fixture = descriptor()
     new DataView(fixture.memory.buffer).setUint32(fixture.pointer + byteOffset, value, true)
     expect(() => readMxwfFrameDescriptor(fixture.memory, fixture.pointer)).toThrowError(expect.objectContaining({ code: ErrorCodes.WASM_FRAME_ABI_INVALID }))
+  })
+})
+
+describe('libvpx VP9 declaration', () => {
+  it('accepts VP9 profile 0 and profile 2 metadata without loading an asset', () => {
+    const plugin = createLibvpxVp9Plugin()
+    expect(plugin.supports('vp09.00.10.08', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp9', width: 641, height: 359, profile: '0', color: { bitDepth: 8, chroma: '420' } })).toBe(true)
+    expect(plugin.supports('vp09.02.10.10', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp9', width: 641, height: 359, profile: '2', color: { bitDepth: 10, chroma: '420' } })).toBe(true)
+    expect(plugin.supports('vp09.02.11.10', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp09.02.11.10', width: 641, height: 359 })).toBe(true)
+    expect(plugin.supports('vp09.02.11.10', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp09.02.11.10', width: 641, height: 359, profile: '0' })).toBe(false)
+    expect(plugin.supports('vp09.02.11.08', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp09.02.11.08', width: 641, height: 359 })).toBe(false)
+    expect(plugin.supports('vp09', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp09', width: 641, height: 359 })).toBe(false)
+    expect(plugin.supports('vp09.02.10.10', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp9', width: 641, height: 359, profile: '2', color: { bitDepth: 10, chroma: '444' } })).toBe(false)
+    expect(plugin.supports('vp09.01.10.08', { id: 1, kind: 'video', codecId: 'V_VP9', codec: 'vp9', width: 641, height: 359, profile: '1', color: { bitDepth: 8 } })).toBe(false)
+  })
+})
+
+/**
+ * The realm having no `VideoFrame` is a browser gap, and it used to be reported as
+ * `WASM_FRAME_ABI_INVALID` — sending whoever read it to the frame ABI and the WASM module when the
+ * descriptor was in fact valid and the decode correct. Playwright's WebKit is such a realm.
+ */
+describe('MXWF frame output', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('reports a missing frame constructor as a browser gap, not a malformed descriptor', () => {
+    const fixture = descriptor()
+    const release = vi.fn()
+
+    expect(hasWasmFrameOutput()).toBe(false)
+    // No factory, so this is the one the decoder Worker actually uses.
+    expect(() => createVideoFrameFromMxwf(fixture.memory, fixture.pointer, release))
+      .toThrowError(expect.objectContaining({ code: ErrorCodes.WASM_FRAME_OUTPUT_UNAVAILABLE }))
+    // The token is owned by the module either way, so the gap must not leak a frame.
+    expect(release).toHaveBeenCalledExactlyOnceWith(7)
+  })
+
+  it('constructs through the default factory once the realm provides the constructor', () => {
+    const fixture = descriptor()
+    const construct = vi.fn()
+    class StubVideoFrame {
+      constructor(data: Uint8Array, init: VideoFrameBufferInit) { construct(data, init) }
+    }
+    vi.stubGlobal(WASM_FRAME_OUTPUT_CONSTRUCTOR, StubVideoFrame)
+
+    const frame = createVideoFrameFromMxwf(fixture.memory, fixture.pointer, vi.fn())
+
+    expect(frame).toBeInstanceOf(StubVideoFrame)
+    expect(construct).toHaveBeenCalledExactlyOnceWith(expect.any(Uint8Array), expect.objectContaining({ format: 'I420' }))
+  })
+
+  /**
+   * The declaration the strategy layer reads and the check the factory performs have to answer the
+   * same question, or the layer withholds a candidate the decoder would have served, or ranks one it
+   * cannot finish. Naming the constructor once is what keeps them together.
+   */
+  it('declares exactly what the frame factory requires', () => {
+    expect(describeWasmFrameOutput()).toEqual({ frameConstructor: 'VideoFrame', available: false })
+
+    vi.stubGlobal(WASM_FRAME_OUTPUT_CONSTRUCTOR, class {})
+
+    expect(describeWasmFrameOutput()).toEqual({ frameConstructor: 'VideoFrame', available: true })
+    expect(describeWasmFrameOutput({})).toEqual({ frameConstructor: 'VideoFrame', available: false })
+    expect(describeWasmFrameOutput({ VideoFrame: 'not a constructor' })).toEqual({ frameConstructor: 'VideoFrame', available: false })
   })
 })
 

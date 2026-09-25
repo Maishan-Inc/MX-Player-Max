@@ -85,6 +85,19 @@ export interface DemoCopy {
     readonly theme: string
     readonly repository: string
     readonly language: string
+    readonly demo: string
+    readonly capabilities: string
+    readonly integration: string
+  }
+  readonly development: {
+    readonly status: string
+    readonly eyebrow: string
+    readonly heading: string
+    readonly intro: string
+    readonly preview: string
+    readonly inProgress: string
+    readonly playerNote: string
+    readonly integrationNote: string
   }
   readonly player: {
     readonly heading: string
@@ -118,7 +131,7 @@ export interface DemoCopy {
     readonly badUrl: string
     readonly badProtocol: string
   }
-  readonly features: readonly CopyItem[]
+  readonly features: readonly (CopyItem & { readonly stage: 'preview' | 'development' })[]
   readonly why: { readonly heading: string; readonly intro: string; readonly reasons: readonly CopyItem[] }
   readonly integration: {
     readonly heading: string
@@ -142,9 +155,19 @@ export interface DemoCopy {
 
 const ZH_CN: DemoCopy = {
   htmlLang: 'zh-CN',
-  documentTitle: 'MX Player Max / 媒体引擎',
-  documentDescription: 'MX Player Max — 模块化 Web 媒体引擎与播放器 SDK',
-  nav: { theme: '切换主题', repository: '代码仓库', language: '切换语言' },
+  documentTitle: 'MX Player Max / 正在开发中',
+  documentDescription: 'MX Player Max 正在开发中。体验模块化 Web 媒体引擎与播放器 SDK 的预览演示。',
+  nav: { theme: '切换主题', repository: '代码仓库', language: '切换语言', demo: '播放器', capabilities: '能力', integration: '接入' },
+  development: {
+    status: '正在开发中',
+    eyebrow: 'MX PLAYER MAX · EARLY PREVIEW',
+    heading: 'Web 媒体引擎，正在开发中。',
+    intro: '在这里预览 Max 的模块化播放体验。当前可试用播放器与诊断面板；更多解码、渲染和 AI 能力仍在持续开发，效果以实际浏览器探测为准。',
+    preview: '可预览',
+    inProgress: '正在开发中',
+    playerNote: '这是开发预览版。可用能力取决于媒体格式、浏览器与运行环境，部分模式仍在完善。',
+    integrationNote: '接入示例展示当前 API 形态；在正式发布前，接口和兼容范围仍可能调整。',
+  },
   player: {
     heading: 'MX Player Max 播放工作台',
     dropTitle: '松手即播',
@@ -178,12 +201,12 @@ const ZH_CN: DemoCopy = {
     badProtocol: '媒体地址必须以 http:// 或 https:// 开头。',
   },
   features: [
-    { title: 'Range 读取', text: '按需请求字节区间，长片不会被一次性下载。' },
-    { title: '原生优先', text: '普通播放走 HTMLVideo，浏览器自己做硬件解码。' },
-    { title: '双渲染路径', text: '逐帧、滤镜与 AI 场景切到 WebCodecs 自定义管线。' },
-    { title: 'WebGPU 合成', text: 'WebGPU 优先，WebGL2 与 Canvas2D 自动降级。' },
-    { title: 'WASM 兜底', text: '浏览器不支持的 Codec 交给按需加载的 WASM 解码器。' },
-    { title: '字幕直出', text: '内嵌与外挂 SRT/ASS 文本轨，字体、字号、位置可调。' },
+    { title: 'Range 读取', text: '远端文件按需读取；源站需支持 CORS 与 HTTP Range。', stage: 'preview' },
+    { title: '原生优先', text: '普通播放优先使用浏览器原生视频管线。', stage: 'preview' },
+    { title: '双渲染路径', text: '逐帧与滤镜场景的自定义管线持续完善中。', stage: 'development' },
+    { title: 'WebGPU 合成', text: 'WebGPU、WebGL2 和 Canvas2D 的兼容能力持续验证中。', stage: 'development' },
+    { title: 'WASM 兜底', text: '按需加载的 Codec 插件与发布清单仍在建设中。', stage: 'development' },
+    { title: '字幕直出', text: '基础 SRT/ASS 可体验，兼容性与样式能力仍在完善。', stage: 'development' },
   ],
   why: {
     heading: '为什么是 MX Player Max',
@@ -260,9 +283,19 @@ const ZH_CN: DemoCopy = {
 
 const ZH_TW: DemoCopy = {
   htmlLang: 'zh-TW',
-  documentTitle: 'MX Player Max / 媒體引擎',
-  documentDescription: 'MX Player Max — 模組化 Web 媒體引擎與播放器 SDK',
-  nav: { theme: '切換主題', repository: '程式碼倉庫', language: '切換語言' },
+  documentTitle: 'MX Player Max / 開發中',
+  documentDescription: 'MX Player Max 開發中。體驗模組化 Web 媒體引擎與播放器 SDK 的預覽版。',
+  nav: { theme: '切換主題', repository: '程式碼倉庫', language: '切換語言', demo: '播放器', capabilities: '能力', integration: '接入' },
+  development: {
+    status: '開發中',
+    eyebrow: 'MX PLAYER MAX · EARLY PREVIEW',
+    heading: 'Web 媒體引擎，開發中。',
+    intro: '在這裡預覽 Max 的模組化播放體驗。目前可以試用播放器和診斷面板；更多解碼、渲染和 AI 能力仍在開發中，實際效果取決於瀏覽器能力探測。',
+    preview: '可預覽',
+    inProgress: '開發中',
+    playerNote: '這是開發預覽版。可用能力取決於媒體格式、瀏覽器和執行環境，部分模式仍在完善。',
+    integrationNote: '接入範例展示目前的 API 形態；正式發布前，介面和相容範圍仍可能調整。',
+  },
   player: {
     heading: 'MX Player Max 播放工作台',
     dropTitle: '放開即播',
@@ -296,12 +329,12 @@ const ZH_TW: DemoCopy = {
     badProtocol: '媒體網址必須以 http:// 或 https:// 開頭。',
   },
   features: [
-    { title: 'Range 讀取', text: '按需請求位元組區間，長片不會被一次性下載。' },
-    { title: '原生優先', text: '一般播放走 HTMLVideo，由瀏覽器自行做硬體解碼。' },
-    { title: '雙渲染路徑', text: '逐格、濾鏡與 AI 情境切到 WebCodecs 自訂管線。' },
-    { title: 'WebGPU 合成', text: 'WebGPU 優先，WebGL2 與 Canvas2D 自動降級。' },
-    { title: 'WASM 後援', text: '瀏覽器不支援的 Codec 交給按需載入的 WASM 解碼器。' },
-    { title: '字幕直出', text: '內嵌與外掛 SRT/ASS 文字軌，字型、字級、位置皆可調。' },
+    { title: 'Range 讀取', text: '遠端檔案按需讀取；來源站須支援 CORS 與 HTTP Range。', stage: 'preview' },
+    { title: '原生優先', text: '一般播放優先使用瀏覽器原生影片管線。', stage: 'preview' },
+    { title: '雙渲染路徑', text: '逐格與濾鏡場景的自訂管線持續完善中。', stage: 'development' },
+    { title: 'WebGPU 合成', text: 'WebGPU、WebGL2 和 Canvas2D 的相容能力持續驗證中。', stage: 'development' },
+    { title: 'WASM 後援', text: '按需載入的 Codec 外掛與發佈清單仍在建置中。', stage: 'development' },
+    { title: '字幕直出', text: '基本 SRT/ASS 可試用，相容性與樣式能力仍在完善。', stage: 'development' },
   ],
   why: {
     heading: '為什麼選 MX Player Max',
@@ -378,9 +411,19 @@ const ZH_TW: DemoCopy = {
 
 const EN: DemoCopy = {
   htmlLang: 'en',
-  documentTitle: 'MX Player Max / Media Engine',
-  documentDescription: 'MX Player Max — a modular web media engine and player SDK',
-  nav: { theme: 'Toggle theme', repository: 'Repository', language: 'Change language' },
+  documentTitle: 'MX Player Max / In Development',
+  documentDescription: 'MX Player Max is in development. Preview the modular web media engine and player SDK.',
+  nav: { theme: 'Toggle theme', repository: 'Repository', language: 'Change language', demo: 'Player', capabilities: 'Capabilities', integration: 'Integrate' },
+  development: {
+    status: 'In development',
+    eyebrow: 'MX PLAYER MAX · EARLY PREVIEW',
+    heading: 'A web media engine in the making.',
+    intro: 'Explore Max’s modular playback experience. The player and diagnostics are ready to preview. More decoding, rendering and AI capabilities are still in development; actual support depends on browser probes.',
+    preview: 'Preview',
+    inProgress: 'In development',
+    playerNote: 'This is a development preview. Available capabilities depend on the media, browser and runtime; some modes are still being refined.',
+    integrationNote: 'These examples show the current API shape. Interfaces and browser coverage may change before release.',
+  },
   player: {
     heading: 'MX Player Max playback workbench',
     dropTitle: 'Drop to play',
@@ -414,12 +457,12 @@ const EN: DemoCopy = {
     badProtocol: 'A media address has to start with http:// or https://.',
   },
   features: [
-    { title: 'Range reads', text: 'Byte ranges are requested on demand, so a long film is never pulled down at once.' },
-    { title: 'Native first', text: 'Ordinary playback runs on HTMLVideo and the browser does its own hardware decoding.' },
-    { title: 'Two render paths', text: 'Frame-accurate, filtered and AI work switches to the WebCodecs custom pipeline.' },
-    { title: 'WebGPU compositing', text: 'WebGPU leads, with automatic fallback to WebGL2 and Canvas2D.' },
-    { title: 'WASM backstop', text: 'Codecs the browser refuses go to a WASM decoder loaded on demand.' },
-    { title: 'Subtitles built in', text: 'Embedded and external SRT/ASS text tracks with adjustable font, size and position.' },
+    { title: 'Range reads', text: 'Remote files are read on demand when the source supports CORS and HTTP Range.', stage: 'preview' },
+    { title: 'Native first', text: 'Ordinary playback favors the browser’s native video pipeline.', stage: 'preview' },
+    { title: 'Two render paths', text: 'The custom path for frame access and filters is still being refined.', stage: 'development' },
+    { title: 'WebGPU compositing', text: 'Coverage across WebGPU, WebGL2 and Canvas2D remains under validation.', stage: 'development' },
+    { title: 'WASM backstop', text: 'On-demand codec plugins and the release manifest are being built.', stage: 'development' },
+    { title: 'Subtitles built in', text: 'Basic SRT/ASS works in preview; coverage and styling are still being refined.', stage: 'development' },
   ],
   why: {
     heading: 'Why MX Player Max',
@@ -496,9 +539,19 @@ const EN: DemoCopy = {
 
 const JA: DemoCopy = {
   htmlLang: 'ja',
-  documentTitle: 'MX Player Max / メディアエンジン',
-  documentDescription: 'MX Player Max — モジュール構成の Web メディアエンジンとプレーヤー SDK',
-  nav: { theme: 'テーマを切り替える', repository: 'リポジトリ', language: '言語を変更' },
+  documentTitle: 'MX Player Max / 開発中',
+  documentDescription: 'MX Player Max は開発中です。モジュール構成の Web メディアエンジンとプレーヤー SDK をプレビューできます。',
+  nav: { theme: 'テーマを切り替える', repository: 'リポジトリ', language: '言語を変更', demo: 'プレーヤー', capabilities: '機能', integration: '導入' },
+  development: {
+    status: '開発中',
+    eyebrow: 'MX PLAYER MAX · EARLY PREVIEW',
+    heading: 'Web メディアエンジンを開発中。',
+    intro: 'Max のモジュール型再生体験をプレビューできます。プレーヤーと診断パネルはお試しいただけます。デコード、描画、AI の機能は引き続き開発中で、実際の対応状況はブラウザーの能力判定によります。',
+    preview: 'プレビュー可',
+    inProgress: '開発中',
+    playerNote: 'これは開発プレビュー版です。利用できる機能はメディア形式、ブラウザー、実行環境によって変わり、一部のモードは調整中です。',
+    integrationNote: '導入例は現在の API の形を示しています。正式公開前にインターフェースや対応ブラウザーが変わる場合があります。',
+  },
   player: {
     heading: 'MX Player Max 再生ワークベンチ',
     dropTitle: 'ドロップで再生',
@@ -532,12 +585,12 @@ const JA: DemoCopy = {
     badProtocol: 'メディアのアドレスは http:// または https:// で始まる必要があります。',
   },
   features: [
-    { title: 'Range 読み込み', text: 'バイト範囲を必要な分だけ要求するので、長尺でも一度に落としません。' },
-    { title: 'ネイティブ優先', text: '通常再生は HTMLVideo に任せ、ブラウザ自身がハードウェアデコードします。' },
-    { title: '二つの描画経路', text: 'フレーム単位、フィルター、AI の用途では WebCodecs のカスタムパイプラインへ切り替えます。' },
-    { title: 'WebGPU 合成', text: 'WebGPU を優先し、WebGL2 と Canvas2D へ自動で降格します。' },
-    { title: 'WASM の受け皿', text: 'ブラウザが対応しないコーデックは必要時に読み込む WASM デコーダーが担います。' },
-    { title: '字幕を標準搭載', text: '内蔵と外部の SRT/ASS テキストトラックに対応し、フォント、サイズ、位置を調整できます。' },
+    { title: 'Range 読み込み', text: '配信元が CORS と HTTP Range に対応する場合、必要な範囲を読み込みます。', stage: 'preview' },
+    { title: 'ネイティブ優先', text: '通常再生ではブラウザー標準の動画パイプラインを優先します。', stage: 'preview' },
+    { title: '二つの描画経路', text: 'フレーム取得とフィルター向けの独自経路を引き続き改善中です。', stage: 'development' },
+    { title: 'WebGPU 合成', text: 'WebGPU、WebGL2、Canvas2D の対応状況を検証中です。', stage: 'development' },
+    { title: 'WASM の受け皿', text: '必要時に読み込むコーデックプラグインと公開一覧を構築中です。', stage: 'development' },
+    { title: '字幕を標準搭載', text: '基本的な SRT/ASS は試せますが、対応範囲とスタイル機能は開発中です。', stage: 'development' },
   ],
   why: {
     heading: 'MX Player Max を選ぶ理由',

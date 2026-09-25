@@ -15,7 +15,7 @@ import type {
   StrategyExclusion,
   WasmDecoderDeclaration,
 } from '@mx-player-max/types'
-import { codecWithinDecoderScope, ErrorCodes } from '@mx-player-max/types'
+import { codecWithinDecoderScope, decoderFrameOutputUsable, ErrorCodes } from '@mx-player-max/types'
 
 export interface PlatformPolicy {
   adjustScores(
@@ -215,26 +215,44 @@ function createCandidates(
   }
 
   if (!aiIntent && renderer && supportsRequiredWasmDecoders(context)) {
-    const reasons = ['declared-wasm-decoder', `renderer:${renderer}`]
-    let score = intent === 'normal' || intent === 'low-power' ? 10 : 40
-    if (context.snapshot.wasmSimd) {
-      score += 10
-      reasons.push('wasm-simd')
+    const frameOutput = context.wasmFrameOutput
+    if (!decoderFrameOutputUsable(frameOutput)) {
+      /**
+       * A declared decoder is not the whole answer either: libvpx decodes into linear memory and
+       * then wraps the planes in a `VideoFrame`, so a realm without that constructor decodes the
+       * media correctly and fails on the handover. Playwright's WebKit reached `ready` this way and
+       * reported the frame-ABI code, which sent readers to the descriptor for a browser gap.
+       */
+      exclusions.push({
+        candidateId: 'wasm-custom',
+        kind: 'wasm',
+        errorCode: ErrorCodes.WASM_FRAME_OUTPUT_UNAVAILABLE,
+        // The interpreter is the only thing that decides, and it reads an absent declaration as
+        // usable, so one is always present here; the fallback is there to keep it the only decider.
+        reasons: sortStrings([`frame-output-unavailable:${frameOutput?.frameConstructor ?? 'unnamed'}`]),
+      })
+    } else {
+      const reasons = ['declared-wasm-decoder', `renderer:${renderer}`]
+      let score = intent === 'normal' || intent === 'low-power' ? 10 : 40
+      if (context.snapshot.wasmSimd) {
+        score += 10
+        reasons.push('wasm-simd')
+      }
+      if (context.snapshot.wasmThreads) {
+        score += 10
+        reasons.push('wasm-threads')
+      }
+      candidates.push({
+        id: 'wasm-custom',
+        kind: 'wasm',
+        videoCodec,
+        audioCodec,
+        renderer,
+        score,
+        reasons: sortStrings(reasons),
+        requires: ['declared-wasm-decoder'],
+      })
     }
-    if (context.snapshot.wasmThreads) {
-      score += 10
-      reasons.push('wasm-threads')
-    }
-    candidates.push({
-      id: 'wasm-custom',
-      kind: 'wasm',
-      videoCodec,
-      audioCodec,
-      renderer,
-      score,
-      reasons: sortStrings(reasons),
-      requires: ['declared-wasm-decoder'],
-    })
   }
 
   return { candidates, exclusions }

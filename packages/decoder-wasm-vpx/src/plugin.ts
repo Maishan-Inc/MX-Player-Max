@@ -7,7 +7,8 @@ import {
 } from '@mx-player-max/decoder-wasm'
 import { ErrorCodes, type DemuxPacket, type TrackInfo } from '@mx-player-max/types'
 import { createVideoFrameFromMxwf, type MxwfFrameFactory } from './abi'
-import { libvpxVp8Manifest } from './manifest'
+import { libvpxVp8Manifest, libvpxVp9Manifest } from './manifest'
+import { resolveSupportedVp9Codec } from './vp9-codec'
 
 interface MxwfExports extends WebAssembly.Exports {
   memory: WebAssembly.Memory
@@ -15,6 +16,7 @@ interface MxwfExports extends WebAssembly.Exports {
   mxwf_alloc(byteLength: number): number
   mxwf_free(pointer: number): void
   mxwf_decoder_create(displayWidth: number, displayHeight: number, primaries: number, transfer: number, matrix: number, range: number): number
+  mxwf_decoder_create_codec?(codec: number, displayWidth: number, displayHeight: number, primaries: number, transfer: number, matrix: number, range: number): number
   mxwf_decoder_decode(handle: number, dataPointer: number, dataLength: number, timestampLo: number, timestampHi: number, durationLo: number, durationHi: number, flags: number): number
   mxwf_decoder_flush(handle: number): number
   mxwf_decoder_reset(handle: number): number
@@ -30,16 +32,31 @@ export interface LibvpxVp8PluginOptions {
   readonly frameFactory?: MxwfFrameFactory
 }
 
+export interface LibvpxVp9PluginOptions {
+  readonly frameFactory?: MxwfFrameFactory
+}
+
 export function createLibvpxVp8Plugin(options: LibvpxVp8PluginOptions = {}): WasmDecoderPlugin {
+  return createLibvpxPlugin('vp8', libvpxVp8Manifest, supportsVp8, options.frameFactory)
+}
+
+export function createLibvpxVp9Plugin(options: LibvpxVp9PluginOptions = {}): WasmDecoderPlugin {
+  return createLibvpxPlugin('vp9', libvpxVp9Manifest, supportsVp9, options.frameFactory)
+}
+
+function createLibvpxPlugin(
+  codecName: 'vp8' | 'vp9',
+  manifest: typeof libvpxVp8Manifest,
+  supports: (codec: string, track: TrackInfo) => boolean,
+  frameFactory?: MxwfFrameFactory,
+): WasmDecoderPlugin {
   return {
-    id: 'libvpx-vp8-mxwf1',
+    id: `libvpx-${codecName}-mxwf1`,
     priority: 100,
-    manifest: libvpxVp8Manifest,
-    supports(codec, track) {
-      return supportsVp8(codec, track)
-    },
+    manifest,
+    supports,
     async create(context) {
-      if (context.signal.aborted) throw createWasmError(ErrorCodes.WASM_ABORTED, 'VP8 decoder initialization was aborted', true)
+      if (context.signal.aborted) throw createWasmError(ErrorCodes.WASM_ABORTED, `${codecName.toUpperCase()} decoder initialization was aborted`, true)
       let instance: WebAssembly.Instance
       try {
         instance = await context.runtime.instantiate(context.module)
@@ -54,14 +71,20 @@ export function createLibvpxVp8Plugin(options: LibvpxVp8PluginOptions = {}): Was
       const color = trackColor(context.track)
       const width = positiveDimension(context.track.width)
       const height = positiveDimension(context.track.height)
-      const handle = exports.mxwf_decoder_create(width, height, color.primaries, color.transfer, color.matrix, color.range)
-      if (handle === 0) throw createWasmError(ErrorCodes.WASM_PLUGIN_INIT_FAILED, 'The libvpx VP8 decoder could not be created', true)
-      return new LibvpxVp8DecoderInstance(context, exports, handle, options.frameFactory)
+      if (codecName === 'vp9' && exports.mxwf_decoder_create_codec === undefined) {
+        throw createWasmError(ErrorCodes.WASM_EXPORT_INVALID, 'The libvpx VP9 codec create export is unavailable', false)
+      }
+      const createCodec = exports.mxwf_decoder_create_codec
+      const handle = codecName === 'vp9'
+        ? createCodec!(9, width, height, color.primaries, color.transfer, color.matrix, color.range)
+        : exports.mxwf_decoder_create(width, height, color.primaries, color.transfer, color.matrix, color.range)
+      if (handle === 0) throw createWasmError(ErrorCodes.WASM_PLUGIN_INIT_FAILED, `The libvpx ${codecName.toUpperCase()} decoder could not be created`, true)
+      return new LibvpxDecoderInstance(context, exports, handle, frameFactory)
     },
   }
 }
 
-class LibvpxVp8DecoderInstance implements WasmDecoderInstance {
+class LibvpxDecoderInstance implements WasmDecoderInstance {
   readonly variant: WasmVariant
   readonly #context: WasmDecoderCreateContext
   readonly #exports: MxwfExports
@@ -94,7 +117,7 @@ class LibvpxVp8DecoderInstance implements WasmDecoderInstance {
       const duration = packet.duration === null ? { lo: 0, hi: 0 } : splitMicros(packet.duration)
       const flags = (packet.duration === null ? 0 : 1) | (packet.keyframe ? 2 : 0)
       const result = this.#exports.mxwf_decoder_decode(this.#handle, pointer, packet.data.byteLength, timestamp.lo, timestamp.hi, duration.lo, duration.hi, flags)
-      if (result !== 0) throw decodeError('The libvpx VP8 packet could not be decoded')
+      if (result !== 0) throw decodeError('The libvpx packet could not be decoded')
       this.#drainFrames()
     } finally {
       if (pointer !== 0) this.#exports.mxwf_free(pointer)
@@ -106,13 +129,13 @@ class LibvpxVp8DecoderInstance implements WasmDecoderInstance {
   async flush(): Promise<void> {
     this.#ensureOpen()
     const result = this.#exports.mxwf_decoder_flush(this.#handle)
-    if (result !== 0) throw decodeError('The libvpx VP8 decoder flush failed')
+    if (result !== 0) throw decodeError('The libvpx decoder flush failed')
     this.#drainFrames()
   }
 
   async reset(): Promise<void> {
     this.#ensureOpen()
-    if (this.#exports.mxwf_decoder_reset(this.#handle) !== 0) throw createWasmError(ErrorCodes.WASM_RESET_FAILED, 'The libvpx VP8 decoder reset failed', true)
+    if (this.#exports.mxwf_decoder_reset(this.#handle) !== 0) throw createWasmError(ErrorCodes.WASM_RESET_FAILED, 'The libvpx decoder reset failed', true)
     this.#decodeQueueSize = 0
   }
 
@@ -140,7 +163,7 @@ class LibvpxVp8DecoderInstance implements WasmDecoderInstance {
   }
 
   #ensureOpen(): void {
-    if (this.#closed || this.#handle === 0) throw createWasmError(ErrorCodes.WASM_CLOSED, 'The libvpx VP8 decoder is closed', false)
+    if (this.#closed || this.#handle === 0) throw createWasmError(ErrorCodes.WASM_CLOSED, 'The libvpx decoder is closed', false)
   }
 }
 
@@ -154,6 +177,7 @@ function readExports(value: WebAssembly.Exports): MxwfExports {
   ] as const
   for (const name of required) if (typeof value[name] !== 'function') throw invalidExport(`The libvpx WASM export ${name} is invalid`)
   if (value._initialize !== undefined && typeof value._initialize !== 'function') throw invalidExport('The libvpx WASM initialize export is invalid')
+  if (value.mxwf_decoder_create_codec !== undefined && typeof value.mxwf_decoder_create_codec !== 'function') throw invalidExport('The libvpx codec create export is invalid')
   return value as MxwfExports
 }
 
@@ -166,13 +190,19 @@ function supportsVp8(codec: string, track: TrackInfo): boolean {
   return bitDepth === 8 && (track.profile === undefined || track.profile === '0')
 }
 
+function supportsVp9(codec: string, track: TrackInfo): boolean {
+  if (track.kind !== 'video') return false
+  if (!Number.isSafeInteger(track.width) || !Number.isSafeInteger(track.height) || (track.width ?? 0) <= 0 || (track.height ?? 0) <= 0) return false
+  return resolveSupportedVp9Codec(codec, track) !== null
+}
+
 function positiveDimension(value: number | undefined): number {
-  if (value === undefined || !Number.isSafeInteger(value) || value <= 0 || value > 16_384) throw createWasmError(ErrorCodes.WASM_PLUGIN_INIT_FAILED, 'The VP8 track dimensions are invalid', false)
+  if (value === undefined || !Number.isSafeInteger(value) || value <= 0 || value > 16_384) throw createWasmError(ErrorCodes.WASM_PLUGIN_INIT_FAILED, 'The libvpx track dimensions are invalid', false)
   return value
 }
 
 function validatePacket(packet: DemuxPacket): void {
-  if (packet.kind !== 'video' || packet.data.byteLength === 0 || !validMicros(packet.timestamp) || (packet.duration !== null && !validMicros(packet.duration))) throw decodeError('The VP8 packet metadata is invalid')
+  if (packet.kind !== 'video' || packet.data.byteLength === 0 || !validMicros(packet.timestamp) || (packet.duration !== null && !validMicros(packet.duration))) throw decodeError('The libvpx packet metadata is invalid')
 }
 
 function validMicros(value: number): boolean {
@@ -180,7 +210,7 @@ function validMicros(value: number): boolean {
 }
 
 function splitMicros(value: number): { lo: number; hi: number } {
-  if (!validMicros(value)) throw decodeError('The VP8 packet timestamp is invalid')
+  if (!validMicros(value)) throw decodeError('The libvpx packet timestamp is invalid')
   return { lo: value >>> 0, hi: Math.floor(value / 0x1_0000_0000) >>> 0 }
 }
 

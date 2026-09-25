@@ -13,11 +13,11 @@ import {
   type WasmDecoderManager,
 } from '@mx-player-max/decoder-wasm'
 import type { CapabilitySnapshot, DemuxPacket, TrackInfo } from '@mx-player-max/types'
-import { createLibvpxVp8Plugin } from './plugin'
+import { createLibvpxVp8Plugin, createLibvpxVp9Plugin } from './plugin'
 import { createWasmWorkerError, wasmWorkerErrors } from './worker-errors'
 
 export interface LibvpxVp8WorkerConfig {
-  readonly kind: 'libvpx-vp8'
+  readonly kind: 'libvpx-vp8' | 'libvpx-vp9'
   readonly baseUrl: string
   readonly track: TrackInfo
   readonly capabilities: CapabilitySnapshot
@@ -25,6 +25,8 @@ export interface LibvpxVp8WorkerConfig {
 
 export interface LibvpxVp8WorkerBackendOptions {
   readonly fetcher?: typeof fetch
+  /** Explicit local technical acceptance of a restricted plugin; production callers leave this unset. */
+  readonly requireApprovedReview?: boolean
 }
 
 export class LibvpxVp8WorkerBackend implements DecoderAdapterLike<LibvpxVp8WorkerConfig> {
@@ -46,16 +48,17 @@ export class LibvpxVp8WorkerBackend implements DecoderAdapterLike<LibvpxVp8Worke
     this.#ensureOpen()
     this.#epoch = epoch
     if (this.#instance) return
-    const plugin = createLibvpxVp8Plugin()
+    const plugin = config.kind === 'libvpx-vp9' ? createLibvpxVp9Plugin() : createLibvpxVp8Plugin()
     const manager = createWasmDecoderManager({
       baseUrl: config.baseUrl,
       registry: createWasmDecoderRegistry([plugin]),
       cache: createMemoryWasmCache(),
       ...(this.#options.fetcher === undefined ? {} : { fetcher: this.#options.fetcher }),
+      ...(this.#options.requireApprovedReview === undefined ? {} : { requireApprovedReview: this.#options.requireApprovedReview }),
     })
     this.#manager = manager
     try {
-      this.#instance = await manager.load('vp8', config.track, config.capabilities, {
+      this.#instance = await manager.load(config.kind === 'libvpx-vp9' ? 'vp9' : 'vp8', config.track, config.capabilities, {
         callbacks: {
           onFrame: (frame) => this.#callbacks.onFrame(frame, this.#epoch),
           onError: (error) => this.#callbacks.onError(error, this.#epoch),
@@ -96,11 +99,11 @@ export class LibvpxVp8WorkerBackend implements DecoderAdapterLike<LibvpxVp8Worke
 
   #ensureEpoch(epoch: number): void {
     this.#ensureOpen()
-    if (epoch !== this.#epoch || !this.#instance) throw createWasmWorkerError(wasmWorkerErrors.aborted, 'The VP8 WASM decoder Worker epoch is inactive', true)
+    if (epoch !== this.#epoch || !this.#instance) throw createWasmWorkerError(wasmWorkerErrors.aborted, 'The libvpx WASM decoder Worker epoch is inactive', true)
   }
 
   #ensureOpen(): void {
-    if (this.#closed) throw createWasmWorkerError(wasmWorkerErrors.aborted, 'The VP8 WASM decoder Worker is closed', false)
+    if (this.#closed) throw createWasmWorkerError(wasmWorkerErrors.aborted, 'The libvpx WASM decoder Worker is closed', false)
   }
 }
 

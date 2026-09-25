@@ -369,7 +369,17 @@ Firefox 都是），所以原生候选同样被判 unsupported。去掉推导后
 2. 载入 MKV（H.264+AAC）时三档都能正常播放**且有声音**；`native` 档下两个 AI 开关灰掉。载入 MKV（VP9+Opus）时 `native` 档明确报「容器/编码不支持」，两个自定义档正常播放
 3. `custom-webgpu` 档下超分辨率与插帧两个开关可勾选，勾上后画面变化可见、`playback.ai.tier` 不为 `off`
 4. `custom-fallback` 档下两个开关灰掉，原因显示「把渲染模式切换到 WebGPU 自定义管线后才能开启」
-5. 部署到 Pages 的版本里，两个开关灰掉并显示「宿主未配置 AI 模型根目录」——这是权重不上 CDN 的既定策略，不是缺陷
+5. **（B 组 — 需要有真实 GPU 的机器；本机结构性地看不到，不要在这里找）** 部署到 Pages 的版本里，
+   两个开关灰掉并显示「宿主未配置 AI 模型根目录」——这是权重不上 CDN 的既定策略，不是缺陷。
+
+   原因是判定顺序，不是没试过：`capabilityReason`（`packages/core/src/index.ts:840`）在「渲染器不是
+   WebGPU 或拿不到 `decodedFrameSource`」时是 `renderer-path`、在软件适配器上是 `device-capability`；
+   `aiStatus()`（同文件 217 行）只要 `control.reason !== null` 就直接把那个 reason 回显出去，
+   `model-unavailable`（同文件 229 / 234 行）只有在 `control.reason === null` 时才轮得到。本机的
+   `isFallbackAdapter` 恒为 `true`（`google/swiftshader`），所以 WebGPU 档下永远先报
+   `device-capability`，这句文案排在它后面、永远出不来。本机能覆盖到的只有它前面那一步：
+   `apps/demo/src/deployment.test.ts` 钉住 Pages 构建不传模型根目录
+   （`resolveAiModelBaseUrl('pages', …) === undefined`）。
 
 ## 附录：本机环境事实（用于判断 A/B/C 归属）
 

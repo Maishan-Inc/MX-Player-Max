@@ -4,6 +4,12 @@
 
 ### Added
 
+- 演示站按 MX-Player-Pro 的顶栏导航与居中落地页节奏突出开发预览状态；四语言首屏、能力条与接入区标示可预览/开发中的范围，保留播放器、URL、本地文件、字幕与诊断入口。
+
+- 新增受限 VP9 WASM 技术切片：以固定 libvpx `v1.15.2` 和 Emscripten 4.0.15 构建 single/SIMD/threaded 模块，支持真实 WebM profile 0 8-bit I420 与 profile 2 10-bit I420P10 的 Demux → Manager → WASM → MXWF 测试。插件从解复用后的 `vp09.PP.LL.DD` 判断 profile/位深，并拒绝冲突元数据；Manager 默认审核门禁在下载前拒绝 restricted VP9，技术测试才显式关闭该门禁。审计脚本校验二进制大小、SHA-256 与导入导出。该切片尚未通过许可证、专利和完整浏览器矩阵验收，因此不会注册到 Core 策略、不会下载，也不会进入 npm、Browser 或 Pages 发布资产。
+
+- VP9 独立本地浏览器验收：安装的 Chrome/Edge 153 在隔离和非隔离环境均通过真实 Worker `I420P10` 帧转移、`copyTo()` 像素检查及连续 seek/epoch 回归。隔离环境确认 threaded 初始化失败后自动回退 SIMD。Playwright Firefox 153 无法构造 `I420P10`，Playwright WebKit 26.5 缺 `VideoFrame`；后两者按能力记录为 unsupported，仍需 Firefox 兼容方案和物理 Safari 实测。受限二进制只由单独的本地测试服务提供，不进入发布产物。
+
 - **运行时 Native ↔ Custom 切换**：`MediaEngine.switchRenderMode({ pipeline, customVideo? })`
   （SDK 同名方法）在两条管线之间迁移已载入的媒体，宿主不必重新 `load()`。Phase 6 只做 load-time
   选择，于是开一个滤镜、或者从自定义档退回原生档，都要宿主自己再 `load()` 一次——观众因此丢掉播放
@@ -154,6 +160,8 @@
   `customVideo.maxDecodedFrames` 不足 `lookahead + 2` 时请求以 `CUSTOM_INVALID_QUEUE_CONFIG` 拒绝。
 
 ### Fixed
+
+- 固定 UI 截图测试的英语区域设置，并等到原生视频首帧可用后采集；更新 Windows 基线以匹配现有字标、控制栏和渲染模式设置，避免首帧时序与旧版截图造成误报。
 
 - Matroska 的 AV1 轨道现在从 CodecPrivate 推导完整的 `av01.P.LLT.DD` codec 字符串。
   FFmpeg 9.0 给 `V_AV1` 轨写的 CodecPrivate 就是一条 `av1C` 配置记录（本仓库夹具实测 17 字节，

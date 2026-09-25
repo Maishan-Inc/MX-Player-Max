@@ -10,6 +10,7 @@ import { createWasmDecoderRegistry, resolveWasmAssetUrl } from '@mx-player-max/d
 import {
   createLibvpxVp8Plugin,
   createLibvpxVp8VideoDecoderConfig,
+  describeWasmFrameOutput,
   WorkerLibvpxVp8DecoderAdapter,
 } from '@mx-player-max/decoder-wasm-vpx'
 import { createPlatformPolicy } from '@mx-player-max/platform'
@@ -649,7 +650,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
         const capabilities = await detectCapabilities({ includeWasm: false })
         const report = await probeMediaCapabilities(media, { snapshot: capabilities })
         const wasmSession = createWasmSession(options.wasmBaseUrl)
-        const context = createCapabilityContext(capabilities, report, wasmSession?.declarations, WEBCODECS_CODEC_SCOPE)
+        const context = createCapabilityContext(capabilities, report, wasmSession?.declarations, WEBCODECS_CODEC_SCOPE, describeWasmFrameOutput())
         emit('capabilities', { context })
         const policy = createPlatformPolicy(capabilities)
         const strategy = createStrategyEngine(policy)
@@ -1379,12 +1380,12 @@ function createWasmSession(baseUrl: string | undefined): WasmSession | null {
   const marker = '__mx_player_max_wasm_base__.wasm'
   const resolvedMarker = resolveWasmAssetUrl(baseUrl, marker)
   const normalizedBaseUrl = resolvedMarker.slice(0, -marker.length)
-  const plugin = createLibvpxVp8Plugin()
-  const registry = createWasmDecoderRegistry([plugin])
+  const plugins = [createLibvpxVp8Plugin()]
+  const registry = createWasmDecoderRegistry(plugins)
   return {
     baseUrl: normalizedBaseUrl,
     declarations: registry.declarations(),
-    supportsVideo: (codec, track) => plugin.supports(codec, track),
+    supportsVideo: (codec, track) => plugins.some((plugin) => plugin.supports(codec, track)),
   }
 }
 

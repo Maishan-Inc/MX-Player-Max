@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": "../../..",
+    "paths": { "@mx-player-max/*": ["packages/*/src/index.ts"] },
+    "noEmit": true,
+    "types": ["@webgpu/types"]
+  },
+  "include": ["harness.ts", "worker-entry.ts"]
+}

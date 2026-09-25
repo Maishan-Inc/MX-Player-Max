@@ -49,16 +49,17 @@ a { color: inherit; text-decoration: none; }
    covered by the player surface, which the SDK layers with its own z-indexes. */
 .topbar { position: relative; z-index: 60; min-height: 68px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 22px; padding: 0 clamp(16px, 4vw, 56px); border-bottom: 1px solid var(--line-soft); }
 .topbar > .brand-block { justify-self: start; }
-.topbar > .runtime-status { justify-self: center; }
+.topbar > .topbar-nav { justify-self: center; }
 .topbar > .topbar-actions { justify-self: end; }
 .brand-block { min-width: 0; display: inline-flex; align-items: center; gap: 10px; }
-/* Wordmark in the FREEANIME.ORG idiom: tight bold type with the middle word inverted into a
-   solid chip. The casing is content, so it is written out rather than transformed in CSS. */
 .brand-wordmark { display: inline-flex; align-items: baseline; color: var(--text); font-size: 21px; font-weight: 800; letter-spacing: -.035em; white-space: nowrap; }
 .brand-chip { margin: 0 1px; padding: 0 5px; background: var(--text); color: var(--bg); }
-.runtime-status { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; white-space: nowrap; }
-.runtime-status i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #8cffb0; box-shadow: 0 0 0 3px rgba(140, 255, 176, .08); }
-.topbar-actions { display: flex; align-items: center; gap: 18px; }
+.topbar-nav { display: flex; align-items: center; gap: clamp(12px, 2vw, 22px); }
+.topbar-nav a { color: var(--muted); font-size: 12px; font-weight: 700; white-space: nowrap; transition: color .16s ease; }
+.topbar-nav a:hover { color: var(--text); }
+.runtime-status { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 999px; padding: 6px 9px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.runtime-status i, .development-note i { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 12%, transparent); }
+.topbar-actions { display: flex; align-items: center; gap: 12px; }
 .lang-switch { position: relative; }
 .lang-trigger { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--text); font-size: 11px; font-weight: 800; }
 .lang-trigger:hover { background: var(--line-soft); }
@@ -73,6 +74,11 @@ a { color: inherit; text-decoration: none; }
 .github-mark { width: 17px; height: 17px; display: block; }
 
 .home-main { width: min(1160px, calc(100% - 36px)); flex: 1; margin: 0 auto; padding: clamp(28px, 6vh, 72px) 0 58px; }
+.landing-intro { max-width: 840px; margin: 0 auto clamp(28px, 4vw, 42px); text-align: center; }
+.landing-eyebrow { display: inline-block; color: var(--warn); font: 750 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .1em; }
+.landing-intro h1 { max-width: 780px; margin: 14px auto 18px; font-size: clamp(31px, 4.2vw, 52px); line-height: 1.15; letter-spacing: -.045em; text-wrap: balance; }
+.landing-intro p { max-width: 720px; margin: 0 auto; color: var(--muted); font-size: clamp(13px, 1.25vw, 15px); line-height: 1.8; text-wrap: pretty; }
+.landing-build { display: inline-block; margin-top: 18px; color: var(--dim); font: 600 10px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .player-launcher { width: min(1040px, 100%); margin: 0 auto; }
 .player-stage { position: relative; width: 100%; aspect-ratio: 16 / 9; min-height: 280px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: #000 url('/mx-player-poster.png') center / cover no-repeat; transition: border-color .18s ease; }
 .player-stage.is-dragging { border-color: rgba(183, 247, 191, .76); }
@@ -105,17 +111,24 @@ a { color: inherit; text-decoration: none; }
 .mode-field { display: inline-flex; align-items: center; gap: 8px; }
 .mode-field label { color: var(--dim); font-size: 11px; white-space: nowrap; }
 .mode-field select { min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--text); padding: 0 8px; font-size: 12px; }
+.development-note { width: min(900px, 100%); display: flex; align-items: flex-start; gap: 9px; margin: 14px auto 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.development-note i { margin-top: 5px; }
 .input-error { width: min(900px, 100%); margin: 12px auto 0; color: var(--danger); font-size: 12px; text-align: center; }
 
 .feature-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px clamp(24px, 4vw, 44px); margin-top: clamp(46px, 8vh, 86px); padding-top: 22px; border-top: 1px solid var(--line-soft); }
 .feature-item { display: grid; gap: 6px; align-content: start; }
+.feature-item-head { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.feature-item-head small { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px; color: var(--muted); font-size: 9px; font-weight: 700; line-height: 1.2; }
+.feature-item-head small[data-stage="development"] { border-color: color-mix(in srgb, var(--warn) 45%, transparent); color: var(--warn); }
 .feature-item strong { font-size: 12px; }
+.feature-item-head strong { color: var(--text); }
 .feature-item span { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .why-choose, .how-it-works, .faq, .integration, .diagnostics { margin-top: clamp(56px, 10vh, 104px); padding-top: 34px; border-top: 1px solid var(--line-soft); }
 .why-intro, .how-intro, .integration-intro { max-width: 760px; margin: 0 auto 26px; text-align: center; }
 .why-intro h2, .how-intro h2, .integration-intro h2, .faq h2, .diagnostics-title strong { margin: 0 0 10px; font-size: clamp(19px, 2.4vw, 25px); letter-spacing: -.02em; line-height: 1.25; }
 .why-intro p, .how-intro p, .integration-intro p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.75; }
+.integration-preview-note { display: block; margin-top: 9px; color: var(--warn); font-size: 11px; line-height: 1.6; }
 .integration-intro a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 .why-grid { max-width: 940px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 auto; }
 .why-card, .how-step, .faq-item { border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface); transition: border-color .18s ease; }
@@ -203,9 +216,11 @@ a { color: inherit; text-decoration: none; }
 /* Theater mode keeps only the player: the SDK asks for it through the TheaterModeAdapter. */
 .app-shell.is-theater .topbar,
 .app-shell.is-theater .site-footer,
+.app-shell.is-theater .landing-intro,
 .app-shell.is-theater .source-summary,
 .app-shell.is-theater .url-form,
 .app-shell.is-theater .launcher-actions,
+.app-shell.is-theater .development-note,
 .app-shell.is-theater .feature-strip,
 .app-shell.is-theater .why-choose,
 .app-shell.is-theater .integration,
@@ -220,12 +235,23 @@ a { color: inherit; text-decoration: none; }
   .diagnostics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+@media (max-width: 980px) {
+  .topbar-actions .runtime-status { display: none; }
+}
+
 @media (max-width: 760px) {
   .topbar { min-height: 84px; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px clamp(14px, 4vw, 24px); }
   .topbar > .brand-block { grid-column: 1; grid-row: 1; }
   .topbar > .topbar-actions { grid-column: 2; grid-row: 1; gap: 10px; }
-  .topbar > .runtime-status { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .topbar > .topbar-nav { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .brand-wordmark { font-size: 18px; }
+  .topbar-nav a { font-size: 11px; }
+  .github-link span { display: none; }
   .home-main { width: min(100% - 24px, 620px); padding-top: 26px; }
+  .landing-intro { margin-bottom: 24px; text-align: left; }
+  .landing-intro h1 { margin: 10px 0 12px; font-size: clamp(28px, 8vw, 38px); }
+  .landing-intro p { font-size: 12px; }
+  .landing-build { margin-top: 12px; }
   .player-stage { min-height: 190px; border-radius: 6px; }
   /* The media readout is far wider than the old intent word, so it takes its own row instead of
      squeezing the source name into an ellipsis. */
@@ -238,6 +264,7 @@ a { color: inherit; text-decoration: none; }
   .launcher-actions { grid-template-columns: 1fr; }
   .mode-field { display: grid; grid-template-columns: auto minmax(0, 1fr); }
   .feature-strip { grid-template-columns: repeat(2, 1fr); gap: 18px 14px; margin-top: 42px; }
+  .feature-item-head { align-items: flex-start; flex-direction: column; gap: 5px; }
   .why-choose, .how-it-works, .faq, .integration, .diagnostics { margin-top: 44px; padding-top: 26px; }
   .why-grid { grid-template-columns: 1fr; gap: 8px; }
   .why-card { padding: 14px 15px; }
@@ -260,5 +287,5 @@ a { color: inherit; text-decoration: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .player-stage, .why-card, .how-step, .faq-item, .faq-question, .faq-chevron, .faq-answer, .faq-answer > p,
-  .integration-tabs button, .integration-code-head button, .diagnostic-panel { transition: none; }
+  .integration-tabs button, .integration-code-head button, .diagnostic-panel, .topbar-nav a { transition: none; }
 }

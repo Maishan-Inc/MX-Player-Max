@@ -337,6 +337,8 @@ export interface ContentLightLevel {
  */
 export interface ColorInfo {
   bitDepth?: 8 | 10 | 12
+  /** Chroma subsampling used by custom decoder output. */
+  chroma?: '420' | '422' | '444'
   primaries?: ColorPrimaries
   transfer?: TransferFunction
   matrix?: MatrixCoefficients
@@ -528,6 +530,30 @@ export function codecWithinDecoderScope(
   })
 }
 
+/**
+ * What a decoder backend needs from the realm before a decoded frame can leave it.
+ *
+ * Codec scope answers whether a backend is willing to decode something; this answers whether the
+ * object it hands the result over in can be constructed at all, which no amount of codec probing
+ * covers. libvpx decodes into linear WASM memory and then wraps the planes in a `VideoFrame`, so a
+ * browser without that constructor runs every decode step correctly and fails only on the handover.
+ */
+export interface DecoderFrameOutputDeclaration {
+  /** The global constructor the backend builds its output frames with, such as `VideoFrame`. */
+  readonly frameConstructor: string
+  /** Whether that constructor exists where the decoder will run. The host answers this. */
+  readonly available: boolean
+}
+
+/**
+ * The one interpreter of {@link DecoderFrameOutputDeclaration}, so a producer and a consumer in
+ * different packages cannot drift apart on what a declaration means. An absent declaration is
+ * usable, which is what keeps a host that declares nothing behaving exactly as it did before.
+ */
+export function decoderFrameOutputUsable(declaration?: DecoderFrameOutputDeclaration): boolean {
+  return declaration === undefined || declaration.available
+}
+
 export interface WebGpuFeatureSnapshot {
   available: boolean
   float32Filterable: boolean
@@ -572,6 +598,12 @@ export interface CapabilityContext {
    * browser's verdict and will rank a candidate the backend rejects at initialisation time.
    */
   webCodecsCodecs?: readonly DecoderCodecDeclaration[]
+  /**
+   * What the WASM backend needs in order to hand a decoded frame over. Without it the strategy layer
+   * sees only that a decoder was declared, and will rank a candidate that decodes the media
+   * correctly and then fails on the frame the realm cannot construct.
+   */
+  wasmFrameOutput?: DecoderFrameOutputDeclaration
 }
 
 export type BackendKind = 'html-video' | 'webcodecs' | 'wasm' | 'mse'
@@ -1151,6 +1183,13 @@ export const ErrorCodes = {
   WASM_RUNTIME_UNAVAILABLE: 'WASM_RUNTIME_UNAVAILABLE',
   WASM_EXPORT_INVALID: 'WASM_EXPORT_INVALID',
   WASM_FRAME_ABI_INVALID: 'WASM_FRAME_ABI_INVALID',
+  /**
+   * The realm has no constructor for the frame the WASM backend hands decoded planes over in. A
+   * browser gap, not a malformed descriptor: every field of the MXWF record can be valid and the
+   * decode itself correct. Kept apart from `WASM_FRAME_ABI_INVALID` so that code keeps meaning
+   * "the module and the host disagree about the frame layout" and sends a reader to the ABI.
+   */
+  WASM_FRAME_OUTPUT_UNAVAILABLE: 'WASM_FRAME_OUTPUT_UNAVAILABLE',
   WASM_DECODE_FAILED: 'WASM_DECODE_FAILED',
   WASM_RESET_FAILED: 'WASM_RESET_FAILED',
   WASM_WORKER_FAILED: 'WASM_WORKER_FAILED',

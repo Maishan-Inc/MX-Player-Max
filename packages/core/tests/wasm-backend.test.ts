@@ -141,7 +141,9 @@ describe('MediaEngine approved WASM backend', () => {
 
     await engine.load(loadOptions('https://assets.example.test/wasm/'))
 
-    expect(mocks.contexts[0]?.wasmDecoders).toEqual([expect.objectContaining({ codec: 'vp8', supportsVideo: true, supportsAudio: false })])
+    expect(mocks.contexts[0]?.wasmDecoders).toEqual([
+      expect.objectContaining({ codec: 'vp8', supportsVideo: true, supportsAudio: false }),
+    ])
     expect(mocks.createWorker).not.toHaveBeenCalled()
     expect(fetcher).not.toHaveBeenCalled()
     expect(engine.decisionTrace?.attempts).toEqual([

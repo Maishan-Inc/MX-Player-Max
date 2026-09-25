@@ -50,9 +50,9 @@
     {
       "name": "@mx-player-max/decoder-wasm-vpx",
       "directory": "packages/decoder-wasm-vpx",
-      "testFiles": 4,
-      "tests": 16,
-      "passed": 16,
+      "testFiles": 5,
+      "tests": 20,
+      "passed": 20,
       "skipped": 0,
       "todo": 0
     },
@@ -78,8 +78,8 @@
       "name": "@mx-player-max/demo",
       "directory": "apps/demo",
       "testFiles": 7,
-      "tests": 29,
-      "passed": 29,
+      "tests": 30,
+      "passed": 30,
       "skipped": 0,
       "todo": 0
     },
@@ -184,9 +184,9 @@
     }
   ],
   "totals": {
-    "testFiles": 104,
-    "tests": 711,
-    "passed": 711,
+    "testFiles": 105,
+    "tests": 716,
+    "passed": 716,
     "skipped": 0,
     "todo": 0
   }

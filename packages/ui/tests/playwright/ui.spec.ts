@@ -34,6 +34,7 @@ test('lays out the production player UI without overlap or blank media', async (
   await expectTextContained(page, '.source-summary strong, .control-rail label, .mxp-time-readout')
 
   if (testInfo.project.name === 'chromium-desktop') {
+    await expectNativeFrame(page)
     await stage.evaluate((element) => { (element as HTMLElement).style.width = '700px' })
     await expect(page.locator('.mxp-volume-slider')).toBeHidden()
     await expect(page.locator('.mxp-theater-control')).toBeHidden()
@@ -47,6 +48,7 @@ test('lays out the production player UI without overlap or blank media', async (
     await expectUiBaseline(page, 'desktop-workbench.png')
   }
   if (testInfo.project.name === 'chromium-mobile') {
+    await expectNativeFrame(page)
     await expect(page.locator('.mxp-volume-slider')).toBeHidden()
     await expect(page.locator('.mxp-theater-control')).toBeHidden()
     await expectUiBaseline(page, 'mobile-workbench.png')
@@ -63,6 +65,7 @@ test('keeps the single overlay inside the player and restores keyboard flow', as
   await expect(panel).toBeHidden()
   if (testInfo.project.name === 'chromium-desktop') {
     await settings.click()
+    await expectNativeFrame(page)
     await expectUiBaseline(page, 'desktop-settings.png')
   }
 })
@@ -110,6 +113,14 @@ async function expectUiBaseline(page: Page, name: string): Promise<void> {
     return
   }
   await expect(page).toHaveScreenshot(name, { animations: 'disabled' })
+}
+
+async function expectNativeFrame(page: Page): Promise<void> {
+  const video = page.locator('.player-stage video')
+  await expect.poll(async () => video.evaluate((element) => {
+    const media = element as HTMLVideoElement
+    return media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && media.videoWidth > 0
+  }), { timeout: MEDIA_READY_TIMEOUT_MS }).toBe(true)
 }
 
 async function expectNoOverlap(page: Page, selector: string): Promise<void> {

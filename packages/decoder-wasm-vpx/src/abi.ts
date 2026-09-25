@@ -1,9 +1,21 @@
 import { createWasmError } from '@mx-player-max/decoder-wasm'
 import { ErrorCodes, type Micros } from '@mx-player-max/types'
+import { hasWasmFrameOutput, WASM_FRAME_OUTPUT_CONSTRUCTOR } from './frame-output'
 
 export const MXWF_ABI_VERSION = 1
 export const MXWF_DESCRIPTOR_BYTES = 160
 export const MXWF_MAGIC = 0x4d585746
+
+export const MXWF_PIXEL_FORMATS = {
+  I420: 1,
+  I420P10: 2,
+  I422: 3,
+  I422P10: 4,
+  I444: 5,
+  I444P10: 6,
+} as const
+
+export type MxwfPixelFormat = typeof MXWF_PIXEL_FORMATS[keyof typeof MXWF_PIXEL_FORMATS]
 
 const MAX_FRAME_BYTES = 256 * 1024 * 1024
 const DURATION_PRESENT = 1
@@ -27,6 +39,7 @@ export interface MxwfFrameDescriptor {
   readonly duration: Micros | null
   readonly colorSpace: VideoColorSpaceInit
   readonly planes: readonly [MxwfPlane, MxwfPlane, MxwfPlane]
+  readonly pixelFormat: MxwfPixelFormat
 }
 
 export interface MxwfFrameFactory {
@@ -35,7 +48,20 @@ export interface MxwfFrameFactory {
 
 const browserFrameFactory: MxwfFrameFactory = {
   create(data, init) {
-    if (typeof VideoFrame === 'undefined') throw invalid('VideoFrame is unavailable in the decoder Worker')
+    /**
+     * A browser gap, so it does not wear a descriptor code. Everything upstream of here worked:
+     * the module was fetched and instantiated and libvpx decoded into linear memory, and the
+     * descriptor this frame is built from has already been validated field by field. Reporting
+     * `WASM_FRAME_ABI_INVALID` sent readers to the frame ABI for a realm that simply has no
+     * `VideoFrame` — which is what Playwright's WebKit does.
+     */
+    if (!hasWasmFrameOutput()) {
+      throw createWasmError(
+        ErrorCodes.WASM_FRAME_OUTPUT_UNAVAILABLE,
+        `${WASM_FRAME_OUTPUT_CONSTRUCTOR} is unavailable in the decoder Worker, so a decoded frame cannot be handed over`,
+        false,
+      )
+    }
     return new VideoFrame(data, init)
   },
 }
@@ -48,7 +74,7 @@ export function readMxwfFrameDescriptor(memory: WebAssembly.Memory, pointer: num
   if (readU32(view, 4) !== MXWF_ABI_VERSION) throw invalid('MXWF frame ABI version is unsupported')
   if (readU32(view, 8) !== MXWF_DESCRIPTOR_BYTES) throw invalid('MXWF descriptor length is invalid')
   const token = positiveU32(readU32(view, 12), 'frame token')
-  if (readU32(view, 16) !== 1) throw invalid('MXWF pixel format is not I420')
+  const pixelFormat = readPixelFormat(readU32(view, 16))
   const flags = readU32(view, 20)
   if ((flags & ~3) !== 0) throw invalid('MXWF frame flags are invalid')
   const codedWidth = dimension(readU32(view, 24), 'coded width')
@@ -64,10 +90,11 @@ export function readMxwfFrameDescriptor(memory: WebAssembly.Memory, pointer: num
   const duration = (flags & DURATION_PRESENT) === 0 ? null : readMicros(view, 64, 'duration')
   if (readU32(view, 88) !== 3 || readU32(view, 92) !== 0 || readU32(view, 156) !== 0) throw invalid('MXWF plane count or reserved fields are invalid')
   const planes = [readPlane(view, 96, buffer.byteLength), readPlane(view, 116, buffer.byteLength), readPlane(view, 136, buffer.byteLength)] as const
-  validateI420Planes(planes, codedWidth, codedHeight)
+  validatePlanes(planes, codedWidth, codedHeight, pixelFormat)
   validateNonOverlapping(planes)
   return {
     token,
+    pixelFormat,
     codedWidth,
     codedHeight,
     visibleRect: { x: visibleX, y: visibleY, width: visibleWidth, height: visibleHeight },
@@ -95,7 +122,7 @@ export function createVideoFrameFromMxwf(
     const data = new Uint8Array(memory.buffer, start, end - start)
     const layout = descriptor.planes.map((plane) => ({ offset: plane.offset - start, stride: plane.stride }))
     const init: VideoFrameBufferInit = {
-      format: 'I420',
+      format: videoFrameFormat(descriptor.pixelFormat),
       codedWidth: descriptor.codedWidth,
       codedHeight: descriptor.codedHeight,
       visibleRect: descriptor.visibleRect,
@@ -127,19 +154,38 @@ function readPlane(view: DataView, offset: number, memoryBytes: number): MxwfPla
   return plane
 }
 
-function validateI420Planes(planes: readonly MxwfPlane[], width: number, height: number): void {
-  const chromaWidth = Math.ceil(width / 2)
-  const chromaHeight = Math.ceil(height / 2)
+function validatePlanes(planes: readonly MxwfPlane[], width: number, height: number, pixelFormat: MxwfPixelFormat): void {
+  const tenBit = pixelFormat === MXWF_PIXEL_FORMATS.I420P10 || pixelFormat === MXWF_PIXEL_FORMATS.I422P10 || pixelFormat === MXWF_PIXEL_FORMATS.I444P10
+  const bytesPerSample = tenBit ? 2 : 1
+  const chromaWidth = pixelFormat === MXWF_PIXEL_FORMATS.I444 || pixelFormat === MXWF_PIXEL_FORMATS.I444P10 ? width : Math.ceil(width / 2)
+  const chromaHeight = pixelFormat === MXWF_PIXEL_FORMATS.I420 || pixelFormat === MXWF_PIXEL_FORMATS.I420P10 ? Math.ceil(height / 2) : height
   const expected = [
-    { rowBytes: width, rows: height },
-    { rowBytes: chromaWidth, rows: chromaHeight },
-    { rowBytes: chromaWidth, rows: chromaHeight },
+    { rowBytes: width * bytesPerSample, rows: height },
+    { rowBytes: chromaWidth * bytesPerSample, rows: chromaHeight },
+    { rowBytes: chromaWidth * bytesPerSample, rows: chromaHeight },
   ] as const
   for (let index = 0; index < expected.length; index += 1) {
     const plane = planes[index]
     const requirement = expected[index]
     if (!plane || !requirement || plane.rowBytes !== requirement.rowBytes || plane.rows !== requirement.rows) throw invalid('MXWF I420 plane dimensions are invalid')
   }
+}
+
+function readPixelFormat(value: number): MxwfPixelFormat {
+  if (value < MXWF_PIXEL_FORMATS.I420 || value > MXWF_PIXEL_FORMATS.I444P10) throw invalid('MXWF pixel format is invalid')
+  return value as MxwfPixelFormat
+}
+
+function videoFrameFormat(pixelFormat: MxwfPixelFormat): VideoPixelFormat {
+  const formats: Record<MxwfPixelFormat, VideoPixelFormat> = {
+    [MXWF_PIXEL_FORMATS.I420]: 'I420',
+    [MXWF_PIXEL_FORMATS.I420P10]: 'I420P10' as VideoPixelFormat,
+    [MXWF_PIXEL_FORMATS.I422]: 'I422',
+    [MXWF_PIXEL_FORMATS.I422P10]: 'I422P10' as VideoPixelFormat,
+    [MXWF_PIXEL_FORMATS.I444]: 'I444',
+    [MXWF_PIXEL_FORMATS.I444P10]: 'I444P10' as VideoPixelFormat,
+  }
+  return formats[pixelFormat]
 }
 
 function validateNonOverlapping(planes: readonly MxwfPlane[]): void {

@@ -9,6 +9,13 @@
 #define MXWF_ABI_VERSION 1u
 #define MXWF_DESCRIPTOR_BYTES 160u
 #define MXWF_PIXEL_FORMAT_I420 1u
+#define MXWF_PIXEL_FORMAT_I420P10 2u
+#define MXWF_PIXEL_FORMAT_I422 3u
+#define MXWF_PIXEL_FORMAT_I422P10 4u
+#define MXWF_PIXEL_FORMAT_I444 5u
+#define MXWF_PIXEL_FORMAT_I444P10 6u
+#define MXWF_CODEC_VP8 8u
+#define MXWF_CODEC_VP9 9u
 #define MXWF_FLAG_DURATION_PRESENT 1u
 #define MXWF_FLAG_KEY_FRAME 2u
 #define MXWF_MAX_DIMENSION 16384u
@@ -37,6 +44,7 @@ struct MxwfDecoder {
   uint32_t color_transfer;
   uint32_t color_matrix;
   uint32_t color_range;
+  uint32_t codec_kind;
   MxwfFrame *queue_head;
   MxwfFrame *queue_tail;
   int initialized;
@@ -170,6 +178,8 @@ static int mxwf_queue_image(MxwfDecoder *decoder, const vpx_image_t *image,
   uint32_t v_bytes;
   uint32_t pixel_bytes;
   uint32_t allocation_bytes;
+  uint32_t pixel_format;
+  uint32_t bytes_per_sample;
   uint32_t y_offset;
   uint32_t u_offset;
   uint32_t v_offset;
@@ -178,17 +188,24 @@ static int mxwf_queue_image(MxwfDecoder *decoder, const vpx_image_t *image,
   uint32_t matrix;
   uint32_t range;
 
-  if (image == NULL || image->fmt != VPX_IMG_FMT_I420) return -20;
+  if (image == NULL) return -20;
+  bytes_per_sample = (image->fmt & VPX_IMG_FMT_HIGHBITDEPTH) != 0 ? 2u : 1u;
+  switch (image->fmt & ~VPX_IMG_FMT_HIGHBITDEPTH) {
+    case VPX_IMG_FMT_I420: pixel_format = bytes_per_sample == 2u ? MXWF_PIXEL_FORMAT_I420P10 : MXWF_PIXEL_FORMAT_I420; break;
+    case VPX_IMG_FMT_I422: pixel_format = bytes_per_sample == 2u ? MXWF_PIXEL_FORMAT_I422P10 : MXWF_PIXEL_FORMAT_I422; break;
+    case VPX_IMG_FMT_I444: pixel_format = bytes_per_sample == 2u ? MXWF_PIXEL_FORMAT_I444P10 : MXWF_PIXEL_FORMAT_I444; break;
+    default: return -20;
+  }
   width = image->d_w;
   height = image->d_h;
   if (width == 0u || height == 0u || width > MXWF_MAX_DIMENSION || height > MXWF_MAX_DIMENSION) return -21;
   if (image->planes[VPX_PLANE_Y] == NULL || image->planes[VPX_PLANE_U] == NULL || image->planes[VPX_PLANE_V] == NULL) return -22;
   if (image->stride[VPX_PLANE_Y] <= 0 || image->stride[VPX_PLANE_U] <= 0 || image->stride[VPX_PLANE_V] <= 0) return -23;
 
-  chroma_width = (width + 1u) / 2u;
-  chroma_height = (height + 1u) / 2u;
-  y_stride = mxwf_align_16(width);
-  uv_stride = mxwf_align_16(chroma_width);
+  chroma_width = (pixel_format == MXWF_PIXEL_FORMAT_I444 || pixel_format == MXWF_PIXEL_FORMAT_I444P10) ? width : (width + 1u) / 2u;
+  chroma_height = (pixel_format == MXWF_PIXEL_FORMAT_I420 || pixel_format == MXWF_PIXEL_FORMAT_I420P10) ? (height + 1u) / 2u : height;
+  y_stride = mxwf_align_16(width * bytes_per_sample);
+  uv_stride = mxwf_align_16(chroma_width * bytes_per_sample);
   if (!mxwf_checked_multiply(y_stride, height, &y_bytes)
       || !mxwf_checked_multiply(uv_stride, chroma_height, &u_bytes)) return -24;
   v_bytes = u_bytes;
@@ -212,13 +229,13 @@ static int mxwf_queue_image(MxwfDecoder *decoder, const vpx_image_t *image,
   uint8_t *v_destination = (uint8_t *)(uintptr_t)v_offset;
   for (uint32_t row = 0u; row < height; row += 1u) {
     memcpy(y_destination + row * y_stride,
-           image->planes[VPX_PLANE_Y] + row * (uint32_t)image->stride[VPX_PLANE_Y], width);
+           image->planes[VPX_PLANE_Y] + row * (uint32_t)image->stride[VPX_PLANE_Y], width * bytes_per_sample);
   }
   for (uint32_t row = 0u; row < chroma_height; row += 1u) {
     memcpy(u_destination + row * uv_stride,
-           image->planes[VPX_PLANE_U] + row * (uint32_t)image->stride[VPX_PLANE_U], chroma_width);
+           image->planes[VPX_PLANE_U] + row * (uint32_t)image->stride[VPX_PLANE_U], chroma_width * bytes_per_sample);
     memcpy(v_destination + row * uv_stride,
-           image->planes[VPX_PLANE_V] + row * (uint32_t)image->stride[VPX_PLANE_V], chroma_width);
+           image->planes[VPX_PLANE_V] + row * (uint32_t)image->stride[VPX_PLANE_V], chroma_width * bytes_per_sample);
   }
 
   mxwf_map_colors(decoder, image, &primaries, &transfer, &matrix, &range);
@@ -226,7 +243,7 @@ static int mxwf_queue_image(MxwfDecoder *decoder, const vpx_image_t *image,
   frame->descriptor[1] = MXWF_ABI_VERSION;
   frame->descriptor[2] = MXWF_DESCRIPTOR_BYTES;
   frame->descriptor[3] = frame->token;
-  frame->descriptor[4] = MXWF_PIXEL_FORMAT_I420;
+  frame->descriptor[4] = pixel_format;
   frame->descriptor[5] = flags & (MXWF_FLAG_DURATION_PRESENT | MXWF_FLAG_KEY_FRAME);
   frame->descriptor[6] = width;
   frame->descriptor[7] = height;
@@ -246,9 +263,9 @@ static int mxwf_queue_image(MxwfDecoder *decoder, const vpx_image_t *image,
   frame->descriptor[21] = range;
   frame->descriptor[22] = 3u;
   frame->descriptor[23] = 0u;
-  mxwf_write_plane(frame->descriptor, 0u, y_offset, y_stride, height, width, y_bytes);
-  mxwf_write_plane(frame->descriptor, 1u, u_offset, uv_stride, chroma_height, chroma_width, u_bytes);
-  mxwf_write_plane(frame->descriptor, 2u, v_offset, uv_stride, chroma_height, chroma_width, v_bytes);
+  mxwf_write_plane(frame->descriptor, 0u, y_offset, y_stride, height, width * bytes_per_sample, y_bytes);
+  mxwf_write_plane(frame->descriptor, 1u, u_offset, uv_stride, chroma_height, chroma_width * bytes_per_sample, u_bytes);
+  mxwf_write_plane(frame->descriptor, 2u, v_offset, uv_stride, chroma_height, chroma_width * bytes_per_sample, v_bytes);
   frame->descriptor[39] = 0u;
 
   frame->global_next = mxwf_frames;
@@ -310,6 +327,23 @@ uint32_t mxwf_decoder_create(uint32_t display_width, uint32_t display_height,
   decoder->color_transfer = color_transfer;
   decoder->color_matrix = color_matrix;
   decoder->color_range = color_range;
+  decoder->codec_kind = MXWF_CODEC_VP8;
+  return (uint32_t)(uintptr_t)decoder;
+}
+
+uint32_t mxwf_decoder_create_codec(uint32_t codec_kind, uint32_t display_width, uint32_t display_height,
+                                   uint32_t color_primaries, uint32_t color_transfer,
+                                   uint32_t color_matrix, uint32_t color_range) {
+  if (codec_kind == MXWF_CODEC_VP8) return mxwf_decoder_create(display_width, display_height, color_primaries, color_transfer, color_matrix, color_range);
+  if (codec_kind != MXWF_CODEC_VP9) return 0u;
+  MxwfDecoder *decoder = (MxwfDecoder *)calloc(1u, sizeof(MxwfDecoder));
+  vpx_codec_dec_cfg_t config;
+  if (decoder == NULL || display_width > MXWF_MAX_DIMENSION || display_height > MXWF_MAX_DIMENSION) { free(decoder); return 0u; }
+  memset(&config, 0, sizeof(config));
+  config.threads = MXWF_DECODER_THREADS; config.w = display_width; config.h = display_height;
+  if (vpx_codec_dec_init(&decoder->codec, vpx_codec_vp9_dx(), &config, 0u) != VPX_CODEC_OK) { free(decoder); return 0u; }
+  decoder->initialized = 1; decoder->display_width = display_width; decoder->display_height = display_height;
+  decoder->color_primaries = color_primaries; decoder->color_transfer = color_transfer; decoder->color_matrix = color_matrix; decoder->color_range = color_range; decoder->codec_kind = MXWF_CODEC_VP9;
   return (uint32_t)(uintptr_t)decoder;
 }
 
@@ -342,7 +376,7 @@ int32_t mxwf_decoder_reset(uint32_t handle) {
   config.threads = MXWF_DECODER_THREADS;
   config.w = decoder->display_width;
   config.h = decoder->display_height;
-  if (vpx_codec_dec_init(&decoder->codec, vpx_codec_vp8_dx(), &config, 0u) != VPX_CODEC_OK) {
+  if (vpx_codec_dec_init(&decoder->codec, decoder->codec_kind == MXWF_CODEC_VP9 ? vpx_codec_vp9_dx() : vpx_codec_vp8_dx(), &config, 0u) != VPX_CODEC_OK) {
     decoder->initialized = 0;
     return -3;
   }

@@ -316,8 +316,13 @@ export default function App() {
           {/* Case-sensitive wordmark: the inverted chip highlights the middle word only. */}
           <span className="brand-wordmark">MX <span className="brand-chip">Player</span> Max</span>
         </div>
-        <div className="runtime-status"><i aria-hidden="true" /><span>MX Player Max {BUILD_VERSION}</span></div>
+        <nav className="topbar-nav" aria-label={copy.player.heading}>
+          <a href="#demo-player">{copy.nav.demo}</a>
+          <a href="#capabilities">{copy.nav.capabilities}</a>
+          <a href="#integration">{copy.nav.integration}</a>
+        </nav>
         <div className="topbar-actions">
+          <span className="runtime-status"><i aria-hidden="true" /><span>{copy.development.status}</span></span>
           <div className="lang-switch" ref={languageRef}>
             <button
               type="button"
@@ -366,8 +371,14 @@ export default function App() {
       </header>
 
       <main className="home-main">
-        <section className="player-launcher" aria-labelledby="player-heading" data-demo-reveal>
-          <h1 id="player-heading" className="sr-only">{copy.player.heading}</h1>
+        <section className="landing-intro" aria-labelledby="landing-heading" data-demo-reveal>
+          <span className="landing-eyebrow">{copy.development.eyebrow}</span>
+          <h1 id="landing-heading">{copy.development.heading}</h1>
+          <p>{copy.development.intro}</p>
+          <span className="landing-build">MX Player Max {BUILD_VERSION}</span>
+        </section>
+        <section id="demo-player" className="player-launcher" aria-labelledby="player-heading" data-demo-reveal>
+          <h2 id="player-heading" className="sr-only">{copy.player.heading}</h2>
           <div
             className={dragging ? 'player-stage is-dragging' : 'player-stage'}
             data-testid="player-stage"
@@ -430,19 +441,21 @@ export default function App() {
               </select>
             </div>
           </div>
+          <p className="development-note"><i aria-hidden="true" />{copy.development.playerNote}</p>
           {fault && <p className="input-error" role="alert">{faultMessage(fault, copy)}</p>}
         </section>
 
-        <section className="feature-strip" aria-label={copy.player.featuresLabel} data-demo-reveal>
+        <section id="capabilities" className="feature-strip" aria-label={copy.player.featuresLabel} data-demo-reveal>
           {copy.features.map((feature) => (
             <div className="feature-item" key={feature.title}>
-              <strong>{feature.title}</strong><span>{feature.text}</span>
+              <span className="feature-item-head"><strong>{feature.title}</strong><small data-stage={feature.stage}>{feature.stage === 'preview' ? copy.development.preview : copy.development.inProgress}</small></span>
+              <span>{feature.text}</span>
             </div>
           ))}
         </section>
 
         <WhyChoose copy={copy} />
-        <IntegrationSection sdkBaseUrl={sdkBaseUrl} version={BUILD_VERSION} copy={copy.integration} />
+        <IntegrationSection sdkBaseUrl={sdkBaseUrl} version={BUILD_VERSION} copy={copy.integration} developmentNote={copy.development.integrationNote} />
         <HowItWorks copy={copy} />
         <DiagnosticsPanel player={diagnosticPlayer} resetKey={`${diagnosticRevision}:${renderMode}`} copy={copy.diagnostics} />
         <FAQ copy={copy} />

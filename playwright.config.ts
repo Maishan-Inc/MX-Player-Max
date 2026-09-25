@@ -23,10 +23,10 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium-desktop', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', viewport: { width: 1440, height: 900 } } },
-    { name: 'chromium-mobile', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
-    { name: 'firefox-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'firefox', viewport: { width: 1280, height: 800 } } },
-    { name: 'webkit-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'webkit', viewport: { width: 1280, height: 800 } } },
+    { name: 'chromium-desktop', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', locale: 'en-US', viewport: { width: 1440, height: 900 } } },
+    { name: 'chromium-mobile', testDir: './packages/ui/tests/playwright', use: { browserName: 'chromium', locale: 'en-US', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
+    { name: 'firefox-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'firefox', locale: 'en-US', viewport: { width: 1280, height: 800 } } },
+    { name: 'webkit-simulated', testDir: './packages/ui/tests/playwright', use: { browserName: 'webkit', locale: 'en-US', viewport: { width: 1280, height: 800 } } },
     { name: 'media-chromium', testDir: './tests/browser/media', timeout: 180_000, use: { browserName: 'chromium', viewport: { width: 1280, height: 800 } } },
     // Firefox runs the custom path roughly 60% slower than Chromium, and 10-bit VP9 through the
     // custom pipeline is the slowest case in the corpus. The acceptance harness gives each scripted

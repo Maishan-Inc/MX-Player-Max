@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-25T07:06:02Z",
+  "host": "Windows 11 10.0.26100 x64",
+  "runner": "Playwright 1.62.1, headless browser processes",
+  "command": "pnpm test:vp9:browser",
+  "scope": "Restricted local VP9 technical acceptance; Core and release assets remain unchanged",
+  "fixture": {
+    "path": "packages/decoder-wasm-vpx/tests/fixtures/webm-vp9-p2-10bit-641x359.webm",
+    "sha256": "09ba8a0c2c2b07f42a1a0fc26af56f13d758893c65dabf2fc750037dba92741d",
+    "codec": "vp09.02.21.10"
+  },
+  "seekTargetsUs": [200000, 700000, 400000],
+  "rows": [
+    {
+      "browser": "Chrome stable channel", "version": "153.0.8010.48", "isolated": false, "status": "passed",
+      "wasmVariantsRequested": ["simd"], "resetEpochs": [1, 2, 3], "lastDeliveredEpoch": 3,
+      "staleFramesDelivered": 0, "decodedFrames": 15, "errors": [],
+      "frame": { "format": "I420P10", "codedSize": [642, 360], "visibleSize": [641, 359], "timestampUs": 400000, "copiedBytes": 691358, "nonzeroBytes": 644207, "maxLumaSample": 862 }
+    },
+    {
+      "browser": "Chrome stable channel", "version": "153.0.8010.48", "isolated": true, "status": "passed",
+      "wasmVariantsRequested": ["threaded", "simd"], "resetEpochs": [1, 2, 3], "lastDeliveredEpoch": 3,
+      "staleFramesDelivered": 0, "decodedFrames": 15, "errors": [],
+      "frame": { "format": "I420P10", "codedSize": [642, 360], "visibleSize": [641, 359], "timestampUs": 400000, "copiedBytes": 691358, "nonzeroBytes": 644207, "maxLumaSample": 862 }
+    },
+    {
+      "browser": "Edge stable channel", "version": "153.0.4234.48", "isolated": false, "status": "passed",
+      "wasmVariantsRequested": ["simd"], "resetEpochs": [1, 2, 3], "lastDeliveredEpoch": 3,
+      "staleFramesDelivered": 0, "decodedFrames": 15, "errors": [],
+      "frame": { "format": "I420P10", "codedSize": [642, 360], "visibleSize": [641, 359], "timestampUs": 400000, "copiedBytes": 691358, "nonzeroBytes": 644207, "maxLumaSample": 862 }
+    },
+    {
+      "browser": "Edge stable channel", "version": "153.0.4234.48", "isolated": true, "status": "passed",
+      "wasmVariantsRequested": ["threaded", "simd"], "resetEpochs": [1, 2, 3], "lastDeliveredEpoch": 3,
+      "staleFramesDelivered": 0, "decodedFrames": 15, "errors": [],
+      "frame": { "format": "I420P10", "codedSize": [642, 360], "visibleSize": [641, 359], "timestampUs": 400000, "copiedBytes": 691358, "nonzeroBytes": 644207, "maxLumaSample": 862 }
+    },
+    { "browser": "Playwright Firefox", "version": "153.0", "isolated": false, "status": "unsupported", "reason": "VideoFrame exists, but constructing I420P10 is unsupported" },
+    { "browser": "Playwright Firefox", "version": "153.0", "isolated": true, "status": "unsupported", "reason": "VideoFrame exists, but constructing I420P10 is unsupported" },
+    { "browser": "Playwright WebKit", "version": "26.5", "isolated": false, "status": "unsupported", "reason": "VideoFrame constructor is unavailable; this is not physical macOS Safari evidence" },
+    { "browser": "Playwright WebKit", "version": "26.5", "isolated": true, "status": "unsupported", "reason": "VideoFrame constructor is unavailable; this is not physical macOS Safari evidence" }
+  ]
+}

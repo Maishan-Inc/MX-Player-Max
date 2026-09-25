@@ -15,9 +15,10 @@ import { hasWebCodecs } from '../../../../tests/browser/media/capabilities'
  * removed, the first also passes in `chromium-mobile` and the second also passes in
  * `chromium-mobile` and `firefox-simulated`, so three project-case pairs were being withheld for no
  * reason; and both fail in `webkit-simulated`, which the name list happened to exclude but says
- * nothing about. Playwright's WebKit has no `VideoFrame`, and the isolated case shows what that
- * costs: it selects the WASM backend, fetches the threaded variant and then the SIMD one, and ends
- * in `WASM_ACCEPTANCE_CANVAS_BLANK` with nothing ever drawn.
+ * nothing about. Playwright's WebKit has no `VideoFrame`: measured before the strategy layer knew
+ * that, the isolated case selected the WASM backend, fetched the threaded variant and then the SIMD
+ * one, and ended in `WASM_ACCEPTANCE_CANVAS_BLANK` with nothing ever drawn; it now withholds the
+ * candidate instead and the case fails as `STRATEGY_NO_VIABLE_BACKEND`. Neither is WASM playback.
  *
  * `crossOriginIsolated` is deliberately not probed. The isolated case needs it, but it is set by the
  * demo server's COOP/COEP headers rather than by the browser, so a probe would convert a regression

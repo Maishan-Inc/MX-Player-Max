@@ -111,13 +111,41 @@ function createContext(
   report = createReport(),
   wasmDecoders?: CapabilityContext['wasmDecoders'],
   webCodecsCodecs?: CapabilityContext['webCodecsCodecs'],
+  wasmFrameOutput?: CapabilityContext['wasmFrameOutput'],
 ): CapabilityContext {
   return {
     snapshot,
     media: report,
     ...(wasmDecoders ? { wasmDecoders } : {}),
     ...(webCodecsCodecs ? { webCodecsCodecs } : {}),
+    ...(wasmFrameOutput ? { wasmFrameOutput } : {}),
   }
+}
+
+/** What `@mx-player-max/decoder-wasm-vpx` publishes, with the answer the realm gave it. */
+function frameOutput(available: boolean): NonNullable<CapabilityContext['wasmFrameOutput']> {
+  return { frameConstructor: 'VideoFrame', available }
+}
+
+/** A browser where WebCodecs refuses the media and only the declared WASM decoder is left. */
+function wasmOnlyContext(wasmFrameOutput?: CapabilityContext['wasmFrameOutput']): CapabilityContext {
+  return createContext(
+    createSnapshot({ webCodecsVideo: false, webCodecsAudio: false }),
+    createReport({
+      webCodecs: {
+        video: { status: 'unsupported', reasons: ['config-unsupported'], configPresent: true },
+        audio: { status: 'unsupported', reasons: ['config-unsupported'], configPresent: true },
+        playable: 'unsupported',
+        reasons: ['config-unsupported'],
+      },
+    }),
+    [
+      { codec: 'avc1.640028', supportsVideo: true, supportsAudio: false, variants: ['single'] },
+      { codec: 'mp4a.40.2', supportsVideo: false, supportsAudio: true, variants: ['single'] },
+    ],
+    undefined,
+    wasmFrameOutput,
+  )
 }
 
 /** What `@mx-player-max/decoder-webcodecs` declares, trimmed to the entries these cases need. */
@@ -281,6 +309,44 @@ describe('strategy engine', () => {
     ])
 
     expect(createStrategyEngine().rank(createMedia(), 'frame-access', context)).toEqual([])
+  })
+
+  /**
+   * A declared decoder was treated as the whole answer, but libvpx decodes into linear memory and
+   * then wraps the planes in a `VideoFrame`. Playwright's WebKit has no such constructor, so the
+   * candidate was ranked, selected, reached `ready`, decoded into WASM memory and only then failed —
+   * reporting `WASM_FRAME_ABI_INVALID`, a code that sends a reader to the frame ABI for what is a
+   * browser gap. The candidate is now withheld, carrying the code the backend would have raised.
+   */
+  it('withholds the WASM candidate when the realm cannot construct the frame it hands over', () => {
+    const context = wasmOnlyContext(frameOutput(false))
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'frame-access', context)
+
+    expect(evaluation.rankedCandidates).toEqual([])
+    // The native candidate is excluded too, by intent rather than by frame output, so this selects
+    // the WASM one rather than coupling the case to that separate reason.
+    expect(evaluation.exclusions?.filter((exclusion) => exclusion.kind === 'wasm')).toEqual([{
+      candidateId: 'wasm-custom',
+      kind: 'wasm',
+      errorCode: 'WASM_FRAME_OUTPUT_UNAVAILABLE',
+      reasons: ['frame-output-unavailable:VideoFrame'],
+    }])
+    expect(() => createStrategyEngine().select(createMedia(), 'frame-access', context)).toThrow(StrategySelectionError)
+  })
+
+  it('still ranks WASM when the realm can construct the frame and reports no exclusion', () => {
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'frame-access', wasmOnlyContext(frameOutput(true)))
+
+    expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['wasm-custom'])
+    expect(evaluation.exclusions?.some((exclusion) => exclusion.kind === 'wasm')).not.toBe(true)
+  })
+
+  /** A host that declares no frame output keeps the behaviour that existed before it was plumbed. */
+  it('keeps ranking WASM when the host declares no frame output', () => {
+    const evaluation = createStrategyEngine().evaluate(createMedia(), 'frame-access', wasmOnlyContext())
+
+    expect(evaluation.rankedCandidates.map((candidate) => candidate.id)).toEqual(['wasm-custom'])
+    expect(evaluation.exclusions?.some((exclusion) => exclusion.kind === 'wasm')).not.toBe(true)
   })
 
   /**

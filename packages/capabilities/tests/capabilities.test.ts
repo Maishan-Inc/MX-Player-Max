@@ -107,10 +107,16 @@ describe('detectCapabilities', () => {
     const snapshot = await detectCapabilities({ adapter, cache: new MemoryCache(), sdkVersion: 'test-wasm-context' })
     const report = await probeMediaCapabilities(createMedia(), { adapter, cache: new MemoryCache(), snapshot, sdkVersion: 'test-wasm-context' })
     const declarations = [{ codec: 'vp8', supportsVideo: true, supportsAudio: false }] as const
-    const context = createCapabilityContext(snapshot, report, declarations)
+    const frameOutput = { frameConstructor: 'VideoFrame', available: false } as const
+    const context = createCapabilityContext(snapshot, report, declarations, undefined, frameOutput)
 
     expect(context.wasmDecoders).toEqual(declarations)
     expect(context.wasmDecoders).not.toBe(declarations)
+    // What the WASM backend needs from the realm before a decoded frame can leave it, copied for
+    // the same reason: the context must not alias a caller's object.
+    expect(context.wasmFrameOutput).toEqual(frameOutput)
+    expect(context.wasmFrameOutput).not.toBe(frameOutput)
+    expect(createCapabilityContext(snapshot, report).wasmFrameOutput).toBeUndefined()
   })
   it('does not fetch media or construct decoders through the default adapter', async () => {
     const fetchSpy = vi.fn()

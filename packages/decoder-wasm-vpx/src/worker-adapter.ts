@@ -9,6 +9,7 @@ import { createWasmError } from '@mx-player-max/decoder-wasm'
 import { ErrorCodes, type CapabilitySnapshot, type TrackInfo } from '@mx-player-max/types'
 import type { LibvpxVp8WorkerConfig } from './worker-controller'
 import { createWasmWorkerError, wasmWorkerErrors } from './worker-errors'
+import { resolveSupportedVp9Codec } from './vp9-codec'
 
 export type LibvpxVp8WorkerTransport = SharedDecoderWorkerTransport<LibvpxVp8WorkerConfig>
 export type LibvpxVp8WorkerTransportFactory = SharedDecoderWorkerTransportFactory<LibvpxVp8WorkerConfig>
@@ -34,13 +35,22 @@ export function createLibvpxVp8VideoDecoderConfig(track: TrackInfo): VideoDecode
   }
 }
 
+export function createLibvpxVp9VideoDecoderConfig(track: TrackInfo): VideoDecoderConfig {
+  if (track.kind !== 'video' || track.width === undefined || track.height === undefined) {
+    throw createWasmError(ErrorCodes.WASM_MANIFEST_INVALID, 'The VP9 WASM decoder track is incomplete', false)
+  }
+  const codec = resolveSupportedVp9Codec(track.codec ?? 'vp9', track)
+  if (codec === null) throw createWasmError(ErrorCodes.WASM_MANIFEST_INVALID, 'The VP9 WASM decoder track profile is unsupported', false)
+  return { codec, codedWidth: track.width, codedHeight: track.height }
+}
+
 export class WorkerLibvpxVp8DecoderAdapter implements VideoDecoderAdapterLike {
   readonly #adapter: WorkerDecoderAdapter<LibvpxVp8WorkerConfig>
   readonly #config: LibvpxVp8WorkerConfig
 
-  constructor(options: WorkerLibvpxVp8DecoderAdapterOptions) {
+  constructor(options: WorkerLibvpxVp8DecoderAdapterOptions, kind: LibvpxVp8WorkerConfig['kind'] = 'libvpx-vp8') {
     this.#config = {
-      kind: 'libvpx-vp8',
+      kind,
       baseUrl: options.baseUrl,
       track: options.track,
       capabilities: options.capabilities,
@@ -60,7 +70,7 @@ export class WorkerLibvpxVp8DecoderAdapter implements VideoDecoderAdapterLike {
   get decodeQueueSize(): number { return this.#adapter.decodeQueueSize }
 
   configure(config: VideoDecoderConfig, _supported: boolean, epoch: number): Promise<void> {
-    validateVideoConfig(config, this.#config.track)
+    validateVideoConfig(config, this.#config.track, this.#config.kind)
     return this.#adapter.configure(this.#config, epoch)
   }
 
@@ -68,6 +78,12 @@ export class WorkerLibvpxVp8DecoderAdapter implements VideoDecoderAdapterLike {
   flush: VideoDecoderAdapterLike['flush'] = (epoch) => this.#adapter.flush(epoch)
   reset: VideoDecoderAdapterLike['reset'] = (epoch) => this.#adapter.reset(epoch)
   close: VideoDecoderAdapterLike['close'] = () => this.#adapter.close()
+}
+
+export class WorkerLibvpxVp9DecoderAdapter extends WorkerLibvpxVp8DecoderAdapter {
+  constructor(options: WorkerLibvpxVp8DecoderAdapterOptions) {
+    super(options, 'libvpx-vp9')
+  }
 }
 
 export function createBrowserLibvpxVp8WorkerTransport(): LibvpxVp8WorkerTransport {
@@ -79,9 +95,10 @@ export function createBrowserLibvpxVp8WorkerTransport(): LibvpxVp8WorkerTranspor
   }
 }
 
-function validateVideoConfig(config: VideoDecoderConfig, track: TrackInfo): void {
+function validateVideoConfig(config: VideoDecoderConfig, track: TrackInfo, kind: LibvpxVp8WorkerConfig['kind']): void {
   const codec = config.codec.trim().toLowerCase()
-  if ((codec !== 'vp8' && !codec.startsWith('vp08.')) || config.codedWidth !== track.width || config.codedHeight !== track.height) {
-    throw createWasmError(ErrorCodes.WASM_MANIFEST_INVALID, 'The VP8 WASM decoder configuration does not match the selected track', false)
+  const validCodec = kind === 'libvpx-vp9' ? (codec === 'vp9' || codec.startsWith('vp09.')) : (codec === 'vp8' || codec.startsWith('vp08.'))
+  if (!validCodec || config.codedWidth !== track.width || config.codedHeight !== track.height) {
+    throw createWasmError(ErrorCodes.WASM_MANIFEST_INVALID, `The ${kind === 'libvpx-vp9' ? 'VP9' : 'VP8'} WASM decoder configuration does not match the selected track`, false)
   }
 }

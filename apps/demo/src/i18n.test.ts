@@ -70,6 +70,17 @@ describe('Demo locale packs', () => {
       expect(new Set(questions).size).toBe(questions.length)
     }
   })
+
+  it('makes the development preview and capability stages clear in every locale', () => {
+    for (const locale of LOCALES) {
+      const copy = DEMO_COPY[locale]
+      expect(copy.development.status).not.toBe(copy.development.preview)
+      expect(copy.development.playerNote.length).toBeGreaterThan(20)
+      expect(copy.development.integrationNote.length).toBeGreaterThan(20)
+      expect(copy.features.filter((feature) => feature.stage === 'development')).toHaveLength(4)
+      expect(copy.features.filter((feature) => feature.stage === 'preview')).toHaveLength(2)
+    }
+  })
 })
 
 describe('Demo locale negotiation', () => {

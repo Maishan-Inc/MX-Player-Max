@@ -7,6 +7,7 @@ playwright-report/
 .vite/
 .cache/
 .pnpm-store/
+*.tsbuildinfo
 *.log
 .env
 .env.*
@@ -14,3 +15,4 @@ playwright-report/
 .release-tmp/
 packages/browser/dist/manifest.json
 tests/media/generated/
+packages/decoder-wasm-vpx/third_party/libvpx-upstream/

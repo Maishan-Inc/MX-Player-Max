@@ -134,9 +134,10 @@ interface IntegrationSectionProps {
   readonly sdkBaseUrl: string
   readonly version: string
   readonly copy: IntegrationCopy
+  readonly developmentNote: string
 }
 
-export function IntegrationSection({ sdkBaseUrl, version, copy }: IntegrationSectionProps) {
+export function IntegrationSection({ sdkBaseUrl, version, copy, developmentNote }: IntegrationSectionProps) {
   const snippets = useMemo(() => buildSnippets(sdkBaseUrl, copy), [sdkBaseUrl, copy])
   const [activeId, setActiveId] = useState(snippets[0]?.id ?? 'iife')
   const [copied, setCopied] = useState(false)
@@ -154,13 +155,14 @@ export function IntegrationSection({ sdkBaseUrl, version, copy }: IntegrationSec
   }
 
   return (
-    <section className="integration" aria-labelledby="integration-heading" data-demo-reveal>
+    <section id="integration" className="integration" aria-labelledby="integration-heading" data-demo-reveal>
       <div className="integration-intro">
         <h2 id="integration-heading">{copy.heading}</h2>
         <p>
           {copy.intro}{' '}
           <a href={DOCS_URL} target="_blank" rel="noreferrer">{copy.docsLink}</a>{copy.introSuffix}
         </p>
+        <span className="integration-preview-note">{developmentNote}</span>
       </div>
 
       <div className="integration-panel">

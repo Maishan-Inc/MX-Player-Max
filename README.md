@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-仓库已完成 Phase 1-12 的当前批准范围，以及 Phase 10.2 的 restricted libvpx VP8 WASM
+仓库已完成 Phase 1-12 的当前批准范围，以及 Phase 10.2 的已批准 libvpx VP8 WASM
 垂直切片：真实 WebAssembly runtime、MXWF I420 帧 ABI、Decoder Worker、Core Custom Pipeline
 和 WebCodecs -> WASM 原子回退。该切片仅覆盖 video-only VP8 profile 0 / 8-bit I420，且只有
 调用方显式提供自托管 `wasmBaseUrl` 时启用。
@@ -105,7 +105,9 @@ Playwright Chromium/Firefox/WebKit 自动化与真实 Chrome、Firefox、macOS S
 
 ## 当前范围边界
 
-当前真实 WASM Codec 覆盖只包含 restricted libvpx VP8 video-only 切片；VP9、AV1、H.264、
-HEVC、VVC、WASM 音频和 FFmpeg 均未实现。三个 VP8 二进制不属于可发布资源，Browser release
-manifest 只把它们列入 `excluded`。仓库仍不包含 PGS/VobSub、完整 libass、字幕内容编辑器、
+当前可通过 Core 播放的真实 WASM Codec 只包含已批准的 libvpx VP8 video-only 切片；
+`single` 和 `simd` 可进入发布白名单，`threaded` 因缺少 host glue 技术性排除。
+VP9 已有受限的真实 WebM 解码技术切片，并在本机 Chrome/Edge 153 验证 10-bit Worker 帧输出与连续 seek；
+它仍缺完整浏览器矩阵与许可验收，未接入 Core，也不进入发布资产；
+AV1、H.264、HEVC、VVC、WASM 音频和 FFmpeg 尚未接入。仓库仍不包含 PGS/VobSub、完整 libass、字幕内容编辑器、
 播放列表或下一集业务、HLS/DASH 自定义管线。Playwright WebKit 不等价于物理 macOS Safari 验收。
