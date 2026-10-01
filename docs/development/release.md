@@ -55,7 +55,7 @@ WASM，但 Docker smoke 只验证静态分发合同，不冒充真实解码或 t
 
 ```text
 apps/demo/dist/
-  index.html + assets + flower.webm + .nojekyll
+  index.html + assets + webm-vp8-p0-8bit-opus.webm + .nojekyll
   sdk/
     manifest-approved @mx-player-max/browser JS/CSS/maps
     wasm/libvpx-vp8-single.wasm + libvpx-vp8-simd.wasm

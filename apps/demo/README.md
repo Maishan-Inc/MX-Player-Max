@@ -26,7 +26,9 @@ docker compose up --build
 
 访问 `http://localhost:4173`。Nginx 注入 COOP/COEP/CORP，用于跨源隔离能力验证；诊断面板会把未知或尚未完成实际探测的能力显示为 pending verification，不把它们声明为 supported。
 
-默认 `flower.webm` 是仓库内的 CC0 媒体样本。非空 poster 与媒体来源、SHA-256 和许可记录在 `public/ASSET-PROVENANCE.md`。
+默认 `webm-vp8-p0-8bit-opus.webm` 是仓库合成的 VP8 + Opus 语料样本（`tests/media/manifest.json` 记录），
+原生与 WebCodecs 两条路径都能播放；`flower.webm`（VP8 + Vorbis，CC0）仍保留用于 Range 契约测试。
+非空 poster 与媒体来源、SHA-256 和许可记录在 `public/ASSET-PROVENANCE.md`。
 
 ## GitHub Pages
 

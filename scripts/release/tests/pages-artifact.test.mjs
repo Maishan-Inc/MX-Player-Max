@@ -68,7 +68,7 @@ async function createFixture({ omitNoJekyll = false } = {}) {
   await mkdir(browserDist, { recursive: true })
   await mkdir(vpxWasm, { recursive: true })
   await writeFile(path.join(demoDist, 'index.html'), '<!doctype html>')
-  await writeFile(path.join(demoDist, 'flower.webm'), 'media')
+  await writeFile(path.join(demoDist, 'webm-vp8-p0-8bit-opus.webm'), 'media')
   if (!omitNoJekyll) await writeFile(path.join(demoDist, '.nojekyll'), '')
   await writeFile(path.join(browserDist, 'index.js'), 'browser esm')
   await writeFile(path.join(browserDist, 'style.css'), 'browser css')

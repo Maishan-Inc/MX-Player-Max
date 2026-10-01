@@ -151,6 +151,15 @@ ahead；Firefox 两组长期 dropped ratio 低于阈值但首帧/首字幕超过
 CPU 和功耗仍不可观测，不能因为运行满 30 分钟而标记通过。长跑采集命令仍从实际文件计算 hash，
 缺文件、复用 seed hash 或缺字段都会拒绝运行。
 
+**Chromium 前向缓冲=0 的根因（2026-09-26 复核）**：这是采集脚本 bug，不是引擎 bug。采集脚本
+在 30 分钟采样循环结束后、`pause()` 之后才读一次 `player.playback.bufferedAhead`；而长跑样本
+恰好 1800 s（`ffmpeg ... -t 1800`），seek 到 1.5 s 再播 1800 s 后播放头已到 EOF，EOF 处前向缓冲
+按定义为零（引擎的 `bufferedAhead` 单测与 smoke 基线都是正值：Chromium smoke 772,515 µs）。
+Firefox 报 ~60 s 只是因为它没跑到 EOF、仍有正向缓冲。修复已落到 `apps/demo/src/performance-acceptance.ts`：
+改为在播放期间跟踪最小 `bufferedAhead`（仅 `state === 'playing'` 时采样），排除 ended 尾部。
+首帧/首字幕超阈值与 dropped ratio 0.05 仍未达标是软件解码/低端 GPU 的真实性能问题，与
+前向缓冲=0 无关，仍需在真实硬件上复测。
+
 ## 供应链与分发
 
 RIFE MXAI SHA-256 为 `665472...c56c`（MIT），RT4KSR MXAI 为 `c34a76...fba0`

@@ -16,3 +16,10 @@ requires explicit user authorization and an `OPENAI_API_KEY`.
 `C6F8A348953395598A9A73B9BAB1676436410797BCE9F398F4BE1531D6E76DDA`.
 MDN publishes this sample for reuse under CC0; it is included only in the Demo
 application and is not part of an SDK or UI package export.
+
+`webm-vp8-p0-8bit-opus.webm` is the Demo's default media. It is a synthetic
+VP8 + Opus WebM generated for this repository by the same FFmpeg
+`lavfi testsrc2 + sine` recipe as the rest of the quality corpus; its SHA-256 is
+`e9e8baf10f81588a257bffe147648c31f5a0c5e5a52b57888e935917749d13b8` and its
+full provenance is recorded in `tests/media/manifest.json`. Unlike the MDN
+`flower.webm` (VP8 + Vorbis), it plays on both the Native and WebCodecs paths.

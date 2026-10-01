@@ -4,9 +4,9 @@ import { displayBuildVersion, REPOSITORY_URL, resolveAiModelBaseUrl, resolveDefa
 describe('Demo deployment helpers', () => {
   it('resolves the default media below the active Vite base', () => {
     expect(resolveDefaultMediaUrl('./', 'https://maishan-inc.github.io/MX-Player-Max/'))
-      .toBe('https://maishan-inc.github.io/MX-Player-Max/flower.webm')
+      .toBe('https://maishan-inc.github.io/MX-Player-Max/webm-vp8-p0-8bit-opus.webm')
     expect(resolveDefaultMediaUrl('/', 'http://127.0.0.1:4173/MX-Player-Max/'))
-      .toBe('http://127.0.0.1:4173/flower.webm')
+      .toBe('http://127.0.0.1:4173/webm-vp8-p0-8bit-opus.webm')
     expect(resolveSdkBaseUrl('./', 'https://maishan-inc.github.io/MX-Player-Max/'))
       .toBe('https://maishan-inc.github.io/MX-Player-Max/sdk/')
   })

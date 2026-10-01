@@ -1,7 +1,7 @@
 export const REPOSITORY_URL = 'https://github.com/Maishan-Inc/MX-Player-Max'
 
 export function resolveDefaultMediaUrl(baseUrl: string, pageUrl: string): string {
-  return new URL('flower.webm', new URL(baseUrl, pageUrl)).href
+  return new URL('webm-vp8-p0-8bit-opus.webm', new URL(baseUrl, pageUrl)).href
 }
 
 /** Where `pnpm build:pages` publishes the Browser SDK bundle next to the Demo. */

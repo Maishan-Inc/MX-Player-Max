@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin, type PreviewServer, type ViteDevServer } from 'vite'
 import react from '@vitejs/plugin-react'
 
-const SAMPLE_PATH = fileURLToPath(new URL('./public/flower.webm', import.meta.url))
+const PUBLIC_MEDIA_SAMPLES = new Map([
+  ['flower.webm', fileURLToPath(new URL('./public/flower.webm', import.meta.url))],
+  ['webm-vp8-p0-8bit-opus.webm', fileURLToPath(new URL('./public/webm-vp8-p0-8bit-opus.webm', import.meta.url))],
+])
 const QUALITY_FIXTURE_DIRECTORY = new URL('../../tests/media/fixtures/', import.meta.url)
 const QUALITY_ASSETS = new Map([
   ['mp4-h264-baseline-8bit-aac.mp4', { path: fileURLToPath(new URL('mp4-h264-baseline-8bit-aac.mp4', QUALITY_FIXTURE_DIRECTORY)), type: 'video/mp4' }],
@@ -172,11 +175,10 @@ function serveAcceptanceAssets(): Plugin {
 function serveSampleRanges(): Plugin {
   const install = (server: Pick<ViteDevServer | PreviewServer, 'middlewares'>): void => {
     server.middlewares.use((request, response, next) => {
-      if (request.method !== 'GET' || request.url === undefined
-        || new URL(request.url, 'http://localhost').pathname !== '/flower.webm') {
-        next()
-        return
-      }
+      if (request.method !== 'GET' || request.url === undefined) { next(); return }
+      const pathname = new URL(request.url, 'http://localhost').pathname
+      const samplePath = PUBLIC_MEDIA_SAMPLES.get(pathname.slice(1))
+      if (samplePath === undefined) { next(); return }
       const match = /^bytes=([0-9]+)-([0-9]+)$/.exec(request.headers.range ?? '')
       const startText = match?.[1]
       const endText = match?.[2]
@@ -184,7 +186,7 @@ function serveSampleRanges(): Plugin {
         next()
         return
       }
-      const size = statSync(SAMPLE_PATH).size
+      const size = statSync(samplePath).size
       const start = Number(startText)
       const end = Math.min(Number(endText), size - 1)
       if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end) {
@@ -199,7 +201,7 @@ function serveSampleRanges(): Plugin {
         'Content-Range': `bytes ${start}-${end}/${size}`,
         'Content-Type': 'video/webm',
       })
-      const stream = createReadStream(SAMPLE_PATH, { start, end })
+      const stream = createReadStream(samplePath, { start, end })
       stream.on('error', (error) => response.destroy(error))
       stream.pipe(response)
     })

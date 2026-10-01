@@ -9,6 +9,11 @@
 和 WebCodecs -> WASM 原子回退。该切片仅覆盖 video-only VP8 profile 0 / 8-bit I420，且只有
 调用方显式提供自托管 `wasmBaseUrl` 时启用。
 
+**尚未发布到 npm**：仓库版本号 `0.1.0` 只是内部标记，任何包都还没有发布到 npm 或打
+GitHub Release。正式发布必须走 `release.yml` 的 validate/package/consumer-smoke/artifact/publish
+门禁（见 `docs/development/release.md`）；当前 Phase 13 的最终发布门禁（真实浏览器
+latest-two-stable、物理 Safari、30 分钟长跑、Docker runtime）仍为 pending，因此不得发布。
+
 ```bash
 pnpm add @mx-player-max/sdk @mx-player-max/ui
 ```

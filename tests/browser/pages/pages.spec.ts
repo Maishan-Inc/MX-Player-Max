@@ -12,7 +12,7 @@ test('serves the Demo and publishable Browser SDK from a repository subpath', as
     'href',
     'https://github.com/Maishan-Inc/MX-Player-Max',
   )
-  await expect(page.locator('#media-url')).toHaveValue('http://127.0.0.1:4178/MX-Player-Max/flower.webm')
+  await expect(page.locator('#media-url')).toHaveValue('http://127.0.0.1:4178/MX-Player-Max/webm-vp8-p0-8bit-opus.webm')
 
   const media = await request.get('flower.webm', { headers: { Range: 'bytes=0-31' } })
   expect([200, 206]).toContain(media.status())

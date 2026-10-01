@@ -405,7 +405,7 @@ publishable assets，threaded 因缺少 host glue 技术性排除。
 - [ ] 执行 Chrome/Firefox/macOS Safari latest-two-stable 实机 P0/P1 矩阵。
 - [x] 执行 Chromium/Firefox 隔离与非隔离 30 分钟 automation 运行；结果未达启动/缓冲/帧丢失门禁，音画漂移、CPU 与功耗仍不可观测。
 - [ ] 在具备 Docker CLI 的环境完成双模式镜像 build/runtime smoke。
-- [ ] Phase 10.2 审批后补 WASM 实际播放、性能和分发证据。
+- [ ] 补 WASM 实际播放、性能和分发证据（Phase 10.2 审批已完成，仍待真实浏览器矩阵执行）。
 
 ### 最终发布门禁
 
@@ -416,8 +416,8 @@ publishable assets，threaded 因缺少 host glue 技术性排除。
 - Docker 镜像可构建，非隔离环境可以单线程运行。
 
 当前门禁结论见 `phase-13-acceptance.md`：自动化层已完成，但实机 latest-two-stable、物理 Safari、
-30 分钟 automation 已执行但未通过全部阈值；Docker runtime 和 Phase 10.2 审批未完成，因此
-Phase 13 尚未达到最终发布状态。
+30 分钟 automation 已执行但未通过全部阈值；Docker runtime 尚未完成，因此 Phase 13 尚未达到
+最终发布状态。
 
 ## 17. 每阶段的 Git 工作方式
 

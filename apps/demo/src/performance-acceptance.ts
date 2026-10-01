@@ -105,9 +105,18 @@ async function execute(scenario: 'smoke' | 'long-run-30m', host: HTMLElement): P
     await player.play()
     const runDurationMs = scenario === 'long-run-30m' ? 1_800_000 : 1_000
     const samplingStartedAt = performance.now()
+    // The forward buffer is a steady-playback health signal, not a distance-to-EOF reading.
+    // Reading `bufferedAhead` once at the end of a 30-minute playthrough of a 30-minute file
+    // always lands at EOF (forward buffer 0 by definition), so track the minimum observed
+    // while the media is actively playing and ignore the ended tail.
+    let minBufferedAhead = Number.POSITIVE_INFINITY
     while (performance.now() - samplingStartedAt < runDurationMs) {
       const memory = readMemoryBytes()
       if (memory !== null) memorySamples.push({ elapsedMs: performance.now() - startedAt, bytes: memory })
+      const snapshot = player.playback
+      if (snapshot.state === 'playing' && Number.isFinite(snapshot.bufferedAhead)) {
+        minBufferedAhead = Math.min(minBufferedAhead, snapshot.bufferedAhead)
+      }
       await delay(scenario === 'long-run-30m' ? 30_000 : 200)
     }
     player.pause()
@@ -129,7 +138,7 @@ async function execute(scenario: 'smoke' | 'long-run-30m', host: HTMLElement): P
         firstAudioMs: unavailable('Native playback exposes no first-audible-sample timestamp'),
         firstSubtitleMs: measured(firstSubtitleMs),
         seekLatencyMs: measured(seekLatencyMs),
-        bufferedAheadMicros: measured(player.playback.bufferedAhead),
+        bufferedAheadMicros: measured(Number.isFinite(minBufferedAhead) ? minBufferedAhead : 0),
         droppedFrames: dropped === null || dropped === undefined ? unavailable('Browser did not expose dropped-frame statistics') : measured(dropped),
         avDriftMicros: unavailable('Native audio/video clocks are not independently observable'),
         cpuTimeMs: unavailable('Browser automation exposes no process CPU metric'),

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { assertManifest } from './manifest-schema.mjs'
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL('../..', import.meta.url)))
-const REQUIRED_DEMO_FILES = ['index.html', '.nojekyll', 'flower.webm']
+const REQUIRED_DEMO_FILES = ['index.html', '.nojekyll', 'webm-vp8-p0-8bit-opus.webm']
 const RESTRICTED_ASSET_PATTERN = /\.(?:wasm|mxai|onnx|bin|data|model|weights|pth|pt|zip)$/i
 const PAGE_ASSET_PACKAGES = new Map([
   ['@mx-player-max/browser', 'packages/browser'],
