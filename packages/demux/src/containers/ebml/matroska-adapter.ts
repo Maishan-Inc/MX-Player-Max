@@ -467,6 +467,7 @@ async function readBlockRecord(context: ClusterContext, element: EbmlElement): P
 async function readClusterPackets(state: ClusterContext, cluster: ClusterLocation): Promise<DemuxPacket[]> {
   const end = cluster.dataEnd ?? state.segmentEnd
   if (end === null) throw new DemuxError(ErrorCodes.CONTAINER_LIMIT_EXCEEDED, 'Cannot bound an unknown-length final Cluster')
+  if (end > cluster.dataStart) state = { ...state, reader: state.reader.forkWithReadAhead(cluster.dataStart, end) }
   let offset = cluster.dataStart
   let clusterTimecode: number | null = null
   const records: BlockRecord[] = []

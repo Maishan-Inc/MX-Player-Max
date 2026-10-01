@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ErrorCodes } from '@mx-player-max/types'
 import {
   DemuxError,
@@ -21,6 +21,18 @@ async function expectCode(promise: Promise<unknown>, code: string): Promise<void
 }
 
 describe('MatroskaContainerAdapter', () => {
+  it('coalesces a small Cluster into one bounded Range instead of fetching every EBML field', async () => {
+    const loader = loaderFor(createEbmlFixture())
+    const selection = await probeContainer(loader)
+    const read = vi.spyOn(loader, 'read')
+    const packets = await selection.demuxer.next()
+    expect(packets).toHaveLength(2)
+    expect(read).toHaveBeenCalledOnce()
+    const range = read.mock.calls[0]![0]
+    expect(range.endExclusive - range.start).toBeLessThanOrEqual(64 * 1024)
+    selection.demuxer.close()
+    loader.close()
+  })
   it('probes tracks, duration, CodecPrivate, packets, and Cues', async () => {
     const loader = loaderFor(createEbmlFixture())
     const selection = await probeContainer(loader)

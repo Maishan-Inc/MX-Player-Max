@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "evidenceLevel": "docker-runtime",
+  "result": "pending",
+  "sdkVersion": null,
+  "sourceSha256": null,
+  "collectedAt": null,
+  "imageId": null,
+  "dockerVersion": null,
+  "os": null,
+  "checks": { "build": null, "headers": null, "range": null, "mime": null, "notFound": null },
+  "endpoints": [],
+  "reason": "Docker is not installed on this machine. Build, dual-endpoint runtime and single/SIMD WASM playback have not been executed."
+}

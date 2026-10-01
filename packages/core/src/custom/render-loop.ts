@@ -1,5 +1,5 @@
 import { VideoFrameScheduler } from '@mx-player-max/audio'
-import type { AudioClockSnapshot, DecodedVideoFrame, EngineError, GpuVideoFrame } from '@mx-player-max/types'
+import type { AudioClockSnapshot, DecodedVideoFrame, EngineError, GpuVideoFrame, VideoPresentationSample } from '@mx-player-max/types'
 import type { ManagedVideoRenderer } from '@mx-player-max/renderers'
 
 export type CustomRenderableFrame =
@@ -12,6 +12,7 @@ export interface CustomRenderLoopDependencies {
   getClock(): AudioClockSnapshot
   renderer: ManagedVideoRenderer
   onError(error: EngineError): void
+  onPresented?(sample: VideoPresentationSample): void
   isActive(): boolean
   requestAnimationFrame?(callback: (time: number) => void): number
   cancelAnimationFrame?(id: number): void
@@ -118,7 +119,8 @@ export class CustomRenderLoop {
         this.schedule()
         return
       }
-      const decision = this.#scheduler.decide(timestamp, this.#dependencies.getClock())
+      const clock = this.#dependencies.getClock()
+      const decision = this.#scheduler.decide(timestamp, clock)
       if (decision.action === 'wait') {
         this.#dependencies.renderer.noteSchedule('wait')
       } else {
@@ -128,11 +130,20 @@ export class CustomRenderLoop {
           this.#dependencies.renderer.noteSchedule('drop')
         } else {
           try {
+            const presentedBefore = this.#dependencies.renderer.stats.presentedFrames
             if (frame.kind === 'gpu') {
               if (!this.#dependencies.renderer.renderTexture) throw toError(new Error('The active renderer does not accept GPU frames'))
               this.#dependencies.renderer.renderTexture(frame.frame)
             } else {
               this.#dependencies.renderer.render(frame.frame.frame)
+            }
+            if (this.#dependencies.renderer.stats.presentedFrames > presentedBefore
+              && !this.#closed && generation === this.#generation && this.#dependencies.isActive()
+              && clock.epoch === this.#dependencies.getClock().epoch) {
+              this.#dependencies.onPresented?.({
+                epoch: clock.epoch, timestamp, mediaTime: clock.mediaTime,
+                driftMicros: timestamp - clock.mediaTime, clockSource: clock.source,
+              })
             }
           } catch (cause) { this.#dependencies.onError(toError(cause)) }
         }

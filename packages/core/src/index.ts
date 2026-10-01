@@ -957,6 +957,7 @@ export function createMediaEngine(dependencies: MediaEngineDependencies = {}): M
                     },
                   }),
                   getClock: () => customPipeline.audioClock,
+                  onPresented: (sample) => dispatch(() => emit('videopresentation', { sample, sessionEpoch: loadEpoch })),
                   renderer,
                   isActive: () => !closed && loadEpoch === epoch && activePipeline?.kind === 'custom-video',
                   onError: (error) => dispatch(() => handleRendererEvent({ type: 'error', kind: renderer.kind, error }, loadEpoch)),

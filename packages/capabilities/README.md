@@ -1,5 +1,11 @@
 # @mx-player-max/capabilities
 
+`detectAudioTransportCapabilities({ adapter? })` synchronously returns confirmed
+`crossOriginIsolated` and `sharedArrayBuffer` flags for Custom AudioWorklet initialization.
+It does not run SIMD/Threads probes or load WASM. The initial `detectCapabilities({ includeWasm: false })`
+snapshot still defers WASM-related fields; audio transport uses this independent probe instead of
+interpreting those deferred fields as a definitive rejection of shared PCM.
+
 浏览器、设备、Codec、WASM 和渲染器能力探测。探测结果用于策略评分，不直接决定后端。
 
 ## API

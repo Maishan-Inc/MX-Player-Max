@@ -1,6 +1,24 @@
 import { expect, test, type Page } from '@playwright/test'
+import { decodesWithWebCodecs, rendersAudio } from '../media/capabilities'
 
 for (const isolated of [false, true]) {
+  test(`collects Custom AudioWorklet diagnostics (${isolated ? 'isolated' : 'non-isolated'})`, async ({ page }) => {
+    test.skip(!await decodesWithWebCodecs(page, { video: 'vp8', audio: 'opus' }), 'VP8/Opus WebCodecs is unavailable')
+    test.skip(!await rendersAudio(page), 'AudioContext cannot run on this host')
+    const result = await collect(page, isolated, 'custom')
+    expect(result).toMatchObject({ status: 'passed', backend: 'webcodecs', requestedBackend: 'custom', errorCode: null })
+    expect(result.environment.crossOriginIsolated).toBe(isolated)
+    expect(result.diagnostics.submissionSamples).toBeGreaterThan(0)
+    expect(result.diagnostics.firstPcmConsumedMs).toBeGreaterThan(0)
+    expect(result.diagnostics.maxSubmissionDriftMicros).toBeGreaterThanOrEqual(0)
+    expect(result.diagnostics.audioTransport).toBe(isolated ? 'shared-array-buffer' : 'message-port')
+    expect(result.diagnostics.videoQueuePeak).toBeLessThanOrEqual(8)
+    expect(result.metrics.runDurationMs.value).toBeGreaterThanOrEqual(1000)
+    expect(result.metrics.firstAudioMs.value).toBeNull()
+    expect(result.metrics.avDriftMicros.value).toBeNull()
+    expect(result.startup.backendReadyMs).toBeGreaterThanOrEqual(0)
+    expect(result.startup.playToFirstFrameMs).toBeGreaterThanOrEqual(0)
+  })
   test(`collects a native performance smoke (${isolated ? 'isolated' : 'non-isolated'})`, async ({ page }) => {
     const result = await collect(page, isolated)
     expect(result).toMatchObject({ schemaVersion: 1, status: 'passed', evidenceLevel: 'playwright-automation', scenario: 'smoke', backend: 'html-video', errorCode: null })
@@ -18,8 +36,8 @@ for (const isolated of [false, true]) {
   })
 }
 
-async function collect(page: Page, isolated: boolean): Promise<PerformanceResult> {
-  await page.goto(`/?performanceAcceptance=smoke&isolated=${String(isolated)}`, { waitUntil: 'domcontentloaded' })
+async function collect(page: Page, isolated: boolean, backend = 'native'): Promise<PerformanceResult> {
+  await page.goto(`/?performanceAcceptance=smoke&isolated=${String(isolated)}&backend=${backend}`, { waitUntil: 'domcontentloaded' })
   await page.locator('#performance-start').click({ noWaitAfter: true })
   await page.waitForFunction(() => /^(passed|failed)$/.test(document.body.dataset.status ?? ''), undefined, { timeout: 30_000 })
   const result = await page.evaluate(() => (window as typeof window & { __performanceAcceptance?: PerformanceResult }).__performanceAcceptance)
@@ -34,6 +52,8 @@ interface PerformanceResult {
   readonly evidenceLevel: string
   readonly scenario: string
   readonly backend: string | null
+  readonly startup: { readonly backendReadyMs: number | null; readonly playToFirstFrameMs: number | null }
+  readonly diagnostics: { readonly submissionSamples: number; readonly firstPcmConsumedMs: number | null; readonly maxSubmissionDriftMicros: number | null; readonly audioTransport: string | null; readonly videoQueuePeak: number }
   readonly environment: { readonly crossOriginIsolated: boolean }
   readonly sample: { readonly sha256: string }
   readonly metrics: Record<string, Metric> & { readonly firstFrameMs: Metric; readonly firstAudioMs: Metric; readonly firstSubtitleMs: Metric; readonly seekLatencyMs: Metric; readonly bufferedAheadMicros: Metric; readonly avDriftMicros: Metric; readonly powerProxyDroppedFrameRatio: Metric; readonly runDurationMs: Metric }

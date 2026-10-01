@@ -52,6 +52,10 @@ loader.close()
 
 Matroska/WebM 支持 EBML Header、未知长度 Segment/Cluster、Info、Tracks、SimpleBlock、BlockGroup、四种 lacing 和 Cues。无 Cues seek 使用受字节预算限制的 Cluster 前向扫描。WebM 必须由 `DocType=webm` 识别。
 
+Cluster packet 读取使用一次操作内的 64 KiB 有界预读窗口，合并相邻 EBML 字段的 Range 请求。
+窗口不跨 Cluster 边界，仍受 `maxReadRangeBytes` 约束；大 packet 分段读取，不整体缓存 Cluster。
+返回数据保留独立所有权，重新加载窗口时继续校验源长度。Probe/MP4 读取不启用此预读，避免扩大元数据探测范围。
+
 MP4 支持 `ftyp/moov/trak/mdia/minf/stbl/mdat`、32/64 位 box size、合法 `size=0`、尾部 `moov`、Codec 配置以及 `stts/ctts/stsc/stsz/stco/co64/stss`。Probe 跳过 `mdat` 正文。fMP4 可被识别并输出初始化段轨道信息，但 Phase 2 不实现 fragment packet 流或 MSE 播放。
 
 未知 CodecID/FourCC 会按原值保留，不会用容器名或猜测值填充 `TrackInfo.codec`。

@@ -79,6 +79,23 @@ WASM Threads、Docker runtime、真实 Safari 或 latest-two-stable 验收项。
 
 ## GitHub Actions 门禁
 
+`pnpm release:readiness` 是独立于普通 CI schema 检查的最终发布门禁。`release.yml` 的
+`acceptance` job 只用 Node/Git 读取本地证据，不安装依赖；`publish` 必须等待它成功。
+当前证据不完整时该命令退出 1 是预期行为，不能以普通 `quality:browsers` 或短跑通过替代。
+
+- 实机矩阵：六个 latest/latest-1 槽位总体及 Native 必须 passed；Custom 后端的 unsupported
+  必须附 `backendReasons` 能力原因，不能存在 pending/failed 或重复的稳定大版本。
+- 长跑：Native/WebCodecs × Chromium/Firefox × 隔离/非隔离八份 `long-run-30m` 报告均需通过
+  `thresholds.json`；首音、独立音画漂移、CPU、内存等字段不能为空。
+- Docker：`tests/browser/evidence/docker-runtime.json` 必须包含实际镜像 ID、Docker/OS、build/
+  headers/range/mime/404 结果，以及两个隔离端点真实 single/SIMD WASM 播放结果。
+  现有 `docker-smoke.ps1` 的静态/隔离验证只是其中一部分，不会自动产生可发布结论。
+
+三类证据都必须带 `sdkVersion`、`sourceSha256`、`collectedAt`。`pnpm release:fingerprint`
+提供当前版本和源码指纹：覆盖源码、配置、测试和分发脚本，排除构建产物、基线与证据目录，
+文本行尾标准化后计算，二进制按原始字节计算。代码变化后必须重新采集对应证据；不能仅改 hash。
+实机声明和 Docker 记录仍需人工审查原始执行日志，schema 校验不会凭空证明硬件或执行真实性。
+
 普通 push/PR 只运行 CI 验证，不包含 publish step。Release workflow 的 `validate`、`package`、`consumer-smoke` 和 `artifact` 必须全部成功，才会解锁生产 job。Tag push 只执行验证链；实际发布必须在 `v*.*.*` tag 上手动 dispatch，并将 `publish` input 明确设为 `publish`，同时通过受保护的 `npm-production` environment 和 `NPM_TOKEN` secret。
 
 Pages Demo 与 SDK Release 分离：前者只能由 `deploy-demo.yml` 手动触发，后者继续由 `release.yml`

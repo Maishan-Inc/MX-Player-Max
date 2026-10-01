@@ -96,7 +96,7 @@ const dimensions = {
   subtitles: new Set(manifest.subtitles.map((entry) => entry.format)),
 }
 for (const [name, values] of Object.entries(dimensions)) if (values.size < 2) failures.push(`matrix dimension ${name} has fewer than two values`)
-if (manifest.largeFixturePolicy?.storage !== 'generated-not-committed' || manifest.largeFixturePolicy?.durationSeconds !== 1800) failures.push('30-minute generated fixture policy is incomplete')
+if (manifest.largeFixturePolicy?.storage !== 'generated-not-committed' || manifest.largeFixturePolicy?.durationSeconds !== 1810) failures.push('30-minute generated fixture policy requires 1810 seconds including seek/EOF headroom')
 if (failures.length > 0) {
   console.error(failures.map((failure) => `- ${failure}`).join('\n'))
   process.exitCode = 1

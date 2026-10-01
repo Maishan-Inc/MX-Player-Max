@@ -33,6 +33,11 @@ test('publishing requires a tag, explicit confirmation, protected environment, a
   assert.match(release, /environment:\s*\n\s+name:\s*npm-production/)
   assert.match(release, /NODE_AUTH_TOKEN:\s*\$\{\{\s*secrets\.NPM_TOKEN\s*\}\}/)
   assert.match(release, /pnpm\s+publish\s+-r/)
+  const acceptance = release.split('\n  acceptance:')[1]?.split('\n  validate:')[0]
+  assert.match(acceptance ?? '', /node scripts\/quality\/verify-release-readiness\.mjs/)
+  assert.doesNotMatch(acceptance ?? '', /continue-on-error|if:.*always/)
+  const publish = release.split('\n  publish:')[1]
+  assert.match(publish ?? '', /needs:\s*\[acceptance, validate, package, consumer-smoke, artifact\]/)
 })
 
 test('Demo deployment is manual, validated, and isolated from SDK publishing', () => {

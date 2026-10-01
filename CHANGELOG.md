@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- 优化 WebM/Matroska 首帧和 seek：Cluster packet 解析增加 64 KiB 有界预读，合并逐字段 HTTP Range 往返；保留源长度变化、Cluster 边界、单次读取预算和独立字节所有权检查，Probe 与 MP4 路径不扩大读取。
+
+- 增加严格 `release:readiness` 门禁：实机、Native/Custom 长跑和 Docker 运行证据必须齐全，并匹配 SDK 版本及源码指纹；发布 workflow 显式依赖验收结果。普通 CI 仍允许如实记录 pending。
+- 增加 SDK `videopresentation` 事件及 Native/Custom 性能采集：分段启动耗时、首 PCM 消费、提交偏差、音频 transport/underrun 和队列峰值；物理首音与音画漂移仍独立标记不可观测。
+- 修复 WebCodecs 隔离环境被延迟 WASM 快照误导而始终使用 MessagePort：音频输出独立探测共享 PCM 能力，不触发 SIMD/Threads 或 WASM 加载。
+- 离线采集只使用已安装浏览器，保留失败原始报告；活跃播放计时排除缓冲/EOF，长跑素材增加尾部余量，内存释放产生的负增长值合法。同步路径切换与 VP8 接入文档。
+- 核对并更新演示站改版后的三张 Chromium 截图基线，截图前确保播放器控件完整进入视口；保留布局、可访问性、非空画面和交互断言。
+
 ## 0.1.0
 
 ### Added

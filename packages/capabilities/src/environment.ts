@@ -13,6 +13,14 @@ export function readEnvironmentIdentity(adapter: CapabilityProbeAdapter): Enviro
   return readEnvironmentIdentityWithWasm(adapter, true)
 }
 
+/** Shared PCM transport is independent of WASM decoding and never probes SIMD/threads. */
+export function probeAudioTransportCapabilities(adapter: CapabilityProbeAdapter): Pick<CapabilitySnapshot, 'crossOriginIsolated' | 'sharedArrayBuffer'> {
+  return {
+    crossOriginIsolated: safeBoolean(() => adapter.isCrossOriginIsolated()),
+    sharedArrayBuffer: safeBoolean(() => adapter.hasSharedArrayBuffer()),
+  }
+}
+
 export function readEnvironmentIdentityWithWasm(
   adapter: CapabilityProbeAdapter,
   includeWasm: boolean,

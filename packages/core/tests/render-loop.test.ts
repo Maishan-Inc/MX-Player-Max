@@ -12,14 +12,52 @@ function value(timestamp: number, epoch = 0): DecodedVideoFrame {
 }
 
 function renderer() {
+  const stats = { presentedFrames: 0 } as ManagedVideoRenderer['stats']
   return {
     kind: 'canvas2d' as const, state: 'ready' as const, capabilities: {} as ManagedVideoRenderer['capabilities'],
-    stats: {} as ManagedVideoRenderer['stats'], attach: vi.fn(async () => {}), render: vi.fn(), resize: vi.fn(), close: vi.fn(),
+    stats, attach: vi.fn(async () => {}), render: vi.fn(() => { stats.presentedFrames += 1 }), resize: vi.fn(), close: vi.fn(),
     setFilter: vi.fn(), setTransform: vi.fn(), noteSchedule: vi.fn(),
   } as unknown as ManagedVideoRenderer
 }
 
 describe('CustomRenderLoop', () => {
+  it('reports signed submission drift only for presented frames in the active epoch', async () => {
+    const callbacks: Array<(time: number) => void> = []
+    const onPresented = vi.fn()
+    const output = renderer()
+    const frames = [value(10_000, 2), value(0, 1), value(-100_000, 2)]
+    const loop = new CustomRenderLoop({
+      readVideoFrame: async () => frames.shift() ?? null,
+      getClock: () => ({ ...clock(12_000, 2), source: 'audio-context' }), renderer: output,
+      isActive: () => true, onPresented, onError: vi.fn(),
+      requestAnimationFrame: (callback) => { callbacks.push(callback); return callbacks.length }, cancelAnimationFrame: vi.fn(),
+    })
+    loop.start()
+    for (let index = 0; index < 3; index += 1) {
+      callbacks.shift()?.(index * 16)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    }
+    expect(onPresented).toHaveBeenCalledExactlyOnceWith({ epoch: 2, timestamp: 10_000, mediaTime: 12_000, driftMicros: -2_000, clockSource: 'audio-context' })
+    loop.close()
+  })
+
+  it('does not report presentation when the renderer drops or rejects a submission', async () => {
+    for (const reject of [false, true]) {
+      const callbacks: Array<(time: number) => void> = []
+      const output = renderer()
+      output.render = () => { if (reject) throw new Error('lost renderer') }
+      const onPresented = vi.fn()
+      const loop = new CustomRenderLoop({
+        readVideoFrame: async () => value(0), getClock: () => clock(0), renderer: output,
+        isActive: () => true, onPresented, onError: vi.fn(),
+        requestAnimationFrame: (callback) => { callbacks.push(callback); return callbacks.length }, cancelAnimationFrame: vi.fn(),
+      })
+      loop.start(); callbacks.shift()?.(0)
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+      expect(onPresented).not.toHaveBeenCalled()
+      loop.close()
+    }
+  })
   it('keeps one in-flight read, waits, presents, and drops late frames', async () => {
     const callbacks: Array<(time: number) => void> = []
     const output = renderer()

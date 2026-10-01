@@ -5,6 +5,7 @@ import {
   createCapabilityContext,
   createDefaultProbeAdapter,
   detectCapabilities,
+  detectAudioTransportCapabilities,
   detectWasmCapabilities,
   probeMediaCapabilities,
   type CapabilityCache,
@@ -74,6 +75,16 @@ class MemoryCache implements CapabilityCache {
 }
 
 describe('detectCapabilities', () => {
+  it('probes audio transport without running or hydrating WASM probes', () => {
+    const simd = vi.fn(() => true)
+    const threads = vi.fn(() => true)
+    const adapter = createAdapter({ isCrossOriginIsolated: () => true, hasSharedArrayBuffer: () => true, probeWasmSimd: simd, probeWasmThreads: threads })
+    expect(detectAudioTransportCapabilities({ adapter })).toEqual({ crossOriginIsolated: true, sharedArrayBuffer: true })
+    expect(simd).not.toHaveBeenCalled()
+    expect(threads).not.toHaveBeenCalled()
+    expect(detectAudioTransportCapabilities({ adapter: createAdapter({ isCrossOriginIsolated: () => { throw new Error('denied') } }) }))
+      .toEqual({ crossOriginIsolated: false, sharedArrayBuffer: false })
+  })
   it('defers isolation, shared memory, SIMD and threads until a WASM candidate is selected', async () => {
     const isolation = vi.fn(() => true)
     const sharedMemory = vi.fn(() => true)

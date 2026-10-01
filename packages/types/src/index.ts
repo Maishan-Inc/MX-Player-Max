@@ -285,6 +285,16 @@ export interface AudioClockSnapshot {
 
 export type VideoFrameScheduleAction = 'wait' | 'present' | 'drop'
 
+/** Custom renderer submission timing, not a measurement of physical display/audio output. */
+export interface VideoPresentationSample {
+  epoch: number
+  timestamp: Micros
+  mediaTime: Micros
+  /** Video PTS minus the master clock at submission; positive means early. */
+  driftMicros: Micros
+  clockSource: AudioClockSnapshot['source']
+}
+
 export interface VideoFrameScheduleDecision {
   action: VideoFrameScheduleAction
   drift: Micros
@@ -1039,6 +1049,8 @@ export interface EngineEventMap {
   rendererchange: { previous: CustomRendererKind | null; current: CustomRendererKind; reason: string }
   rendererstatechange: { kind: CustomRendererKind; previous: RendererState; current: RendererState; reason: string | null }
   rendererstats: { stats: RendererStats }
+  /** No frame ownership is transferred. Native playback does not emit this event. */
+  videopresentation: { sample: VideoPresentationSample; sessionEpoch: number }
   subtitletrackchange: { tracks: readonly SubtitleTrack[]; selectedTrackId: string | null; reason: SubtitleTrackChangeReason }
   subtitlecuechange: { trackId: string | null; cues: readonly SubtitleCueMetadata[]; currentTime: Micros; epoch: number }
   subtitlestatechange: { previous: SubtitleState; current: SubtitleState; trackId: string | null }

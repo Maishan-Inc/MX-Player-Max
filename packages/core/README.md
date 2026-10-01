@@ -31,7 +31,7 @@ NativeMediaPipeline 只消费和管理 HTMLVideoElement 及其原生音频，不
 下一候选。source/Range/container/target、显式取消、epoch 失效和 close 不进入下一候选；autoplay
 用户手势限制发生在候选已成功提交之后，也不会触发后端切换。
 
-当前 Core 真实初始化 Native、WebCodecs Custom，以及显式 `wasmBaseUrl` 下的 restricted
+当前 Core 真实初始化 Native、WebCodecs Custom，以及显式 `wasmBaseUrl` 下的 approved
 libvpx VP8 video-only Custom。WASM 与 WebCodecs 注入同一个 `CustomMediaPipeline`，失败候选
 完整清理后由同一原子控制器切换。MSE 和其他 WASM Codec 仍只记录稳定 unavailable；Decision
 Trace 不包含 URL、header、Codec private data、Frame、PCM、字幕正文或原始异常。
@@ -104,6 +104,10 @@ no audio     -> MediaWallClock --------------------------------------^
 
 The rAF loop has at most one in-flight `readVideoFrame()` and one retained frame. The Phase 5 scheduler waits early frames, presents on-time frames and closes late/stale frames as drops. AudioContext consumed sample frames remain the master clock when audio exists; `MediaWallClock` is used otherwise. Pause stops new feed/read/render, resume cannot create a second loop, rate changes remain clock mappings, and seek stops the old generation before the shared epoch advances. Old pending reads may settle but are immediately closed and cannot be consumed by the new generation. EOS still comes only from the Custom pipeline after video decoder/queue and audio PCM drain.
 
-`setVideoFilter()` and `setVideoTransform()` update an active Custom renderer. A non-`none` load-time filter converts `normal`/`low-power` intent to `filters`, excluding Native during strategy ranking. Runtime Native <-> Custom migration is intentionally not implemented in Phase 6: use a new `load()` to switch atomically; source, track/time/rate/volume/mute preservation across such an application-managed reload is the caller's responsibility. This limitation avoids altering existing Native autoplay and HTMLVideo semantics.
+`setVideoFilter()` and `setVideoTransform()` update an active Custom renderer. A non-`none` load-time filter converts `normal`/`low-power` intent to `filters`, excluding Native during strategy ranking. `switchRenderMode({ pipeline: 'native' | 'custom' })` now rebuilds the session while restoring position, playing state and external subtitle selection; the session epoch advances. `setVideoFilter()` on Native uses this migration. A failed switch attempts to restore the previous session.
+
+`videopresentation` reports successful Custom renderer submissions with the session epoch, decoder epoch, video PTS, master-clock time and signed `driftMicros` (PTS minus clock). Waited, dropped, rejected and stale frames do not emit it. This is scheduler diagnostics, not physical display/speaker A/V drift; no Frame or PCM is exposed.
+
+Custom audio calls `detectAudioTransportCapabilities()` when constructing its output. This independent shared-PCM check allows SAB in isolated environments even though the initial `includeWasm: false` snapshot defers WASM capability detection; it never probes SIMD or WASM threads.
 
 Renderer `device.lost` first attempts in-place WebGPU rebuild; failed rebuild or unrecoverable WebGL2 context loss triggers Managed fallback. Core exposes renderer kind/state/stats and stable events only. `close()` cancels rAF, invalidates pending reads, closes the renderer, releases GPU/GL resources and listeners, removes/restores only engine-owned canvas nodes, then closes decoder/audio/worker resources. After close no renderer, frame, state, error or clock callback is forwarded.

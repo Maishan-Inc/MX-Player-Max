@@ -1,4 +1,5 @@
 import { MXPlayer } from '@mx-player-max/sdk'
+import { PlaybackPerformanceTracker } from './performance-metrics'
 
 const SMOKE_SAMPLE = {
   id: 'webm-vp8-p0-8bit-opus',
@@ -23,6 +24,22 @@ export interface PerformanceAcceptanceResult {
   readonly evidenceLevel: 'playwright-automation'
   readonly scenario: 'smoke' | 'long-run-30m'
   readonly backend: string | null
+  readonly requestedBackend: 'native' | 'custom'
+  readonly startup: {
+    readonly probeAndCapabilitiesMs: number | null
+    readonly backendReadyMs: number | null
+    readonly subtitleSetupMs: number | null
+    readonly playToFirstFrameMs: number | null
+  }
+  readonly diagnostics: {
+    readonly firstPcmConsumedMs: number | null
+    readonly maxSubmissionDriftMicros: number | null
+    readonly submissionSamples: number
+    readonly audioUnderruns: number | null
+    readonly audioTransport: string | null
+    readonly videoQueuePeak: number
+    readonly pcmBufferedFramesPeak: number
+  }
   readonly environment: {
     readonly userAgent: string
     readonly platform: string
@@ -71,6 +88,15 @@ async function execute(scenario: 'smoke' | 'long-run-30m', host: HTMLElement): P
     ? { id: 'long-run-vp8-opus-30m', path: '/quality-media/long-run-vp8-opus-30m.webm', sha256: requestedHash ?? '' }
     : SMOKE_SAMPLE
   const startedAt = performance.now()
+  const requestedBackend = new URL(location.href).searchParams.get('backend') === 'custom' ? 'custom' : 'native'
+  const startup: { probeAndCapabilitiesMs: number | null; backendReadyMs: number | null; subtitleSetupMs: number | null; playToFirstFrameMs: number | null } = {
+    probeAndCapabilitiesMs: null, backendReadyMs: null, subtitleSetupMs: null, playToFirstFrameMs: null,
+  }
+  const tracker = new PlaybackPerformanceTracker()
+  let firstFrameMs: number | null = null
+  let firstPcmConsumedMs: number | null = null
+  let videoQueuePeak = 0
+  let pcmBufferedFramesPeak = 0
   const memorySamples: Array<{ elapsedMs: number; bytes: number }> = []
   let firstSubtitleMs: number | null = null
   let player: MXPlayer | null = null
@@ -81,46 +107,79 @@ async function execute(scenario: 'smoke' | 'long-run-30m', host: HTMLElement): P
     player = new MXPlayer({
       target: host,
       source: { kind: 'url', url: new URL(sample.path, location.href).href },
-      intent: 'normal',
+      intent: requestedBackend === 'custom' ? 'filters' : 'normal',
+      customVideo: { renderer: 'canvas2d' },
       native: { preload: 'auto', crossOrigin: 'anonymous' },
       subtitles: { enabled: true },
     })
     player.on('subtitlecuechange', (event) => {
       if (firstSubtitleMs === null && event.cues.length > 0) firstSubtitleMs = performance.now() - startedAt
     })
+    player.on('capabilities', () => { startup.probeAndCapabilitiesMs = performance.now() - startedAt })
+    player.on('videopresentation', ({ sample }) => {
+      firstFrameMs ??= performance.now() - startedAt
+      // SAB consumption updates atomics without a per-block MessagePort notification.
+      if ((player?.customAudioStats?.renderedFrames ?? 0) > 0) firstPcmConsumedMs ??= performance.now() - startedAt
+      tracker.observePresentation(sample)
+    })
+    player.on('clockupdate', ({ clock }) => {
+      if (clock.source === 'audio-context' && clock.renderedFrames > 0) firstPcmConsumedMs ??= performance.now() - startedAt
+    })
     await player.ready
-    const subtitleText = await fetch('/quality-subtitles/basic-timing.srt').then((response) => response.text())
-    const track = await player.addSubtitleTrack({ kind: 'file', file: new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' }), format: 'srt' })
-    await player.selectSubtitleTrack(track.id)
+    const expectedBackend = requestedBackend === 'custom' ? 'webcodecs' : 'html-video'
+    if (player.selection?.backend.kind !== expectedBackend) throw codedError('PERFORMANCE_BACKEND_MISMATCH', 'The requested performance backend was not selected')
+    startup.backendReadyMs = performance.now() - startedAt - (startup.probeAndCapabilitiesMs ?? 0)
+    const activePlayer = player
+    // Subtitle I/O must not delay play() or inflate time to the first presented frame.
+    const subtitleStartedAt = performance.now()
+    const subtitleTask = (async (): Promise<void> => {
+      const response = await fetch('/quality-subtitles/basic-timing.srt')
+      if (!response.ok) throw codedError('PERFORMANCE_SUBTITLE_FETCH_FAILED', 'The subtitle fixture was not served')
+      const subtitleText = await response.text()
+      const track = await activePlayer.addSubtitleTrack({ kind: 'file', file: new File([subtitleText], 'basic-timing.srt', { type: 'text/plain' }), format: 'srt' })
+      await activePlayer.selectSubtitleTrack(track.id)
+      startup.subtitleSetupMs = performance.now() - subtitleStartedAt
+    })()
+    // Attach rejection handling immediately while play/first-frame awaits run independently.
+    void subtitleTask.catch(() => undefined)
     const initialMemory = readMemoryBytes()
     if (initialMemory !== null) memorySamples.push({ elapsedMs: performance.now() - startedAt, bytes: initialMemory })
+    const playStartedAt = performance.now()
     await player.play()
-    await waitFor(() => (player?.nativeStats?.presentedFrames ?? 0) > 0, 10_000)
-    const firstFrameMs = performance.now() - startedAt
+    await waitFor(() => {
+      if ((player?.customAudioStats?.renderedFrames ?? 0) > 0) firstPcmConsumedMs ??= performance.now() - startedAt
+      if (firstFrameMs === null && (player?.nativeStats?.presentedFrames ?? 0) > 0) firstFrameMs = performance.now() - startedAt
+      return firstFrameMs !== null
+    }, 10_000)
+    startup.playToFirstFrameMs = firstFrameMs! - (playStartedAt - startedAt)
+    await subtitleTask
     await waitFor(() => firstSubtitleMs !== null, 3_000)
 
     const seekStartedAt = performance.now()
     await player.seek(1_500_000)
     const seekLatencyMs = performance.now() - seekStartedAt
+    if (scenario === 'long-run-30m') {
+      if ((player.playback.duration ?? 0) < 1_810_000_000) throw codedError('PERFORMANCE_LONG_RUN_MEDIA_TOO_SHORT', 'Long-run media needs 1810 seconds to exclude seek/EOF tails')
+      await player.seek(0)
+    }
     await player.play()
     const runDurationMs = scenario === 'long-run-30m' ? 1_800_000 : 1_000
     const samplingStartedAt = performance.now()
-    // The forward buffer is a steady-playback health signal, not a distance-to-EOF reading.
-    // Reading `bufferedAhead` once at the end of a 30-minute playthrough of a 30-minute file
-    // always lands at EOF (forward buffer 0 by definition), so track the minimum observed
-    // while the media is actively playing and ignore the ended tail.
-    let minBufferedAhead = Number.POSITIVE_INFINITY
-    while (performance.now() - samplingStartedAt < runDurationMs) {
+    while (tracker.activeDurationMs < runDurationMs) {
+      if (performance.now() - samplingStartedAt > runDurationMs + 30_000) throw codedError('PERFORMANCE_PLAYBACK_STALLED', 'Insufficient active playback time')
       const memory = readMemoryBytes()
-      if (memory !== null) memorySamples.push({ elapsedMs: performance.now() - startedAt, bytes: memory })
-      const snapshot = player.playback
-      if (snapshot.state === 'playing' && Number.isFinite(snapshot.bufferedAhead)) {
-        minBufferedAhead = Math.min(minBufferedAhead, snapshot.bufferedAhead)
+      if (memory !== null && memorySamples.length < 4096 && performance.now() - startedAt - (memorySamples.at(-1)?.elapsedMs ?? 0) >= 1000) {
+        memorySamples.push({ elapsedMs: performance.now() - startedAt, bytes: memory })
       }
-      await delay(scenario === 'long-run-30m' ? 30_000 : 200)
+      const snapshot = player.playback
+      if (snapshot.state === 'ended' || snapshot.state === 'error') throw codedError('PERFORMANCE_PLAYBACK_ENDED_EARLY', 'Playback stopped before the requested active duration')
+      tracker.observePlayback(snapshot, performance.now())
+      videoQueuePeak = Math.max(videoQueuePeak, player.customVideoStats?.queuedFrames ?? 0)
+      pcmBufferedFramesPeak = Math.max(pcmBufferedFramesPeak, player.customAudioStats?.bufferedFrames ?? 0)
+      await delay(200)
     }
     player.pause()
-    const stats = player.nativeStats
+    const stats = requestedBackend === 'native' ? player.nativeStats : player.rendererStats
     const finalMemory = readMemoryBytes()
     const presented = stats?.presentedFrames ?? 0
     const dropped = stats?.droppedFrames
@@ -131,21 +190,27 @@ async function execute(scenario: 'smoke' | 'long-run-30m', host: HTMLElement): P
       evidenceLevel: 'playwright-automation',
       scenario,
       backend: player.selection?.backend.kind ?? null,
+      requestedBackend, startup,
+      diagnostics: {
+        firstPcmConsumedMs, maxSubmissionDriftMicros: tracker.maxSubmissionDriftMicros, submissionSamples: tracker.submissionSamples,
+        audioUnderruns: player.customAudioStats?.underruns ?? null, audioTransport: player.customAudioStats?.transport ?? null,
+        videoQueuePeak, pcmBufferedFramesPeak,
+      },
       environment: environment(),
       sample,
       metrics: {
         firstFrameMs: measured(firstFrameMs),
-        firstAudioMs: unavailable('Native playback exposes no first-audible-sample timestamp'),
+        firstAudioMs: unavailable('Physical first-audible-sample time is not measured; Custom PCM consumption is reported separately'),
         firstSubtitleMs: measured(firstSubtitleMs),
         seekLatencyMs: measured(seekLatencyMs),
-        bufferedAheadMicros: measured(Number.isFinite(minBufferedAhead) ? minBufferedAhead : 0),
+        bufferedAheadMicros: measured(tracker.minBufferedAheadMicros ?? 0),
         droppedFrames: dropped === null || dropped === undefined ? unavailable('Browser did not expose dropped-frame statistics') : measured(dropped),
-        avDriftMicros: unavailable('Native audio/video clocks are not independently observable'),
+        avDriftMicros: unavailable('Physical audio/video output drift is not measured; Custom submission drift is reported separately'),
         cpuTimeMs: unavailable('Browser automation exposes no process CPU metric'),
         memoryBytes: finalMemory === null ? unavailable('performance.memory is unavailable') : measured(finalMemory),
         memoryGrowthBytes: initialMemory === null || finalMemory === null ? unavailable('performance.memory is unavailable') : measured(finalMemory - initialMemory),
         powerProxyDroppedFrameRatio: droppedRatio === null ? unavailable('Dropped-frame power proxy is unavailable') : measured(droppedRatio),
-        runDurationMs: measured(performance.now() - samplingStartedAt),
+        runDurationMs: measured(tracker.activeDurationMs),
       },
       memorySamples,
       errorCode: null,
@@ -157,6 +222,12 @@ async function execute(scenario: 'smoke' | 'long-run-30m', host: HTMLElement): P
       evidenceLevel: 'playwright-automation',
       scenario,
       backend: player?.selection?.backend.kind ?? null,
+      requestedBackend, startup,
+      diagnostics: {
+        firstPcmConsumedMs, maxSubmissionDriftMicros: tracker.maxSubmissionDriftMicros, submissionSamples: tracker.submissionSamples,
+        audioUnderruns: player?.customAudioStats?.underruns ?? null, audioTransport: player?.customAudioStats?.transport ?? null,
+        videoQueuePeak, pcmBufferedFramesPeak,
+      },
       environment: environment(),
       sample,
       metrics: emptyMetrics(),

@@ -121,8 +121,8 @@
     }
   ],
   "largeFixturePolicy": {
-    "storage": "generated-not-committed", "seedId": "webm-vp8-p0-8bit-opus", "durationSeconds": 1800,
-    "command": "ffmpeg -stream_loop 599 -i tests/media/fixtures/webm-vp8-p0-8bit-opus.webm -t 1800 -c copy tests/media/generated/long-run-vp8-opus-30m.webm",
+    "storage": "generated-not-committed", "seedId": "webm-vp8-p0-8bit-opus", "durationSeconds": 1810,
+    "command": "ffmpeg -stream_loop -1 -i tests/media/fixtures/webm-vp8-p0-8bit-opus.webm -t 1810 -c copy tests/media/generated/long-run-vp8-opus-30m.webm",
     "reason": "Avoid repository/LFS growth and external network dependence while retaining a deterministic checked-in seed"
   }
 }

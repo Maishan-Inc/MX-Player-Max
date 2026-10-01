@@ -36,6 +36,26 @@ test('rejects negative latency and counters', () => {
   assert.throws(() => validatePerformanceReport(value, 'negative-latency.json', thresholds), /cannot be negative/)
 })
 
+test('allows actual memory release without turning a negative delta into a failure', () => {
+  const value = report()
+  value.metrics.memoryGrowthBytes.value = -1024
+  assert.doesNotThrow(() => validatePerformanceReport(value, 'memory-release.json', thresholds))
+})
+
+test('keeps native and custom performance matrices separate', () => {
+  const reports = ['chromium', 'firefox'].flatMap((name) => [false, true].map((isolated) => matrixRow(name, isolated)))
+  const custom = matrixRow('chromium', false)
+  custom.report.backend = 'webcodecs'
+  reports.push(custom)
+  assert.throws(() => validatePerformanceMatrix(reports), /matrix is incomplete/)
+  for (const [name, isolated] of [['chromium', true], ['firefox', false], ['firefox', true]]) {
+    const row = matrixRow(name, isolated)
+    row.report.backend = 'webcodecs'
+    reports.push(row)
+  }
+  assert.doesNotThrow(() => validatePerformanceMatrix(reports))
+})
+
 test('rejects dropped-frame ratios outside the unit interval', () => {
   const value = report()
   value.metrics.powerProxyDroppedFrameRatio.value = 1.1

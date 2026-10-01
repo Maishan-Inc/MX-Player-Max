@@ -1,5 +1,20 @@
 # 测试与验收方案
 
+## 仅使用本地工具
+
+禁止下载的环境直接使用已有 `node_modules` 和 Playwright 浏览器缓存，不执行 install/dlx 或浏览器安装命令。
+缺少 Firefox/WebKit 时，只执行已安装浏览器对应的 project，并明确保留缺失矩阵为 pending。
+例如 Chromium 功能回归与性能回归分开串行运行，避免 GPU/音频竞争：
+
+```sh
+pnpm exec playwright test --project=chromium-desktop --project=chromium-mobile --project=media-chromium --no-deps --workers=1
+pnpm exec playwright test --project=performance-chromium --no-deps --workers=1
+pnpm quality:performance:collect -- --browsers=chromium --backend=all
+```
+
+本地采集记录与发布级证据分开；参见 `tests/performance/README.md` 和 `release.md`。
+`release:readiness` 会拒绝缺失或过期的实机/长跑/Docker 证据，普通 schema 检查不会替代最终验收。
+
 ## 1. 证据层级
 
 | 层级 | 环境 | 可证明 | 不可冒充 |

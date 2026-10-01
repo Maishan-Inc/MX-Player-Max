@@ -16,6 +16,7 @@ import {
   type AudioDecoderAdapterCallbacks,
   type AudioDecoderAdapterLike,
 } from '@mx-player-max/decoder-webcodecs'
+import { detectAudioTransportCapabilities } from '@mx-player-max/capabilities'
 import type {
   AudioClockSnapshot,
   CapabilitySnapshot,
@@ -117,7 +118,6 @@ export class CustomAudioController {
       onError: (error, epoch) => this.#callbacks.onError(error, epoch),
       onDequeue: (epoch) => { if (epoch === this.#epoch) { this.#callbacks.onCapacity(); this.#startIfReady() } },
     })
-    const capabilities = options.capabilities
     const outputCallbacks: ConstructorParameters<typeof AudioWorkletOutput>[0]['callbacks'] = {
       onConsumed: (total, epoch) => this.#handleConsumed(total, epoch),
       onUnderrun: (epoch) => this.#handleUnderrun(epoch),
@@ -125,7 +125,7 @@ export class CustomAudioController {
     }
     this.#output = options.dependencies?.createAudioOutput?.(this.#options, outputCallbacks) ?? new AudioWorkletOutput({
       options: this.#options,
-      capabilities: { crossOriginIsolated: capabilities?.crossOriginIsolated ?? false, sharedArrayBuffer: capabilities?.sharedArrayBuffer ?? false },
+      capabilities: detectAudioTransportCapabilities(),
       callbacks: outputCallbacks,
     })
     this.#clock = new MediaWallClock()

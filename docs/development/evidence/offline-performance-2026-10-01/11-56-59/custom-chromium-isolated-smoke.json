@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "status": "passed",
+  "evidenceLevel": "playwright-automation",
+  "scenario": "smoke",
+  "backend": "webcodecs",
+  "requestedBackend": "custom",
+  "startup": {
+    "probeAndCapabilitiesMs": 58.85999999940395,
+    "backendReadyMs": 60.89000000059605,
+    "subtitleSetupMs": 2.9000000059604645,
+    "playToFirstFrameMs": 928.0450000017881
+  },
+  "diagnostics": {
+    "firstPcmConsumedMs": 1047.9650000035763,
+    "maxSubmissionDriftMicros": 14333,
+    "submissionSamples": 50,
+    "audioUnderruns": 0,
+    "audioTransport": "shared-array-buffer",
+    "videoQueuePeak": 8,
+    "pcmBufferedFramesPeak": 14536
+  },
+  "environment": {
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+    "platform": "Win32",
+    "gpu": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)",
+    "crossOriginIsolated": true,
+    "devicePixelRatio": 1,
+    "browserName": "chromium",
+    "browserVersion": "151.0.7922.34",
+    "os": "Windows_NT 10.0.26100 x64"
+  },
+  "sample": {
+    "id": "webm-vp8-p0-8bit-opus",
+    "path": "/quality-media/webm-vp8-p0-8bit-opus.webm",
+    "sha256": "e9e8baf10f81588a257bffe147648c31f5a0c5e5a52b57888e935917749d13b8"
+  },
+  "metrics": {
+    "firstFrameMs": {
+      "value": 1047.960000000894,
+      "reason": null
+    },
+    "firstAudioMs": {
+      "value": null,
+      "reason": "Physical first-audible-sample time is not measured; Custom PCM consumption is reported separately"
+    },
+    "firstSubtitleMs": {
+      "value": 1447.3550000041723,
+      "reason": null
+    },
+    "seekLatencyMs": {
+      "value": 923.7200000062585,
+      "reason": null
+    },
+    "bufferedAheadMicros": {
+      "value": 273500,
+      "reason": null
+    },
+    "droppedFrames": {
+      "value": 0,
+      "reason": null
+    },
+    "avDriftMicros": {
+      "value": null,
+      "reason": "Physical audio/video output drift is not measured; Custom submission drift is reported separately"
+    },
+    "cpuTimeMs": {
+      "value": null,
+      "reason": "Browser automation exposes no process CPU metric"
+    },
+    "memoryBytes": {
+      "value": 10000000,
+      "reason": null
+    },
+    "memoryGrowthBytes": {
+      "value": 0,
+      "reason": null
+    },
+    "powerProxyDroppedFrameRatio": {
+      "value": 0,
+      "reason": null
+    },
+    "runDurationMs": {
+      "value": 1007.3649999946356,
+      "reason": null
+    }
+  },
+  "memorySamples": [
+    {
+      "elapsedMs": 119.91499999910593,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 2376.405000001192,
+      "bytes": 10000000
+    },
+    {
+      "elapsedMs": 3383.789999999106,
+      "bytes": 10000000
+    }
+  ],
+  "errorCode": null,
+  "collectedAt": "2026-10-01T11:57:10.965Z",
+  "sdkVersion": "0.1.0",
+  "sourceSha256": "5e9ffb456310469f245ca68504c9088262ef515133e045bdd040d98c855b0866",
+  "validation": {
+    "passed": true,
+    "reason": null
+  }
+}

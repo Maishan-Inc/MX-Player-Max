@@ -9,6 +9,8 @@ export class BoundedRangeReader {
   readonly #limits: DemuxLimits
   #sourceLength: number | null = null
   #sourceLengthObserved = false
+  #readAheadBounds: { start: number; endExclusive: number } | null = null
+  #window: { start: number; data: Uint8Array } | null = null
 
   constructor(loader: RangeLoader, limits: DemuxLimits) {
     this.#loader = loader
@@ -21,6 +23,19 @@ export class BoundedRangeReader {
 
   get sourceLengthObserved(): boolean {
     return this.#sourceLengthObserved
+  }
+
+  /** A per-operation 64 KiB window, bounded to one Cluster and never used by container probing. */
+  forkWithReadAhead(start: number, endExclusive: number): BoundedRangeReader {
+    if (!Number.isSafeInteger(start) || start < 0 || !Number.isSafeInteger(endExclusive) || endExclusive <= start
+      || (this.#sourceLength !== null && endExclusive > this.#sourceLength)) {
+      throw new DemuxError(ErrorCodes.CONTAINER_INVALID, 'Read-ahead bounds must fit the source')
+    }
+    const reader = new BoundedRangeReader(this.#loader, this.#limits)
+    reader.#sourceLength = this.#sourceLength
+    reader.#sourceLengthObserved = this.#sourceLengthObserved
+    reader.#readAheadBounds = { start, endExclusive }
+    return reader
   }
 
   async readAt(offset: number, length: number): Promise<Uint8Array> {
@@ -38,9 +53,20 @@ export class BoundedRangeReader {
         context: { offset, length, sourceLength: this.#sourceLength },
       })
     }
+    const bounds = this.#readAheadBounds
+    if (bounds && (offset < bounds.start || endExclusive > bounds.endExclusive)) {
+      throw new DemuxError(ErrorCodes.CONTAINER_TRUNCATED, 'Container read exceeds the read-ahead scope')
+    }
+    const window = this.#window
+    if (window && offset >= window.start && endExclusive <= window.start + window.data.byteLength) {
+      return window.data.slice(offset - window.start, endExclusive - window.start)
+    }
+    const fetchLength = bounds === null ? length
+      : Math.min(bounds.endExclusive - offset, Math.max(length, Math.min(64 * 1024, this.#limits.maxReadRangeBytes)))
+    const fetchEnd = checkedAdd(offset, fetchLength)
     let result
     try {
-      result = await this.#loader.read({ start: offset, endExclusive })
+      result = await this.#loader.read({ start: offset, endExclusive: fetchEnd })
     } catch (cause) {
       if (cause instanceof DemuxError && cause.code === ErrorCodes.RANGE_INVALID) {
         throw new DemuxError(ErrorCodes.CONTAINER_TRUNCATED, 'Container ended before the requested bytes', {
@@ -50,9 +76,9 @@ export class BoundedRangeReader {
       }
       throw cause
     }
-    if (result.data.byteLength !== length) {
+    if (result.data.byteLength !== fetchLength) {
       throw new DemuxError(ErrorCodes.CONTAINER_TRUNCATED, 'Range Loader returned a short container read', {
-        context: { offset, expectedLength: length, actualLength: result.data.byteLength },
+        context: { offset, expectedLength: fetchLength, actualLength: result.data.byteLength },
       })
     }
     if (this.#sourceLengthObserved && result.sourceLength !== this.#sourceLength) {
@@ -60,7 +86,11 @@ export class BoundedRangeReader {
     }
     this.#sourceLength = result.sourceLength
     this.#sourceLengthObserved = true
-    return result.data
+    if (bounds && fetchLength <= 64 * 1024) {
+      this.#window = { start: offset, data: result.data }
+      return result.data.slice(0, length)
+    }
+    return fetchLength === length ? result.data : result.data.slice(0, length)
   }
 
   async readMetadata(offset: number, length: number): Promise<Uint8Array> {

@@ -25,6 +25,8 @@ describe('custom audio public API', () => {
     expectTypeOf<MediaEngine>().toHaveProperty('audioClock')
     expectTypeOf<EngineEventMap['audiostatechange']>().not.toHaveProperty('pcm')
     expectTypeOf<EngineEventMap['clockupdate']>().not.toHaveProperty('data')
+    expectTypeOf<EngineEventMap['videopresentation']['sample']>().toHaveProperty('driftMicros')
+    expectTypeOf<EngineEventMap['videopresentation']['sample']>().not.toHaveProperty('frame')
   })
 
   it('publishes stable audio and WebCodecs audio errors', () => {

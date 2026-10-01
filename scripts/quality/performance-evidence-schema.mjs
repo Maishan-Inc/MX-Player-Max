@@ -15,7 +15,7 @@ export const PERFORMANCE_METRICS = Object.freeze([
   'runDurationMs',
 ])
 
-const NON_NEGATIVE_METRICS = new Set(PERFORMANCE_METRICS.filter((name) => name !== 'avDriftMicros'))
+const NON_NEGATIVE_METRICS = new Set(PERFORMANCE_METRICS.filter((name) => name !== 'avDriftMicros' && name !== 'memoryGrowthBytes'))
 
 export const SMOKE_SAMPLE = Object.freeze({
   id: 'webm-vp8-p0-8bit-opus',
@@ -35,6 +35,7 @@ export function validatePerformanceReport(report, file, thresholds) {
   if (!Number.isFinite(Date.parse(report.collectedAt ?? ''))) throw new Error(`${file}: invalid collection time`)
   if (report.errorCode !== null) throw new Error(`${file}: passed evidence must not contain an error code`)
   if (!['smoke', 'long-run-30m'].includes(report.scenario)) throw new Error(`${file}: invalid scenario`)
+  if (!['html-video', 'webcodecs'].includes(report.backend)) throw new Error(`${file}: invalid measured backend`)
   validateEnvironment(report.environment, file)
   validateSample(report.sample, report.scenario, file)
   validateMetrics(report.metrics, file)
@@ -70,10 +71,14 @@ export function validatePerformanceReport(report, file, thresholds) {
 }
 
 export function validatePerformanceMatrix(reports) {
-  const requiredSmoke = new Set(['chromium/non-isolated', 'chromium/isolated', 'firefox/non-isolated', 'firefox/isolated'])
+  const modes = ['chromium/non-isolated', 'chromium/isolated', 'firefox/non-isolated', 'firefox/isolated']
+  const requiredSmoke = new Set(modes.map((mode) => `html-video/${mode}`))
+  if (reports.some(({ report }) => report.scenario === 'smoke' && report.backend === 'webcodecs')) {
+    for (const mode of modes) requiredSmoke.add(`webcodecs/${mode}`)
+  }
   const observed = new Set()
   for (const { report, file } of reports) {
-    const key = `${report.environment.browserName}/${report.environment.crossOriginIsolated ? 'isolated' : 'non-isolated'}`
+    const key = `${report.backend}/${report.environment.browserName}/${report.environment.crossOriginIsolated ? 'isolated' : 'non-isolated'}`
     const scenarioKey = `${report.scenario}/${key}`
     if (observed.has(scenarioKey)) throw new Error(`${file}: duplicate performance matrix row ${scenarioKey}`)
     observed.add(scenarioKey)
@@ -81,8 +86,10 @@ export function validatePerformanceMatrix(reports) {
   }
   if (requiredSmoke.size > 0) throw new Error(`Performance smoke matrix is incomplete: ${[...requiredSmoke].join(', ')}`)
 
-  const longRunRows = [...observed].filter((key) => key.startsWith('long-run-30m/'))
-  if (longRunRows.length !== 0 && longRunRows.length !== 4) throw new Error('Long-run performance evidence must contain all four browser/isolation rows')
+  for (const backend of ['html-video', 'webcodecs']) {
+    const longRunRows = [...observed].filter((key) => key.startsWith(`long-run-30m/${backend}/`))
+    if (longRunRows.length !== 0 && longRunRows.length !== 4) throw new Error(`${backend}: Long-run performance evidence must contain all four browser/isolation rows`)
+  }
 }
 
 function validateEnvironment(environment, file) {

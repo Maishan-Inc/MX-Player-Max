@@ -101,12 +101,16 @@ pnpm test:browser
 pnpm test:pages
 pnpm dev
 pnpm test:release
+pnpm release:readiness
 pnpm verify:packages
 pnpm release:pack
 pnpm release:smoke
 ```
 
 Playwright Chromium/Firefox/WebKit 自动化与真实 Chrome、Firefox、macOS Safari 验证分开记录。Playwright WebKit 不能替代真实 macOS Safari 证据。
+
+`release:readiness` 是严格的最终验收检查，当前实机/长跑/Docker 证据缺失时会退出 1；普通
+schema 检查通过不代表可发布。无下载环境的本地命令见 `docs/development/testing.md`。
 
 ## 当前范围边界
 

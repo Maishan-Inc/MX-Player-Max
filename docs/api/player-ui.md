@@ -353,4 +353,19 @@ SDK/UI/React/Vue 入口是 ESM + declarations；Browser 另外发布 `./iife`、
 
 UI 稳定错误码：`UI_DESTROYED`、`UI_INVALID_CONTAINER`、`UI_INVALID_OPTIONS`、`UI_OPERATION_FAILED`。公共 UI/播放错误不包含 URL query、字幕全文、DOMException、内部 stack 或宿主异常 message。
 
-当前明确不包含真实 Codec WASM/Core 接入、PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码或 Document PiP。迷你播放器是页内停靠，不是 Document Picture-in-Picture。IIFE 只代表 Browser 的 SDK + UI 组合，不代表所有 Codec 已支持。
+当前真实 WASM/Core 接入限于显式 `wasmBaseUrl` 下的 approved VP8 video-only；VP9 仍是受限技术切片。当前不包含 PGS/VobSub、完整 libass、字幕内容编辑器、播放列表业务、Custom 内建预览解码或 Document PiP。迷你播放器是页内停靠，不是 Document Picture-in-Picture。IIFE 只代表 Browser 的 SDK + UI 组合，不代表所有 Codec 已支持。
+
+## 12. Custom 呈现诊断
+
+```ts
+player.on('videopresentation', ({ sample, sessionEpoch }) => {
+  // sample: epoch, timestamp, mediaTime, driftMicros, clockSource
+  // 时间单位为整数微秒；driftMicros = 视频 PTS - 提交前主时钟。
+  recordSubmission(sessionEpoch, sample)
+})
+```
+
+仅成功提交到 Custom renderer 的帧产生事件；等待、丢帧、渲染失败和旧 epoch 不产生事件。
+`sessionEpoch` 区分 load/路径切换，`sample.epoch` 区分会话内 seek/reset。事件不传递
+VideoFrame/GPUTexture/PCM 所有权。该偏差用于定位调度问题，不等价于物理屏幕与扬声器的音画漂移。
+Native 路径不发此事件；各浏览器依然按实际 WebCodecs/AudioWorklet 能力选择和降级。

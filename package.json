@@ -18,6 +18,8 @@
     "test:pages": "playwright test --config playwright.pages.config.ts",
     "verify:packages": "node scripts/release/verify-packages.mjs",
     "release:manifest": "node scripts/release/generate-manifest.mjs",
+    "release:readiness": "node scripts/quality/verify-release-readiness.mjs",
+    "release:fingerprint": "node scripts/quality/verify-release-readiness.mjs --fingerprint",
     "test:release": "node --test scripts/release/tests/*.test.mjs",
     "test:quality": "node --test scripts/quality/tests/*.test.mjs",
     "quality:media": "node scripts/quality/verify-media-manifest.mjs",

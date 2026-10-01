@@ -402,6 +402,9 @@ publishable assets，threaded 因缺少 host glue 技术性排除。
 - [x] 建立隔离/非隔离短时性能 schema、阈值和 automation baseline。
 - [x] 完成 AI/WASM hash/license/build/review、CSP/CORP/COOP/COEP、字幕和事件隐私静态审计。
 - [x] 建立唯一 workspace test-count JSON 与文档漂移 CI 校验。
+- [x] 增加独立发布验收门禁，绑定版本/源码指纹，拒绝缺失实机、双路径长跑或 Docker 证据。
+- [x] 增加可选已安装浏览器的离线采集、失败原始报告和 Native/Custom 分离矩阵。
+- [x] 增加 Custom 呈现偏差/首 PCM 消费诊断，并修复音频共享内存探测被 WASM 延迟策略禁用的问题。
 - [ ] 执行 Chrome/Firefox/macOS Safari latest-two-stable 实机 P0/P1 矩阵。
 - [x] 执行 Chromium/Firefox 隔离与非隔离 30 分钟 automation 运行；结果未达启动/缓冲/帧丢失门禁，音画漂移、CPU 与功耗仍不可观测。
 - [ ] 在具备 Docker CLI 的环境完成双模式镜像 build/runtime smoke。

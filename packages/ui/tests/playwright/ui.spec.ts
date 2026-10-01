@@ -112,6 +112,8 @@ async function expectUiBaseline(page: Page, name: string): Promise<void> {
     })
     return
   }
+  // The landing hero now precedes the player. Keep the complete control surface in the baseline.
+  await page.locator('.player-stage').scrollIntoViewIfNeeded()
   await expect(page).toHaveScreenshot(name, { animations: 'disabled' })
 }
 

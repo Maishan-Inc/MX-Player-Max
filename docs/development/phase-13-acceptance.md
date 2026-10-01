@@ -4,6 +4,25 @@
 
 状态：自动化质量、安全和短时性能固化已完成；最终发布门禁仍为 **pending/blocked**。
 
+2026-10-01 本地加固：新增 `release:readiness` 严格门禁与版本/源码指纹校验，发布 job 必须依赖
+独立 acceptance job；普通 schema 检查仍可如实记录 pending。新增 Native/Custom 分离的离线采集、
+分段启动耗时、首 PCM 消费和呈现调度偏差，失败原始 JSON 保留在 `.release-tmp/performance/`。
+隔离 WebCodecs 音频改用独立传输探测，修复延迟 WASM 快照导致 SAB 路径始终被禁用的问题。
+物理首音/音画漂移、真实 CPU/功耗仍未由这些诊断替代；无 Docker、Firefox/WebKit 缓存及长跑素材
+时不下载依赖，也不补写这些通过行。当前测试数量继续以 `evidence/current-test-counts.json` 为准。
+
+本次本机验证：类型检查/构建、全部 workspace 单测、18 项质量脚本测试、28 项发布脚本测试通过。
+Chromium 媒体回归 32 项、桌面/移动视口 UI 与 VP8 WASM 回归 12 项、Native/Custom 双隔离模式
+性能回归 4 项通过。原三张截图仍是改版前花朵样片页面，已逐张核对当前页面、更新基线并重新严格比较。
+移动视口自动化不等价于移动设备验收。三轮独立性能采集的十二份原始记录见
+`evidence/offline-performance-2026-10-01/`：首轮四行通过；截图基线更新后的复测中 Native 两行通过，
+Custom 的非隔离/隔离 seek 分别为 1105.4/1094.8 ms，超过 1000 ms 门禁，因此这两行 validation.failed。
+排查发现 WebM/Matroska Cluster 内逐字段 Range 读取造成大量往返，现增加每次操作独立、限制在 Cluster
+边界和单次 Range 预算内的 64 KiB 预读取窗口。第三轮四行通过：Custom 非隔离/隔离 seek 为
+17.40/17.45 ms，首帧为 165.30/165.20 ms；Native seek 为 9.00/14.58 ms，首帧为 125.20/98.22 ms。
+样本与阈值不变，旧失败证据保留；这些是本机短样本观测，不代表通用性能保证。全部记录均为
+Chromium 本地 smoke，不进入完整发布矩阵；首音/物理音画漂移/CPU 仍为 null + reason。
+
 当前复核（2026-08-22）：`pnpm test` 的通过总数以生成证据
 `evidence/current-test-counts.json` 为准，不在本文件手工维护；`pnpm verify:packages`
 验证 19 个 publishable packages。下表中的包数量已按当前生成证据同步；历史日期和外部

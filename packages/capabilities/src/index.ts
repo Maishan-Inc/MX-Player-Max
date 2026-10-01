@@ -14,7 +14,7 @@ import {
   type MediaCapabilityProbeOptions,
 } from './contracts'
 import { createDefaultProbeAdapter } from './default-adapter'
-import { hydrateWasmCapabilities, probeEnvironmentSnapshot, readEnvironmentIdentityWithWasm } from './environment'
+import { hydrateWasmCapabilities, probeAudioTransportCapabilities, probeEnvironmentSnapshot, readEnvironmentIdentityWithWasm } from './environment'
 import { createMediaCapabilityQuery, probeMediaReport } from './media-report'
 
 export {
@@ -30,6 +30,11 @@ export { createDefaultProbeAdapter } from './default-adapter'
 
 const pendingSnapshots = new Map<string, Promise<CapabilitySnapshot>>()
 const pendingReports = new Map<string, Promise<MediaCapabilityReport>>()
+
+/** Called when initializing custom audio, independently of lazy WASM decoder capability checks. */
+export function detectAudioTransportCapabilities(options: Pick<CapabilityProbeOptions, 'adapter'> = {}): Pick<CapabilitySnapshot, 'crossOriginIsolated' | 'sharedArrayBuffer'> {
+  return probeAudioTransportCapabilities(options.adapter ?? createDefaultProbeAdapter())
+}
 
 export async function detectCapabilities(options: CapabilityProbeOptions = {}): Promise<CapabilitySnapshot> {
   const adapter = options.adapter ?? createDefaultProbeAdapter()
